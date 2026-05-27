@@ -18,7 +18,6 @@ import {
   pullFromBankIfNeeded,
   autoSolveGraph,
   autoSolveMultipleGraphs,
-  Graph,
   getLocalGraphFingerprint,
 } from "../state/gameSlice";
 
@@ -423,9 +422,6 @@ const GamePage: React.FC = () => {
               </button>
             </>
           ) : (() => {
-            const allSplitGraphs = activeGraph ? [activeGraph, ...recentCutGraphs] : [...recentCutGraphs];
-            const selectedGraph = selectedGraphIndex !== null ? allSplitGraphs[selectedGraphIndex] : null;
-            const knownRank = selectedGraph ? optimalRanks.get(getLocalGraphFingerprint(selectedGraph)) : undefined;
 
             return (
               <>
