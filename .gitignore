@@ -1,0 +1,27 @@
+# Python / FastAPI
+backend/__pycache__/
+backend/.pytest_cache/
+backend/venv/
+backend/.venv/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+backend/howl.db
+
+# Node / React / Vite
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.*
+frontend/.eslintcache
+frontend/coverage/
+
+# OS / Editor
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# Deployment
