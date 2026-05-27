@@ -40,16 +40,19 @@ const useStageSize = () => {
     const update = () => {
       const isMobile = window.innerWidth <= 768;
       const sidebarWidth = isMobile ? 0 : 280;
-      const verticalReserve = isMobile ? (window.innerHeight * 0.35 + 240) : 230;
+      const verticalReserve = isMobile ? 200 : 230;
       
       const width = Math.max(
         300,
         Math.min(1000, window.innerWidth - sidebarWidth - 48),
       );
-      const height = Math.max(
-        300, 
-        Math.min(720, window.innerHeight - verticalReserve)
-      );
+      
+      // On mobile, the page scrolls normally, so let the height match the width
+      // to ensure the grid is as big as possible without artificial vertical constraints.
+      const height = isMobile 
+        ? width 
+        : Math.max(300, Math.min(720, window.innerHeight - verticalReserve));
+        
       setSize({ width, height });
     };
 

@@ -546,14 +546,15 @@ body {
 @media (max-width: 768px) {
   .app-shell {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto auto auto;
     grid-template-areas:
       "topnav"
       "main"
       "sidebar";
-    height: 100vh;
-    height: 100dvh;
-    overflow: hidden;
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: visible;
   }
 
   .top-nav-bar {
@@ -585,8 +586,7 @@ body {
   }
 
   .sidebar {
-    height: 35vh; /* Keep it at the bottom, scrollable */
-    max-height: 350px;
+    height: auto;
     border-right: none;
     border-top: 1px solid var(--border-subtle);
     padding: 16px;
@@ -603,11 +603,11 @@ body {
 
   /* Adjust game board area for mobile */
   .main-stage {
-    overflow-y: auto;
+    overflow-y: visible;
     overflow-x: hidden;
     padding: 16px 8px;
-    justify-content: flex-start; /* Prevent flex centering from cutting off the top */
-    min-height: 0; /* Let flex child shrink properly */
+    justify-content: flex-start;
+    min-height: 0;
   }
 }
 
