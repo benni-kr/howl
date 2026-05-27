@@ -1,8 +1,10 @@
-from dotenv import load_dotenv
-load_dotenv()
 """Database configuration for HOWL persistence."""
 
 from __future__ import annotations
+
+from dotenv import load_dotenv
+load_dotenv()
+
 
 import os
 from typing import Generator

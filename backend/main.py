@@ -1,8 +1,10 @@
-from dotenv import load_dotenv
-load_dotenv()
 """FastAPI backend bridge for the HOWL grid-ranking game."""
 
 from __future__ import annotations
+
+from dotenv import load_dotenv
+load_dotenv()
+
 
 from typing import List, Optional, Tuple
 
@@ -161,7 +163,7 @@ def _serialize_graph(graph: GridGraph) -> dict:
 
 
 @app.post("/api/cut")
-def cut_graph(token: str = Depends(verify_token), payload: CutRequest, db: Session = Depends(get_db)) -> dict:
+def cut_graph(payload: CutRequest, token: str = Depends(verify_token), db: Session = Depends(get_db)) -> dict:
     """
     Apply a cut set to the provided graph and return disconnected subgraphs.
     """
@@ -216,7 +218,7 @@ def update_subgraph_dictionary(db: Session, m: int, n: int, cut_sequence: object
 
 
 @app.post("/api/submit_solution", response_model=SubmitResponse)
-def submit_solution(token: str = Depends(verify_token), payload: SolutionCreate, db: Session = Depends(get_db)) -> SubmitResponse:
+def submit_solution(payload: SolutionCreate, token: str = Depends(verify_token), db: Session = Depends(get_db)) -> SubmitResponse:
     existing = (
         db.query(GridSolution)
         .filter(
@@ -281,7 +283,7 @@ def submit_solution(token: str = Depends(verify_token), payload: SolutionCreate,
 
 
 @app.get("/api/solution/{m}/{n}", response_model=Optional[SolutionResponse])
-def get_solution(token: str = Depends(verify_token), m: int, n: int, db: Session = Depends(get_db)):
+def get_solution(m: int, n: int, token: str = Depends(verify_token), db: Session = Depends(get_db)):
     # Returns the absolute best solution globally for this grid size
     return (
         db.query(GridSolution)
@@ -380,7 +382,7 @@ def get_top_solvers(token: str = Depends(verify_token), square_only: bool = Fals
 
 
 @app.get("/api/leaderboard/grid/{m}/{n}")
-def get_grid_leaderboard(token: str = Depends(verify_token), m: int, n: int, db: Session = Depends(get_db)):
+def get_grid_leaderboard(m: int, n: int, token: str = Depends(verify_token), db: Session = Depends(get_db)):
     results = (
         db.query(GridSolution)
         .filter(GridSolution.m == m, GridSolution.n == n)
@@ -400,7 +402,7 @@ def get_grid_leaderboard(token: str = Depends(verify_token), m: int, n: int, db:
 
 
 @app.post("/api/check_shapes", response_model=CheckShapesResponse)
-def check_shapes(token: str = Depends(verify_token), payload: CheckShapesRequest, db: Session = Depends(get_db)) -> CheckShapesResponse:
+def check_shapes(payload: CheckShapesRequest, token: str = Depends(verify_token), db: Session = Depends(get_db)) -> CheckShapesResponse:
     """
     For each subgraph in the request, generate a canonical hash and look up
     whether a known solution exists in the SubgraphDictionary.
