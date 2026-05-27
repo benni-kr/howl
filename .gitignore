@@ -10,11 +10,15 @@ backend/.venv/
 *.sqlite3
 backend/howl.db
 
+# Environment Variables
+.env
+.env.local
+.env.*.local
+!.env.example
+
 # Node / React / Vite
 frontend/node_modules/
 frontend/dist/
-frontend/.env
-frontend/.env.*
 frontend/.eslintcache
 frontend/coverage/
 
