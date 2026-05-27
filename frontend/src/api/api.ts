@@ -9,7 +9,35 @@ type CutResponse = {
   subgraphs: ApiGraph[];
 };
 
-const API_BASE_URL = "http://127.0.0.1:8000/api";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
+
+const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const token = localStorage.getItem("howl_auth_token");
+  const headers = new Headers(init?.headers || {});
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return fetch(input, { ...init, headers });
+};
+
+export const login = async (username: string, password: string): Promise<boolean> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    if (response.ok) {
+      const data = await response.json();
+      localStorage.setItem("howl_auth_token", data.token);
+      return true;
+    }
+    return false;
+  } catch (e) {
+    return false;
+  }
+};
+
 const CUT_URL = `${API_BASE_URL}/cut`;
 
 const serializeGraph = (graph: Graph) => ({
@@ -37,7 +65,7 @@ export const executeCut = async (
   cutSet: Vertex[],
 ): Promise<Graph[]> => {
   try {
-    const response = await fetch(CUT_URL, {
+    const response = await apiFetch(CUT_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -73,7 +101,7 @@ export type ShapeResult = {
 
 export const checkShapes = async (graphs: Graph[]): Promise<ShapeResult[]> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/check_shapes`, {
+    const response = await apiFetch(`${API_BASE_URL}/check_shapes`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -117,7 +145,7 @@ export const submitScore = async (
   solverName: string,
   cutSequence: unknown,
 ): Promise<SubmitResponse> => {
-  const response = await fetch(`${API_BASE_URL}/submit_solution`, {
+  const response = await apiFetch(`${API_BASE_URL}/submit_solution`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -152,7 +180,7 @@ export const fetchTopScore = async (
   n: number,
 ): Promise<TopScoreResponse | null> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/solution/${m}/${n}`);
+    const response = await apiFetch(`${API_BASE_URL}/solution/${m}/${n}`);
     if (response.status === 404) {
       return null; // no solution exists
     }
@@ -176,7 +204,7 @@ export type MatrixCellData = {
 };
 
 export const fetchMatrixLeaderboard = async (): Promise<MatrixCellData[]> => {
-  const response = await fetch(`${API_BASE_URL}/leaderboard/matrix`);
+  const response = await apiFetch(`${API_BASE_URL}/leaderboard/matrix`);
   if (!response.ok) {
     throw new Error(`fetchMatrixLeaderboard failed: ${response.status}`);
   }
@@ -192,7 +220,7 @@ export const fetchTopSolvers = async (
   squareOnly: boolean = false,
 ): Promise<TopSolverData[]> => {
   const query = squareOnly ? "?square_only=true" : "";
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/leaderboard/top_solvers${query}`,
   );
   if (!response.ok) {
@@ -212,7 +240,7 @@ export const fetchGridLeaderboard = async (
   m: number,
   n: number,
 ): Promise<GridLeaderboardEntry[]> => {
-  const response = await fetch(`${API_BASE_URL}/leaderboard/grid/${m}/${n}`);
+  const response = await apiFetch(`${API_BASE_URL}/leaderboard/grid/${m}/${n}`);
   if (!response.ok) {
     throw new Error(`fetchGridLeaderboard failed: ${response.status}`);
   }

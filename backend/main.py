@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv()
 """FastAPI backend bridge for the HOWL grid-ranking game."""
 
 from __future__ import annotations
@@ -41,11 +43,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:4173",
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,6 +53,30 @@ app.add_middleware(
 from fastapi.responses import JSONResponse
 from fastapi import Request
 
+
+
+import os
+from fastapi.security import OAuth2PasswordBearer
+from pydantic import BaseModel
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+AUTH_SECRET = os.getenv("AUTH_SECRET", "howl2026")
+
+def verify_token(token: str = Depends(oauth2_scheme)):
+    if token != AUTH_SECRET:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return token
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest):
+    if req.username == "admin" and req.password == AUTH_SECRET:
+        return {"token": AUTH_SECRET}
+    raise HTTPException(status_code=401, detail="Invalid credentials")
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -139,7 +161,7 @@ def _serialize_graph(graph: GridGraph) -> dict:
 
 
 @app.post("/api/cut")
-def cut_graph(payload: CutRequest, db: Session = Depends(get_db)) -> dict:
+def cut_graph(token: str = Depends(verify_token), payload: CutRequest, db: Session = Depends(get_db)) -> dict:
     """
     Apply a cut set to the provided graph and return disconnected subgraphs.
     """
@@ -157,7 +179,7 @@ def cut_graph(payload: CutRequest, db: Session = Depends(get_db)) -> dict:
 
 
 @app.get("/api/leaderboard", response_model=List[SolutionResponse])
-def get_leaderboard(db: Session = Depends(get_db)) -> List[GridSolution]:
+def get_leaderboard(token: str = Depends(verify_token), db: Session = Depends(get_db)) -> List[GridSolution]:
     return db.query(GridSolution).order_by(GridSolution.m.asc(), GridSolution.n.asc()).all()
 
 
@@ -194,7 +216,7 @@ def update_subgraph_dictionary(db: Session, m: int, n: int, cut_sequence: object
 
 
 @app.post("/api/submit_solution", response_model=SubmitResponse)
-def submit_solution(payload: SolutionCreate, db: Session = Depends(get_db)) -> SubmitResponse:
+def submit_solution(token: str = Depends(verify_token), payload: SolutionCreate, db: Session = Depends(get_db)) -> SubmitResponse:
     existing = (
         db.query(GridSolution)
         .filter(
@@ -259,7 +281,7 @@ def submit_solution(payload: SolutionCreate, db: Session = Depends(get_db)) -> S
 
 
 @app.get("/api/solution/{m}/{n}", response_model=Optional[SolutionResponse])
-def get_solution(m: int, n: int, db: Session = Depends(get_db)):
+def get_solution(token: str = Depends(verify_token), m: int, n: int, db: Session = Depends(get_db)):
     # Returns the absolute best solution globally for this grid size
     return (
         db.query(GridSolution)
@@ -273,7 +295,7 @@ from sqlalchemy import func
 
 
 @app.get("/api/leaderboard/matrix")
-def get_matrix_leaderboard(db: Session = Depends(get_db)):
+def get_matrix_leaderboard(token: str = Depends(verify_token), db: Session = Depends(get_db)):
     """
     Returns the best records for grids up to 100x100 where m >= n.
     Provides a flat list of {m, n, min_rank, solver_name, is_optimal}.
@@ -324,7 +346,7 @@ def get_matrix_leaderboard(db: Session = Depends(get_db)):
 
 
 @app.get("/api/leaderboard/top_solvers")
-def get_top_solvers(square_only: bool = False, db: Session = Depends(get_db)):
+def get_top_solvers(token: str = Depends(verify_token), square_only: bool = False, db: Session = Depends(get_db)):
     """
     Returns a list of players ranked by the total number of "First Place" records they hold.
     All first places count, even ties.
@@ -358,7 +380,7 @@ def get_top_solvers(square_only: bool = False, db: Session = Depends(get_db)):
 
 
 @app.get("/api/leaderboard/grid/{m}/{n}")
-def get_grid_leaderboard(m: int, n: int, db: Session = Depends(get_db)):
+def get_grid_leaderboard(token: str = Depends(verify_token), m: int, n: int, db: Session = Depends(get_db)):
     results = (
         db.query(GridSolution)
         .filter(GridSolution.m == m, GridSolution.n == n)
@@ -378,7 +400,7 @@ def get_grid_leaderboard(m: int, n: int, db: Session = Depends(get_db)):
 
 
 @app.post("/api/check_shapes", response_model=CheckShapesResponse)
-def check_shapes(payload: CheckShapesRequest, db: Session = Depends(get_db)) -> CheckShapesResponse:
+def check_shapes(token: str = Depends(verify_token), payload: CheckShapesRequest, db: Session = Depends(get_db)) -> CheckShapesResponse:
     """
     For each subgraph in the request, generate a canonical hash and look up
     whether a known solution exists in the SubgraphDictionary.

@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { RootState } from "./state/store";
 import { selectActivePalette } from "./state/settingsSlice";
@@ -9,8 +9,17 @@ import GamePage from "./pages/GamePage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import SettingsPage from "./pages/SettingsPage";
 import DocsPage from "./pages/DocsPage";
+import LoginPage from "./pages/LoginPage";
 
 import "./styles/styles.css";
+
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const token = localStorage.getItem("howl_auth_token");
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+};
 
 const App: React.FC = () => {
   const settings = useSelector((state: RootState) => state.settings);
@@ -39,7 +48,12 @@ const App: React.FC = () => {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Layout />}>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/" element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }>
           <Route index element={<GamePage />} />
           <Route path="leaderboard" element={<LeaderboardPage />} />
           <Route path="docs" element={<DocsPage />} />
