@@ -16,14 +16,13 @@ const TopNavBar: React.FC<TopNavBarProps> = ({
 
   return (
     <div className="top-nav-bar">
-      {!isGameRoute && (
-        <div className="top-nav-left" style={{ display: 'flex', alignItems: 'center' }}>
+      
+        <div className={`top-nav-left ${isGameRoute ? "desktop-hidden" : ""}`} style={{ display: 'flex', alignItems: 'center' }}>
           <Link to="/" className="logo-text" style={{ display: 'flex', alignItems: 'center', gap: '12px', textDecoration: 'none', color: 'var(--logo-color)' }}>
             <WolfLogo size={36} />
             <span style={{ fontFamily: '"Permanent Marker", cursive', fontSize: '2.4rem', letterSpacing: '0.12rem', textTransform: 'uppercase', lineHeight: 1 }}>HOWL</span>
           </Link>
         </div>
-      )}
 
       <div className="top-nav-right" style={{ display: 'flex', alignItems: 'center', gap: '16px', marginLeft: 'auto' }}>
         <button className="btn secondary alias-pill" onClick={onEditAlias}>

@@ -541,3 +541,48 @@ body {
   flex-direction: column;
   overflow: hidden;
 }
+
+/* MOBILE RESPONSIVENESS */
+@media (max-width: 768px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: 64px 1fr auto;
+    grid-template-areas:
+      "topnav"
+      "main"
+      "sidebar";
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    height: 35vh; /* Keep it at the bottom, scrollable */
+    max-height: 350px;
+    border-right: none;
+    border-top: 1px solid var(--border-subtle);
+    padding: 16px;
+    z-index: 10;
+  }
+
+  .sidebar .logo-text {
+    display: none !important; /* Hide logo in sidebar on mobile */
+  }
+
+  .top-nav-left.desktop-hidden {
+    display: flex !important; /* Show logo in topnav on mobile */
+  }
+
+  /* Adjust game board area for mobile */
+  .main-content {
+    overflow-y: auto;
+    padding-bottom: 20px;
+  }
+}
+
+/* Hide topnav logo on desktop when on game route */
+@media (min-width: 769px) {
+  .top-nav-left.desktop-hidden {
+    display: none !important;
+  }
+}
