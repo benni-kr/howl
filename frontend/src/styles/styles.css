@@ -617,3 +617,12 @@ body {
     display: none !important;
   }
 }
+
+.rank-panel {
+  margin-top: -64px;
+}
+@media (max-width: 768px) {
+  .rank-panel {
+    margin-top: 0;
+  }
+}

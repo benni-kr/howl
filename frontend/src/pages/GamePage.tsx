@@ -38,12 +38,18 @@ const useStageSize = () => {
     }
 
     const update = () => {
-      const sidebarWidth = 280;
+      const isMobile = window.innerWidth <= 768;
+      const sidebarWidth = isMobile ? 0 : 280;
+      const verticalReserve = isMobile ? (window.innerHeight * 0.35 + 240) : 230;
+      
       const width = Math.max(
-        360,
+        300,
         Math.min(1000, window.innerWidth - sidebarWidth - 48),
       );
-      const height = Math.max(360, Math.min(720, window.innerHeight - 230));
+      const height = Math.max(
+        300, 
+        Math.min(720, window.innerHeight - verticalReserve)
+      );
       setSize({ width, height });
     };
 
@@ -262,6 +268,7 @@ const GamePage: React.FC = () => {
 
         {gridSize && gridSize.m > 0 && (
           <div
+            className="rank-panel"
             style={{
               display: "flex",
               gap: "16px",
@@ -273,7 +280,7 @@ const GamePage: React.FC = () => {
               alignItems: "center",
               minWidth: "280px",
               marginBottom: "24px",
-              marginTop: "-64px",
+              
               zIndex: 10
             }}
           >
