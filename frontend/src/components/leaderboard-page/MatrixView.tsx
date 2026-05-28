@@ -1,20 +1,68 @@
 import React, { useMemo } from 'react';
 import { MatrixCellData } from '../../api/api';
 import { useAlias } from '../../hooks/useAlias';
+import * as math from 'mathjs';
 
-export type MatrixMode = 'min_rank' | 'top_solver' | 'density_area' | 'density_linear';
+export type MatrixMode = 'min_rank' | 'top_solver' | 'perfection_gap' | 'density_linear' | 'log_adjusted_density' | 'custom_formula';
 
 interface MatrixViewProps {
   data: MatrixCellData[];
   onCellClick: (m: number, n: number) => void;
   mode: MatrixMode;
+  customFormula?: string;
 }
+
+const getLowerBound = (m: number, n: number): number => {
+  const min = Math.min(m, n);
+  const max = Math.max(m, n);
+
+  // Guard clause to prevent recursive collapse
+  if (min <= 0) return 0;
+
+  // 1 x n Grids (Path graphs) - Exact rank number
+  if (min === 1) {
+    return Math.floor(Math.log2(max)) + 1;
+  }
+
+  // 2 x n Grids (Ladder graphs) - Recursive exact lower bound
+  if (min === 2) {
+    if (max === 2) return 3;
+    return 2 + getLowerBound(2, Math.ceil((max - 2) / 2));
+  }
+
+  // 3 x n Grids - Recursive lower bound
+  if (min === 3) {
+    if (max === 2) return 4;
+    if (max === 3) return 5;
+    return 3 + getLowerBound(3, Math.ceil((max - 3) / 2));
+  }
+
+  // 4 x n Grids - Recursive lower bound
+  if (min === 4) {
+    if (max === 2) return 4; // Safely caught here if passed out of order
+    if (max === 3) return 6;
+    if (max === 4) return 7;
+    if (max === 5) return 8;
+    return 4 + getLowerBound(4, Math.ceil((max - 4) / 2));
+  }
+
+  // General m x n Grids (where m >= 5)
+  // Bound 1: The explicit linear lower bound for square grids
+  const squareBound = Math.ceil((5 / 3) * min - (25 / 9));
+
+  // Bound 2: Since m >= 5, the grid geometrically contains a 4 x n subgrid.
+  // A graph's rank number must be >= the rank number of its subgraph.
+  const subgridBound = getLowerBound(4, max);
+
+  // Return the strictest known lower bound
+  return Math.max(squareBound, subgridBound);
+};
 
 const CELL = 40;     // px per cell
 const GAP = 2;       // px gap between cells
 const MAX = 100;     // max grid dimension
 
-const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode }) => {
+const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, customFormula = '' }) => {
   const { alias } = useAlias();
 
   const dataMap = useMemo(() => {
@@ -22,6 +70,17 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode }) => {
     data.forEach(cell => map.set(`${cell.m}-${cell.n}`, cell));
     return map;
   }, [data]);
+
+  const compiledFormula = useMemo(() => {
+    if (mode === 'custom_formula' && customFormula.trim() !== '') {
+      try {
+        return math.compile(customFormula);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  }, [mode, customFormula]);
 
   const getCellContent = (m: number, n: number) => {
     const cellData = dataMap.get(`${m}-${n}`);
@@ -32,6 +91,9 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode }) => {
     let color = 'var(--text-main)';
     let border = '1px solid var(--border-subtle)';
     let opacity = 1;
+
+    let metricValue: number | string | null = null;
+    let lowerBound = getLowerBound(m, n);
 
     if (mode === 'min_rank') {
       content = cellData.min_rank;
@@ -44,34 +106,55 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode }) => {
         bgColor = 'var(--tile-selected)';
         color = '#fff';
       }
-    } else if (mode === 'density_area' || mode === 'density_linear') {
-      const isArea = mode === 'density_area';
-      const density = isArea
-        ? cellData.min_rank / (m * n)
-        : cellData.min_rank / Math.max(m, n);
-      content = density.toFixed(2);
-      
-      // Calculate goodness: 1 is best (lowest density), 0 is worst (highest density)
-      // Area density usually stays < 1, linear density can go higher (e.g. up to 2-3).
-      const maxExpected = isArea ? 1.5 : 4.0; 
-      const goodness = Math.max(0.15, 1 - (density / maxExpected));
+    } else {
+      let goodness = 0;
+      const minEdge = Math.min(m, n);
+      const maxEdge = Math.max(m, n);
 
-      // We want to change the background opacity, not the text opacity.
-      // So we apply the alpha directly to the rgba string or use a CSS custom property.
-      // Easiest is to keep opacity=1 on the cell, but set bgColor with rgba.
-      
-      // Let's use a solid color base and calculate rgba for tile-selected
-      // tile-selected is a hex variable (like #06b6d4 in green theme), but we can just use an opacity trick by setting the cell background to an rgba overlay on top of the base card.
-      
-      // Actually, since tile-selected is a hex number in the theme engine, it gets converted to a hex string by the DOM (probably). 
-      // A safe way is to just use a solid color and use the cell opacity. Wait, if cell opacity changes, text fades.
-      // Let's create the background using color-mix in CSS (supported in all modern browsers).
+      if (mode === 'perfection_gap') {
+        const gap = cellData.min_rank - lowerBound;
+        metricValue = gap;
+        content = gap;
+        // goodness goes down as gap goes up
+        goodness = Math.max(0.15, 1 - (gap / (maxEdge * 0.5)));
+      } else if (mode === 'density_linear') {
+        const density = cellData.min_rank / maxEdge;
+        metricValue = density;
+        content = density.toFixed(2);
+        goodness = Math.max(0.15, 1 - (density / 4.0));
+      } else if (mode === 'log_adjusted_density') {
+        const density = cellData.min_rank / (minEdge + Math.log2(maxEdge + 1));
+        metricValue = density;
+        content = density.toFixed(2);
+        goodness = Math.max(0.15, 1 - (density / 3.0));
+      } else if (mode === 'custom_formula') {
+        if (compiledFormula) {
+          try {
+            const val = compiledFormula.evaluate({
+              m,
+              n,
+              min_edge: minEdge,
+              max_edge: maxEdge,
+              rank: cellData.min_rank
+            });
+            metricValue = val;
+            content = typeof val === 'number' ? val.toFixed(2) : String(val);
+            // simple heuristic for goodness on custom formulas
+            goodness = Math.max(0.15, Math.min(1, typeof val === 'number' && !isNaN(val) ? 1 - (val / 10) : 0));
+          } catch (e) {
+            content = '-';
+          }
+        } else {
+          content = '-';
+        }
+      }
+
       bgColor = `color-mix(in srgb, var(--tile-selected) ${Math.round(goodness * 100)}%, var(--bg-card))`;
-      opacity = 1; // keep text fully opaque
+      opacity = 1;
       color = '#ffffff';
     }
 
-    return { content, bgColor, color, border, opacity };
+    return { content, bgColor, color, border, opacity, lowerBound, metricValue, minRank: cellData.min_rank, solver: cellData.solver_name };
   };
 
   const mIndices = useMemo(() => Array.from({ length: MAX }, (_, i) => i + 1), []);
@@ -201,8 +284,8 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode }) => {
                       if (cellRender) onCellClick(m, n);
                     }}
                     title={
-                      cellRender
-                        ? `Grid: ${m}×${n}\nRank: ${cellData?.min_rank}\nSolver: ${cellData?.solver_name}`
+                      cellRender && cellData
+                        ? `Grid: ${m}×${n}\nCommunity Rank: ${cellRender.minRank}\nLower Bound: ${cellRender.lowerBound}\nSolver: ${cellRender.solver}${cellRender.metricValue !== null ? `\nMetric Value: ${cellRender.metricValue}` : ''}`
                         : undefined
                     }
                     style={{
