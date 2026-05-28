@@ -10,6 +10,7 @@ import LeaderboardPage from "./pages/LeaderboardPage";
 import SettingsPage from "./pages/SettingsPage";
 import DocsPage from "./pages/DocsPage";
 import LoginPage from "./pages/LoginPage";
+import ReplayPage from "./pages/ReplayPage";
 
 import "./styles/styles.css";
 
@@ -57,6 +58,7 @@ const App: React.FC = () => {
           <Route index element={<GamePage />} />
           <Route path="leaderboard" element={<LeaderboardPage />} />
           <Route path="leaderboard/:m/:n" element={<LeaderboardPage />} />
+          <Route path="replay/:m/:n/:solverName" element={<ReplayPage />} />
           <Route path="docs" element={<DocsPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>

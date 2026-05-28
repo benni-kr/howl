@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 
 import logging
 import traceback as _tb
+from datetime import datetime, timezone
 
 from database import Base, engine, get_db
 from graph_logic import GridGraph, generate_canonical_hash, replay_and_extract_subgraphs
@@ -188,7 +189,7 @@ def get_leaderboard(token: str = Depends(verify_token), db: Session = Depends(ge
 logger = logging.getLogger("howl.submit")
 
 
-def update_subgraph_dictionary(db: Session, m: int, n: int, cut_sequence: object) -> None:
+def update_subgraph_dictionary(db: Session, m: int, n: int, cut_sequence: object, solver_name: str) -> None:
     """Replay *cut_sequence* on an m×n grid and upsert discovered subgraph ranks.
 
     This is intentionally **fault-tolerant**: a replay crash is logged but
@@ -201,7 +202,10 @@ def update_subgraph_dictionary(db: Session, m: int, n: int, cut_sequence: object
         return
 
     logger.info("Replay produced %d subgraph entries for %dx%d", len(ranks_dict), m, n)
-    for canonical_hash, rank in ranks_dict.items():
+    for canonical_hash, data in ranks_dict.items():
+        rank = data["rank"]
+        sequence = data["sequence"]
+
         sub_entry = (
             db.query(SubgraphDictionary).filter(SubgraphDictionary.hash == canonical_hash).first()
         )
@@ -209,12 +213,23 @@ def update_subgraph_dictionary(db: Session, m: int, n: int, cut_sequence: object
             sub_entry = SubgraphDictionary(
                 hash=canonical_hash,
                 best_rank=rank,
+                best_cut_sequence=sequence,
                 is_optimal=False,
+                discovered_by=solver_name,
+                last_updated=datetime.now(timezone.utc),
             )
             db.add(sub_entry)
         else:
             if rank < sub_entry.best_rank:
                 sub_entry.best_rank = rank
+                sub_entry.best_cut_sequence = sequence
+                sub_entry.discovered_by = solver_name
+                sub_entry.last_updated = datetime.now(timezone.utc)
+            elif rank == sub_entry.best_rank and not sub_entry.best_cut_sequence:
+                # If we tied the best rank but didn't have a sequence saved, save this one
+                sub_entry.best_cut_sequence = sequence
+                sub_entry.discovered_by = solver_name
+                sub_entry.last_updated = datetime.now(timezone.utc)
 
 
 @app.post("/api/submit_solution", response_model=SubmitResponse)
@@ -232,7 +247,7 @@ def submit_solution(payload: SolutionCreate, token: str = Depends(verify_token),
     # ALWAYS update the subgraph dictionary — every play-through produces
     # valuable subgraph data, regardless of whether the overall grid score
     # is a new record.
-    update_subgraph_dictionary(db, payload.m, payload.n, payload.cut_sequence)
+    update_subgraph_dictionary(db, payload.m, payload.n, payload.cut_sequence, payload.solver_name)
 
     # Flush subgraph dictionary writes so they survive a potential
     # IntegrityError rollback on the GridSolution insert below.
@@ -283,14 +298,17 @@ def submit_solution(payload: SolutionCreate, token: str = Depends(verify_token),
 
 
 @app.get("/api/solution/{m}/{n}", response_model=Optional[SolutionResponse])
-def get_solution(m: int, n: int, token: str = Depends(verify_token), db: Session = Depends(get_db)):
-    # Returns the absolute best solution globally for this grid size
-    return (
-        db.query(GridSolution)
-        .filter(GridSolution.m == m, GridSolution.n == n)
-        .order_by(GridSolution.rank.asc(), GridSolution.created_at.asc())
-        .first()
+def get_solution(m: int, n: int, solver_name: Optional[str] = None, token: str = Depends(verify_token), db: Session = Depends(get_db)):
+    from sqlalchemy import or_
+    query = db.query(GridSolution).filter(
+        or_(
+            (GridSolution.m == m) & (GridSolution.n == n),
+            (GridSolution.m == n) & (GridSolution.n == m),
+        )
     )
+    if solver_name:
+        query = query.filter(GridSolution.solver_name == solver_name)
+    return query.order_by(GridSolution.rank.asc(), GridSolution.created_at.asc()).first()
 
 
 from sqlalchemy import func, case
@@ -469,6 +487,9 @@ def check_shapes(payload: CheckShapesRequest, token: str = Depends(verify_token)
                     found=True,
                     best_rank=entry.best_rank,
                     is_optimal=entry.is_optimal,
+                    best_cut_sequence=entry.best_cut_sequence,
+                    discovered_by=entry.discovered_by,
+                    last_updated=entry.last_updated,
                 )
             )
         else:

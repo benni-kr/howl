@@ -117,62 +117,57 @@ class GridGraph:
         return subgraph
 
 
-def generate_canonical_hash(vertices: list[dict]) -> str:
-    """
-    Generate a canonical hash for a 2D grid subgraph shape.
-
-    The hash is invariant under translation, rotation (0°/90°/180°/270°),
-    and reflection.  It works by:
-      A. Generating all 8 orientations (4 rotations × identity + reflection).
-      B. Normalizing each orientation to the origin (0, 0).
-      C. Sorting vertices and building a string representation.
-      D. Returning the lexicographically smallest string.
-
-    Args:
-        vertices: List of dicts with ``"x"`` and ``"y"`` integer keys.
-
-    Returns:
-        A deterministic string like ``"0,0|0,1|1,0"`` that uniquely
-        identifies this shape up to the symmetries of the square.
-    """
-    if not vertices:
-        return ""
-
-    coords = [(v["x"], v["y"]) for v in vertices]
-
-    # Generate all 8 orientations:
-    #   identity        (x, y)
-    #   rotate 90       (-y, x)
-    #   rotate 180      (-x, -y)
-    #   rotate 270      (y, -x)
-    #   reflect         (-x, y)
-    #   reflect+rot90   (-y, -x)
-    #   reflect+rot180  (x, -y)
-    #   reflect+rot270  (y, x)
-    orientations = [
-        [(x, y) for x, y in coords],
-        [(-y, x) for x, y in coords],
-        [(-x, -y) for x, y in coords],
-        [(y, -x) for x, y in coords],
-        [(-x, y) for x, y in coords],
-        [(-y, -x) for x, y in coords],
-        [(x, -y) for x, y in coords],
-        [(y, x) for x, y in coords],
+def get_transformations():
+    """Returns the 8 D4 transformations as lambda functions."""
+    return [
+        lambda x, y: (x, y),           # Identity
+        lambda x, y: (-y, x),          # Rot 90
+        lambda x, y: (-x, -y),         # Rot 180
+        lambda x, y: (y, -x),          # Rot 270
+        lambda x, y: (-x, y),          # Reflect X
+        lambda x, y: (-y, -x),         # Reflect X + Rot 90
+        lambda x, y: (x, -y),          # Reflect X + Rot 180
+        lambda x, y: (y, x),           # Reflect X + Rot 270
     ]
 
-    candidate_strings: list[str] = []
-    for orientation in orientations:
-        # Shift to origin
-        min_x = min(x for x, _ in orientation)
-        min_y = min(y for _, y in orientation)
-        normalized = sorted(
-            (x - min_x, y - min_y) for x, y in orientation
-        )
-        candidate_strings.append(
-            "|".join(f"{x},{y}" for x, y in normalized)
-        )
 
-    return min(candidate_strings)
+def generate_canonical_data(vertices: list[dict]) -> dict:
+    """
+    Generate a canonical hash and the metadata required to transform 
+    any other coordinates into this exact canonical space.
+    """
+    if not vertices:
+        return {"hash": "", "transform_idx": 0, "shift_x": 0, "shift_y": 0}
+
+    coords = [(v["x"], v["y"]) for v in vertices]
+    transforms = get_transformations()
+    
+    best_hash = None
+    best_meta = {}
+
+    for idx, transform in enumerate(transforms):
+        transformed = [transform(x, y) for x, y in coords]
+        min_x = min(x for x, _ in transformed)
+        min_y = min(y for _, y in transformed)
+        
+        normalized = sorted((x - min_x, y - min_y) for x, y in transformed)
+        candidate_string = "|".join(f"{x},{y}" for x, y in normalized)
+        
+        if best_hash is None or candidate_string < best_hash:
+            best_hash = candidate_string
+            best_meta = {
+                "hash": best_hash,
+                "transform_idx": idx,
+                "shift_x": min_x,
+                "shift_y": min_y
+            }
+
+    return best_meta
+
+
+def generate_canonical_hash(vertices: list[dict]) -> str:
+    """Wrapper that just returns the canonical hash string."""
+    return generate_canonical_data(vertices)["hash"]
 
 class TreeNode:
     """A node in the replay tree built during solution replay.
@@ -192,9 +187,11 @@ class TreeNode:
 
     def __init__(self, graph: GridGraph):
         self.graph = graph
+        self.original_vertices = set(graph.vertices)
         self.original_vertex_count = len(graph.vertices)
         verts = [{"x": x, "y": y} for x, y in graph.vertices]
-        self.canonical_hash = generate_canonical_hash(verts)
+        self.canonical_data = generate_canonical_data(verts)
+        self.canonical_hash = self.canonical_data["hash"]
         self.children: list[TreeNode] = []
         self.cut_size: int = 0
         self.vaporized_rank: int | None = None
@@ -215,7 +212,7 @@ def _to_tuples(vertices: list) -> list[tuple[int, int]]:
     return [(v[0], v[1]) for v in vertices]
 
 
-def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dict[str, int]:
+def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dict[str, dict]:
     """
     Replay a chronological sequence of cuts to build a tree of subgraphs,
     then calculate the intrinsic optimal rank for every node bottom-up.
@@ -225,7 +222,7 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
       - **New** (current): Each action is ``{type: "cut"|"vaporize", vertices, ...}``.
 
     Returns:
-        dict: Mapping from canonical_hash to best intrinsic rank found.
+        dict: Mapping from canonical_hash to dict with rank and best_cut_sequence.
     """
     root = TreeNode(GridGraph(m, n, generate=True))
     active_nodes = [root]
@@ -310,23 +307,53 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
             active_nodes.append(child)
 
     # ------------------------------------------------------------------
+    # Local sequence filtering and transformation
+    # ------------------------------------------------------------------
+    def extract_local_sequence(original_vertices: set[tuple[int, int]], global_sequence: list) -> list:
+        local_seq = []
+        for action in global_sequence:
+            if not action:
+                continue
+            if isinstance(action, list):
+                # Legacy cut format
+                action_vertices = set((x, y) for x, y in action)
+            else:
+                # New dict format (cut or vaporize)
+                action_vertices = set((v["x"], v["y"]) for v in action.get("vertices", []))
+            
+            if action_vertices and action_vertices.issubset(original_vertices):
+                local_seq.append(action)
+        return local_seq
+
+    def transform_sequence(local_seq: list, canonical_data: dict) -> list:
+        transform = get_transformations()[canonical_data["transform_idx"]]
+        dx = canonical_data["shift_x"]
+        dy = canonical_data["shift_y"]
+
+        transformed_seq = []
+        for action in local_seq:
+            if isinstance(action, list):
+                # Legacy cut format
+                new_action = [[transform(x, y)[0] - dx, transform(x, y)[1] - dy] for x, y in action]
+                transformed_seq.append(new_action)
+            else:
+                # Dict format (cut or vaporize)
+                new_action = dict(action) # shallow copy
+                new_vertices = []
+                for v in action.get("vertices", []):
+                    tx, ty = transform(v["x"], v["y"])
+                    new_vertices.append({"x": tx - dx, "y": ty - dy})
+                new_action["vertices"] = new_vertices
+                transformed_seq.append(new_action)
+        return transformed_seq
+
+    # ------------------------------------------------------------------
     # Bottom-up rank calculation
     # ------------------------------------------------------------------
-    ranks_dict: dict[str, int] = {}
+    ranks_dict: dict[str, dict] = {}
 
     def calc_intrinsic_rank(node: TreeNode) -> int:
-        """Compute the intrinsic rank of a tree node bottom-up.
-
-        The rank formula is::
-
-            rank(leaf with 1 vertex) = 1
-            rank(vaporized node)     = vaporized_rank  (from SubgraphDictionary)
-            rank(cut node)           = cut_size + max(rank(child) for child in children)
-            rank(unsolved leaf)      = 999999  (sentinel — not a valid solution)
-
-        Side effect: writes valid (non-sentinel, non-obliterated) entries
-        into ``ranks_dict``.
-        """
+        """Compute the intrinsic rank of a tree node bottom-up."""
         if node.vaporized_rank is not None:
             rank = node.vaporized_rank
         elif node.original_vertex_count <= 1:
@@ -346,8 +373,13 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
         # Only save non-obliterated, non-sentinel entries.
         is_obliterated = node.original_vertex_count > 1 and not node.children
         if rank < 999999 and node.canonical_hash and not is_obliterated:
-            if node.canonical_hash not in ranks_dict or rank < ranks_dict[node.canonical_hash]:
-                ranks_dict[node.canonical_hash] = rank
+            if node.canonical_hash not in ranks_dict or rank < ranks_dict[node.canonical_hash]["rank"]:
+                local_seq = extract_local_sequence(node.original_vertices, flat_cut_sequence)
+                transformed_seq = transform_sequence(local_seq, node.canonical_data)
+                ranks_dict[node.canonical_hash] = {
+                    "rank": rank,
+                    "sequence": transformed_seq
+                }
 
         return rank
 

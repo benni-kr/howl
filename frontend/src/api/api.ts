@@ -178,9 +178,13 @@ type TopScoreResponse = {
 export const fetchTopScore = async (
   m: number,
   n: number,
+  solverName?: string
 ): Promise<TopScoreResponse | null> => {
   try {
-    const response = await apiFetch(`${API_BASE_URL}/solution/${m}/${n}`);
+    const url = solverName 
+      ? `${API_BASE_URL}/solution/${m}/${n}?solver_name=${encodeURIComponent(solverName)}`
+      : `${API_BASE_URL}/solution/${m}/${n}`;
+    const response = await apiFetch(url);
     if (response.status === 404) {
       return null; // no solution exists
     }

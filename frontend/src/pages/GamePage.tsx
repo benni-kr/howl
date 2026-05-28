@@ -141,7 +141,7 @@ const GamePage: React.FC = () => {
 
   const [isExecuting, setIsExecuting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [splitView, setSplitView] = useState(false);
+  const [splitView, setSplitView] = useState(() => recentCutGraphs.length > 0);
   const [selectedGraphIndex, setSelectedGraphIndex] = useState<number | null>(null);
   const [isNewGameModalOpen, setIsNewGameModalOpen] = useState(false);
 
