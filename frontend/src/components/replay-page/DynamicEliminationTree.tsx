@@ -2,7 +2,12 @@ import React from 'react';
 import { EliminationNode } from '../../hooks/useReplayEngine';
 
 const TreeNode: React.FC<{ node: EliminationNode }> = ({ node }) => {
-  const hasChildren = node.children && node.children.length > 0;
+  // 1. Separate branches with history from empty base-case leaves
+  const activeChildren = node.children ? node.children.filter(child => child.action || (child.children && child.children.length > 0)) : [];
+  const emptyLeavesCount = node.children ? node.children.length - activeChildren.length : 0;
+
+  // 2. Determine the total visual columns we need to draw
+  const totalVisualBranches = activeChildren.length + (emptyLeavesCount > 0 ? 1 : 0);
 
   // Hardcoded fallback color so your lines never vanish again
   const lineColor = 'var(--border-strong, #475569)';
@@ -61,22 +66,25 @@ const TreeNode: React.FC<{ node: EliminationNode }> = ({ node }) => {
       )}
 
       {/* Children branches */}
-      {hasChildren && (
+      {totalVisualBranches > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
           {/* Stem dropping down from parent */}
           <div style={{ width: '2px', height: '20px', background: lineColor }} />
 
           <div style={{ display: 'flex', width: '100%', justifyContent: 'center', position: 'relative' }}>
-            {node.children.map((child, index) => (
+
+            {/* Map the Active Branches */}
+            {activeChildren.map((child, index) => (
               <div key={child.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, position: 'relative', padding: '0 8px' }}>
 
-                {/* Horizontal bridging line (only if there are siblings) */}
-                {node.children.length > 1 && (
+                {/* Horizontal bridging line */}
+                {totalVisualBranches > 1 && (
                   <div style={{
                     position: 'absolute',
                     top: 0,
                     left: index === 0 ? '50%' : 0,
-                    right: index === node.children.length - 1 ? '50%' : 0,
+                    // If this is the last active child AND there are no empty leaves, cut the line at 50%
+                    right: (index === activeChildren.length - 1 && emptyLeavesCount === 0) ? '50%' : 0,
                     height: '2px',
                     background: lineColor
                   }} />
@@ -89,6 +97,45 @@ const TreeNode: React.FC<{ node: EliminationNode }> = ({ node }) => {
                 <TreeNode node={child} />
               </div>
             ))}
+
+            {/* Map ONE Collapsed Base-Case Node (if any exist) */}
+            {emptyLeavesCount > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, position: 'relative', padding: '0 8px' }}>
+
+                {/* Horizontal bridging line for the collapsed node */}
+                {totalVisualBranches > 1 && (
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: activeChildren.length === 0 ? '50%' : 0,
+                    right: '50%', // It is always the right-most node, so line ends at 50%
+                    height: '2px',
+                    background: lineColor
+                  }} />
+                )}
+
+                <div style={{ width: '2px', height: '20px', background: lineColor }} />
+
+                {/* The new Collapsed Base Case Pill */}
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  background: 'var(--bg-inset)',
+                  border: `2px dashed ${lineColor}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.8rem',
+                  fontWeight: 'bold',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                }}>
+                  x{emptyLeavesCount}
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       )}
