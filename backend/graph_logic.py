@@ -249,27 +249,30 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
         # Handle VAPORIZE
         # Frontend sends: { type: "vaporize", vertices: Vertex[], optimal_rank: N }
         # The vertices describe the entire subgraph that was auto-solved.
-        # Match by canonical hash for robustness against vertex reordering.
+        # Match by exact spatial coordinates for order-independence without ambiguity.
         # ------------------------------------------------------------------
         if action_type == "vaporize":
             vap_tuples = _to_tuples(raw_vertices)
             if not vap_tuples:
                 continue
-            vap_hash = generate_canonical_hash(
-                [{"x": x, "y": y} for x, y in vap_tuples]
-            )
+                
+            vap_set = set(vap_tuples)
             target_node = None
+            
+            # Exact match by coordinate set (order-independent, spatially accurate)
             for node in active_nodes:
-                if node.canonical_hash == vap_hash:
+                if vap_set == node.graph.vertices:
                     target_node = node
                     break
+                    
             if target_node is None:
                 # Fallback: single-vertex probe (handles edge cases where
-                # hash might differ due to disconnected leftover vertices)
+                # vertices might differ slightly due to disconnected leftovers)
                 for node in active_nodes:
                     if vap_tuples[0] in node.graph.vertices:
                         target_node = node
                         break
+                        
             if target_node:
                 active_nodes.remove(target_node)
                 target_node.vaporized_rank = action.get("optimal_rank", 999999)
