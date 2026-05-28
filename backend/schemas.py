@@ -81,6 +81,8 @@ class ShapeResult(BaseModel):
     found: bool
     best_rank: Optional[int] = None
     is_optimal: Optional[bool] = None
+    best_cut_sequence: Optional[list] = None
+    discovered_by: Optional[str] = None
 
 
 class CheckShapesResponse(BaseModel):

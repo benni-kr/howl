@@ -32,3 +32,5 @@ class SubgraphDictionary(Base):
     hash: Mapped[str] = mapped_column(String, primary_key=True)
     best_rank: Mapped[int] = mapped_column(Integer, nullable=False)
     is_optimal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    best_cut_sequence: Mapped[object] = mapped_column(JSON, nullable=True)
+    discovered_by: Mapped[str] = mapped_column(String, nullable=True)
