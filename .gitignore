@@ -29,3 +29,6 @@ frontend/coverage/
 *.log
 
 # Deployment
+
+.vite
+.vite/
