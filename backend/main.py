@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 
 import logging
 import traceback as _tb
+from datetime import datetime, timezone
 
 from database import Base, engine, get_db
 from graph_logic import GridGraph, generate_canonical_hash, replay_and_extract_subgraphs
@@ -215,6 +216,7 @@ def update_subgraph_dictionary(db: Session, m: int, n: int, cut_sequence: object
                 best_cut_sequence=sequence,
                 is_optimal=False,
                 discovered_by=solver_name,
+                last_updated=datetime.now(timezone.utc),
             )
             db.add(sub_entry)
         else:
@@ -222,10 +224,12 @@ def update_subgraph_dictionary(db: Session, m: int, n: int, cut_sequence: object
                 sub_entry.best_rank = rank
                 sub_entry.best_cut_sequence = sequence
                 sub_entry.discovered_by = solver_name
+                sub_entry.last_updated = datetime.now(timezone.utc)
             elif rank == sub_entry.best_rank and not sub_entry.best_cut_sequence:
                 # If we tied the best rank but didn't have a sequence saved, save this one
                 sub_entry.best_cut_sequence = sequence
                 sub_entry.discovered_by = solver_name
+                sub_entry.last_updated = datetime.now(timezone.utc)
 
 
 @app.post("/api/submit_solution", response_model=SubmitResponse)
