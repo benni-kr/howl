@@ -12,13 +12,50 @@ interface MatrixViewProps {
   customFormula?: string;
 }
 
-const getLowerBound = (m: number, n: number) => {
-  const minEdge = Math.min(m, n);
-  const maxEdge = Math.max(m, n);
-  if (minEdge < 5) {
-    return Math.floor(Math.log2(maxEdge)) + 1;
+const getLowerBound = (m: number, n: number): number => {
+  const min = Math.min(m, n);
+  const max = Math.max(m, n);
+
+  // Guard clause to prevent recursive collapse
+  if (min <= 0) return 0;
+
+  // 1 x n Grids (Path graphs) - Exact rank number
+  if (min === 1) {
+    return Math.floor(Math.log2(max)) + 1;
   }
-  return Math.ceil((5 / 3) * minEdge - (25 / 9));
+
+  // 2 x n Grids (Ladder graphs) - Recursive exact lower bound
+  if (min === 2) {
+    if (max === 2) return 3;
+    return 2 + getLowerBound(2, Math.ceil((max - 2) / 2));
+  }
+
+  // 3 x n Grids - Recursive lower bound
+  if (min === 3) {
+    if (max === 2) return 4;
+    if (max === 3) return 5;
+    return 3 + getLowerBound(3, Math.ceil((max - 3) / 2));
+  }
+
+  // 4 x n Grids - Recursive lower bound
+  if (min === 4) {
+    if (max === 2) return 4; // Safely caught here if passed out of order
+    if (max === 3) return 6;
+    if (max === 4) return 7;
+    if (max === 5) return 8;
+    return 4 + getLowerBound(4, Math.ceil((max - 4) / 2));
+  }
+
+  // General m x n Grids (where m >= 5)
+  // Bound 1: The explicit linear lower bound for square grids
+  const squareBound = Math.ceil((5 / 3) * min - (25 / 9));
+
+  // Bound 2: Since m >= 5, the grid geometrically contains a 4 x n subgrid.
+  // A graph's rank number must be >= the rank number of its subgraph.
+  const subgridBound = getLowerBound(4, max);
+
+  // Return the strictest known lower bound
+  return Math.max(squareBound, subgridBound);
 };
 
 const CELL = 40;     // px per cell
