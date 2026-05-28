@@ -13,13 +13,15 @@ import {
 // ─── Valid URL values ────────────────────────────────────────────────
 type ViewTab = 'matrix' | 'solvers';
 const VALID_VIEWS: ViewTab[] = ['matrix', 'solvers'];
-const VALID_MODES: MatrixMode[] = ['min_rank', 'top_solver', 'density_area', 'density_linear'];
+const VALID_MODES: MatrixMode[] = ['min_rank', 'top_solver', 'perfection_gap', 'density_linear', 'log_adjusted_density', 'custom_formula'];
 
 const MODE_LABELS: Record<MatrixMode, string> = {
   min_rank: 'Min Rank',
   top_solver: 'Top Solver',
-  density_area: 'Density (Area)',
-  density_linear: 'Density (Linear)',
+  perfection_gap: 'Perfection Gap',
+  density_linear: 'Linear Density',
+  log_adjusted_density: 'Log-Adjusted Density',
+  custom_formula: 'Custom Formula',
 };
 
 const LeaderboardPage: React.FC = () => {
@@ -46,6 +48,7 @@ const LeaderboardPage: React.FC = () => {
 
   // ── Data state (still local — it's server data, not UI state) ─────
   const [matrixData, setMatrixData] = useState<MatrixCellData[]>([]);
+  const [customFormula, setCustomFormula] = useState<string>('rank - (1.6 * min_edge)');
   const [topSolvers, setTopSolvers] = useState<TopSolverData[]>([]);
   const [gridData, setGridData] = useState<GridLeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -125,16 +128,38 @@ const LeaderboardPage: React.FC = () => {
 
           {/* Matrix mode toggles */}
           {activeTab === 'matrix' && !isDrillDown && (
-            <div className="btn-group" style={{ flexWrap: 'wrap', gap: '4px' }}>
-              {VALID_MODES.map(m => (
-                <button
-                  key={m}
-                  className={`btn ${matrixMode === m ? 'primary' : 'secondary'}`}
-                  onClick={() => setMode(m)}
-                >
-                  {MODE_LABELS[m]}
-                </button>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '16px', alignItems: 'center' }}>
+              <div className="btn-group" style={{ flexWrap: 'wrap', gap: '4px' }}>
+                {VALID_MODES.map(m => (
+                  <button
+                    key={m}
+                    className={`btn ${matrixMode === m ? 'primary' : 'secondary'}`}
+                    onClick={() => setMode(m)}
+                  >
+                    {MODE_LABELS[m]}
+                  </button>
+                ))}
+              </div>
+              {matrixMode === 'custom_formula' && (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <label style={{ fontSize: '14px', color: 'var(--text-subtle)' }}>Formula:</label>
+                  <input 
+                    type="text" 
+                    value={customFormula} 
+                    onChange={e => setCustomFormula(e.target.value)} 
+                    style={{ 
+                      flex: 1, 
+                      width: '250px', 
+                      background: 'var(--bg-inset)', 
+                      border: '1px solid var(--border-subtle)', 
+                      color: 'var(--text-main)', 
+                      padding: '4px 8px', 
+                      borderRadius: '4px',
+                      fontFamily: 'monospace'
+                    }} 
+                  />
+                </div>
+              )}
             </div>
           )}
 
@@ -209,7 +234,12 @@ const LeaderboardPage: React.FC = () => {
             loading && matrixData.length === 0 ? (
               <div style={{ padding: '24px 32px' }} className="muted">Loading Matrix...</div>
             ) : (
-              <MatrixView data={matrixData} onCellClick={handleCellClick} mode={matrixMode} />
+              <MatrixView 
+                data={matrixData} 
+                onCellClick={handleCellClick} 
+                mode={matrixMode} 
+                customFormula={customFormula}
+              />
             )
 
           ) : (
