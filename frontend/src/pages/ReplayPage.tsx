@@ -137,25 +137,62 @@ export default function ReplayPage() {
     }
   }, [mNum, nNum, solverName]);
 
+  const [isFetchingDive, setIsFetchingDive] = useState(false);
+  const [diveError, setDiveError] = useState<string | null>(null);
+
   const handleDeepDiveRequest = async (graphIndex: number) => {
+    if (isFetchingDive) return;
+    setDiveError(null);
+
+    const pendingAction = engine.activeContext.sequence[engine.currentStep];
+    if (pendingAction?.type !== "vaporize") {
+      return; // Only dive into vaporized shapes
+    }
+
     const targetGraph = engine.boardState.recentCutGraphs[graphIndex - 1] || engine.boardState.activeGraph;
     if (!targetGraph) return;
 
-    // Check if the shape has an optimal sequence
-    const results = await checkShapes([targetGraph]);
-    const res = results[0];
-    if (res && res.best_rank && res.is_optimal && (res as any).best_cut_sequence) {
-      // The backend checkShapes needs to return best_cut_sequence!
-      // In the previous step, we made checkShapes return `best_cut_sequence`.
-      const seq = (res as any).best_cut_sequence;
-      // We shift frame of reference: canonical shape is bounded by its width and height.
-      const xs = targetGraph.vertices.map(v => v.x);
-      const ys = targetGraph.vertices.map(v => v.y);
-      const w = Math.max(...xs) - Math.min(...xs) + 1;
-      const h = Math.max(...ys) - Math.min(...ys) + 1;
-      engine.pushDeepDive({ m: w, n: h, sequence: seq });
-    } else {
-      alert("No local sequence found for this shape. It might have been solved without a saved sequence.");
+    setIsFetchingDive(true);
+    try {
+      const results = await checkShapes([targetGraph]);
+      const res = results[0];
+      if (res && res.best_rank && Array.isArray((res as any).best_cut_sequence)) {
+        const seq = (res as any).best_cut_sequence;
+        
+        // Parse the canonical hash to reconstruct the exact shape the sequence was built for
+        const canonicalVertices = res.hash.split('|').map(pair => {
+          const [x, y] = pair.split(',');
+          return { x: parseInt(x, 10), y: parseInt(y, 10) };
+        });
+        
+        const w = Math.max(...canonicalVertices.map(v => v.x)) + 1;
+        const h = Math.max(...canonicalVertices.map(v => v.y)) + 1;
+
+        // Build the initial graph edges
+        const edges: { from: {x: number, y: number}, to: {x: number, y: number} }[] = [];
+        const canonicalKeys = new Set(canonicalVertices.map(v => `${v.x},${v.y}`));
+        for (const v of canonicalVertices) {
+          const right = `${v.x + 1},${v.y}`;
+          const down = `${v.x},${v.y + 1}`;
+          if (canonicalKeys.has(right)) edges.push({ from: v, to: { x: v.x + 1, y: v.y } });
+          if (canonicalKeys.has(down)) edges.push({ from: v, to: { x: v.x, y: v.y + 1 } });
+        }
+
+        const initialGraph = {
+          vertices: canonicalVertices,
+          edges,
+          baseRank: 0
+        };
+
+        engine.diveIn(`Vaporized ${w}x${h}`, w, h, seq, initialGraph);
+      } else {
+        setDiveError("No recorded sequence found for this shape. The community has not saved a run for it yet.");
+      }
+    } catch (e) {
+      console.error(e);
+      setDiveError("Failed to fetch sequence from the server.");
+    } finally {
+      setIsFetchingDive(false);
     }
   };
 
@@ -178,32 +215,66 @@ export default function ReplayPage() {
   if (loading) return <div style={{ padding: '32px' }}>Loading replay...</div>;
   if (error) return <div style={{ padding: '32px', color: 'red' }}>Error: {error}</div>;
 
-  const pendingAction = engine.currentFrame.sequence[engine.currentStep];
+  const pendingAction = engine.activeContext.sequence[engine.currentStep];
   const overridePendingCutSet = pendingAction?.vertices || [];
 
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 32px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-card)', flexShrink: 0 }}>
-        <div>
-          <h2 style={{ margin: '0 0 4px 0' }}>Replay: {mNum} &times; {nNum}</h2>
-          <div className="muted">Solver: <strong style={{ color: 'var(--text-main)' }}>{solverName}</strong> &bull; Rank: <strong>{rank}</strong></div>
-        </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          {engine.isDeepDiving && (
-            <button className="btn secondary" onClick={engine.popDeepDive}>
-              &uarr; Exit Deep Dive
+      <div style={{ display: 'flex', flexDirection: 'column', padding: '16px 32px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-card)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 style={{ margin: '0 0 4px 0' }}>Replay: {mNum} &times; {nNum}</h2>
+            <div className="muted">Solver: <strong style={{ color: 'var(--text-main)' }}>{solverName}</strong> &bull; Rank: <strong>{rank}</strong></div>
+          </div>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button className="btn primary" onClick={handleFork}>
+              Fork Run (Take Over)
             </button>
-          )}
-          <button className="btn primary" onClick={handleFork}>
-            Fork Run (Take Over)
-          </button>
-          <button className="btn secondary" onClick={() => navigate(-1)}>Close</button>
+            <button className="btn secondary" onClick={() => navigate(-1)}>Close</button>
+          </div>
         </div>
+
+        {/* Breadcrumbs */}
+        {engine.stack.length > 0 && (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '16px', fontSize: '0.9em' }}>
+            {engine.stack.map((ctx, idx) => (
+              <React.Fragment key={ctx.id}>
+                {idx > 0 && <span style={{ color: 'var(--text-muted)' }}>/</span>}
+                <span 
+                  onClick={() => idx < engine.stack.length - 1 && engine.diveOut(idx)}
+                  style={{ 
+                    cursor: idx < engine.stack.length - 1 ? 'pointer' : 'default',
+                    color: idx === engine.stack.length - 1 ? 'var(--text-main)' : 'var(--text-highlight)',
+                    fontWeight: idx === engine.stack.length - 1 ? 'bold' : 'normal',
+                    textDecoration: idx < engine.stack.length - 1 ? 'underline' : 'none'
+                  }}
+                >
+                  {ctx.title}
+                </span>
+              </React.Fragment>
+            ))}
+            {isFetchingDive && (
+              <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', marginLeft: '8px' }}>
+                Fetching...
+              </span>
+            )}
+            {diveError && (
+              <div style={{ marginLeft: '16px', color: '#f87171', background: 'rgba(248,113,113,0.1)', padding: '4px 8px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                {diveError}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 3-Pane Layout */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0 }}>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, opacity: isFetchingDive ? 0.6 : 1, transition: 'opacity 0.2s ease' }}>
         {/* Pane 1: Canvas */}
         <div ref={canvasContainerRef} style={{ flex: 2, position: 'relative', borderRight: '1px solid var(--border-subtle)', background: 'var(--bg-main)', overflow: 'hidden' }}>
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
@@ -226,7 +297,7 @@ export default function ReplayPage() {
         {/* Right Panes */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', minWidth: '300px', maxWidth: '35%', borderLeft: '1px solid var(--border-subtle)' }}>
           {/* Pane 2: Action Log */}
-          <ActionLog sequence={engine.currentFrame.sequence} currentStep={engine.currentStep} activeColor={activeColor} />
+          <ActionLog sequence={engine.activeContext.sequence} currentStep={engine.currentStep} activeColor={activeColor} />
 
           {/* Pane 3: Elimination Tree (Dynamic) */}
           <div className="custom-scrollbar" style={{ flex: 1, borderTop: '1px solid var(--border-subtle)', overflow: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>

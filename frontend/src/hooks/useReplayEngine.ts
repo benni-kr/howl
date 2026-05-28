@@ -2,10 +2,14 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import type { Graph, Vertex, Edge, CutHistoryAction } from "../state/gameSlice";
 import { executeCutLocal } from "../utils/graphUtils";
 
-export type DeepDiveFrame = {
+export type PlaybackContext = {
+  id: string;
+  title: string;
   m: number;
   n: number;
   sequence: CutHistoryAction[];
+  savedStep: number;
+  initialGraph?: Graph;
 };
 
 export type EliminationNode = {
@@ -47,14 +51,43 @@ export const useReplayEngine = (initialM: number, initialN: number, globalSequen
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1000);
-  const [replayStack, setReplayStack] = useState<DeepDiveFrame[]>([]);
+  
+  // The playback stack starts with the Main Run
+  const [stack, setStack] = useState<PlaybackContext[]>([]);
 
-  // The active frame is either the top of the deep dive stack or the global frame
-  const currentFrame = replayStack.length > 0 
-    ? replayStack[replayStack.length - 1] 
-    : { m: initialM, n: initialN, sequence: globalSequence };
+  // We sync the initial state dynamically because globalSequence loads asynchronously
+  useEffect(() => {
+    if (stack.length === 0 && globalSequence.length > 0) {
+      setStack([{
+        id: "root",
+        title: "Main Run",
+        m: initialM,
+        n: initialN,
+        sequence: globalSequence,
+        savedStep: 0,
+      }]);
+    } else if (stack.length > 0 && stack[0].sequence.length === 0 && globalSequence.length > 0) {
+      setStack(prev => {
+        const newStack = [...prev];
+        newStack[0] = { ...newStack[0], sequence: globalSequence, m: initialM, n: initialN };
+        return newStack;
+      });
+    }
+  }, [initialM, initialN, globalSequence]);
 
-  const totalSteps = currentFrame.sequence.length;
+  const activeContext = useMemo(() => {
+    if (stack.length > 0) return stack[stack.length - 1];
+    return {
+      id: "root",
+      title: "Main Run",
+      m: initialM,
+      n: initialN,
+      sequence: globalSequence,
+      savedStep: 0,
+    };
+  }, [stack, initialM, initialN, globalSequence]);
+
+  const totalSteps = activeContext.sequence.length;
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
@@ -70,7 +103,11 @@ export const useReplayEngine = (initialM: number, initialN: number, globalSequen
 
   // Recalculate board state from step 0 to currentStep
   const boardState = useMemo(() => {
-    let graphs: Graph[] = [buildGridGraph(currentFrame.m, currentFrame.n)];
+    let initialGraph: Graph = activeContext.initialGraph
+      ? { vertices: [...activeContext.initialGraph.vertices], edges: [...activeContext.initialGraph.edges], baseRank: 0 }
+      : buildGridGraph(activeContext.m, activeContext.n);
+
+    let graphs: Graph[] = [initialGraph];
     let cutsApplied: CutHistoryAction[] = [];
     let maxRank = 0;
 
@@ -83,7 +120,7 @@ export const useReplayEngine = (initialM: number, initialN: number, globalSequen
     let nextId = 1;
 
     for (let i = 0; i < currentStep; i++) {
-      const action = currentFrame.sequence[i];
+      const action = activeContext.sequence[i];
       if (!action || !action.vertices || action.vertices.length === 0) continue;
 
       cutsApplied.push(action);
@@ -152,11 +189,11 @@ export const useReplayEngine = (initialM: number, initialN: number, globalSequen
       recentCutGraphs: displayGraphs.slice(1),
       bankedGraphs: [], // We treat all displayGraphs as recent for replay rendering
       maxRank,
-      gridSize: { m: currentFrame.m, n: currentFrame.n },
+      gridSize: { m: activeContext.m, n: activeContext.n },
       cutsApplied,
       treeRoot,
     };
-  }, [currentStep, currentFrame]);
+  }, [currentStep, activeContext]);
 
   const play = useCallback(() => setIsPlaying(true), []);
   const pause = useCallback(() => setIsPlaying(false), []);
@@ -165,16 +202,36 @@ export const useReplayEngine = (initialM: number, initialN: number, globalSequen
     setIsPlaying(false);
   }, [totalSteps]);
 
-  const pushDeepDive = useCallback((frame: DeepDiveFrame) => {
-    setReplayStack(prev => [...prev, frame]);
-    setCurrentStep(0);
+  const diveIn = useCallback((title: string, m: number, n: number, sequence: CutHistoryAction[], initialGraph?: Graph) => {
     setIsPlaying(false);
-  }, []);
+    setStack(prev => {
+      const updatedPrev = [...prev];
+      if (updatedPrev.length > 0) {
+        updatedPrev[updatedPrev.length - 1] = { ...updatedPrev[updatedPrev.length - 1], savedStep: currentStep };
+      }
+      return [
+        ...updatedPrev,
+        {
+          id: `dive_${Date.now()}`,
+          title,
+          m,
+          n,
+          sequence,
+          savedStep: 0,
+          initialGraph,
+        }
+      ];
+    });
+    setCurrentStep(0);
+  }, [currentStep]);
 
-  const popDeepDive = useCallback(() => {
-    setReplayStack(prev => prev.slice(0, -1));
-    setCurrentStep(0);
+  const diveOut = useCallback((targetIndex: number) => {
     setIsPlaying(false);
+    setStack(prev => {
+      const sliced = prev.slice(0, targetIndex + 1);
+      setCurrentStep(sliced[sliced.length - 1].savedStep);
+      return sliced;
+    });
   }, []);
 
   return {
@@ -187,9 +244,9 @@ export const useReplayEngine = (initialM: number, initialN: number, globalSequen
     pause,
     setStep,
     setPlaybackSpeed,
-    pushDeepDive,
-    popDeepDive,
-    isDeepDiving: replayStack.length > 0,
-    currentFrame,
+    diveIn,
+    diveOut,
+    stack,
+    activeContext,
   };
 };
