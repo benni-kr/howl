@@ -293,55 +293,63 @@ def get_solution(m: int, n: int, token: str = Depends(verify_token), db: Session
     )
 
 
-from sqlalchemy import func
+from sqlalchemy import func, case
+
+# ── Helpers: canonical grid dimensions ──────────────────────────────────
+# A 3×5 grid and a 5×3 grid are the same shape.  We canonicalize so that
+# the larger dimension is always first:  canonical_m >= canonical_n.
+_canonical_m = func.max(GridSolution.m, GridSolution.n).label("canonical_m")
+_canonical_n = func.min(GridSolution.m, GridSolution.n).label("canonical_n")
 
 
 @app.get("/api/leaderboard/matrix")
 def get_matrix_leaderboard(token: str = Depends(verify_token), db: Session = Depends(get_db)):
     """
-    Returns the best records for grids up to 100x100 where m >= n.
-    Provides a flat list of {m, n, min_rank, solver_name, is_optimal}.
+    Returns the best records for grids up to 100×100.
+    Groups (m, n) and (n, m) as the same canonical grid and returns
+    a flat list of {m, n, min_rank, solver_name, is_optimal}.
     """
-    # Subquery to find the minimum rank for each (m, n)
+    canonical_m = func.max(GridSolution.m, GridSolution.n).label("canonical_m")
+    canonical_n = func.min(GridSolution.m, GridSolution.n).label("canonical_n")
+
+    # Subquery: best rank per canonical grid
     min_ranks = (
-        db.query(GridSolution.m, GridSolution.n, func.min(GridSolution.rank).label("min_rank"))
-        .filter(GridSolution.m >= GridSolution.n)
+        db.query(
+            canonical_m,
+            canonical_n,
+            func.min(GridSolution.rank).label("min_rank"),
+        )
         .filter(GridSolution.m <= 100)
         .filter(GridSolution.n <= 100)
-        .group_by(GridSolution.m, GridSolution.n)
+        .group_by("canonical_m", "canonical_n")
         .subquery()
     )
 
-    # Join back to get the solver details for that minimum rank.
-    # To handle ties where multiple solvers have the same min_rank,
-    # we pick the earliest submission (created_at).
+    # Join back to get solver details for the best rank.
+    # A solution row matches its canonical grid via max/min.
     results = (
         db.query(GridSolution)
         .join(
             min_ranks,
-            (GridSolution.m == min_ranks.c.m)
-            & (GridSolution.n == min_ranks.c.n)
+            (func.max(GridSolution.m, GridSolution.n) == min_ranks.c.canonical_m)
+            & (func.min(GridSolution.m, GridSolution.n) == min_ranks.c.canonical_n)
             & (GridSolution.rank == min_ranks.c.min_rank),
         )
         .order_by(GridSolution.created_at.asc())
         .all()
     )
 
-    # Because of ties, joining might return multiple rows per (m, n).
-    # We only want the first one (the oldest submission) to be considered the absolute #1 for the matrix display.
+    # De-duplicate ties — keep only the earliest submission per canonical grid.
     matrix_map = {}
     for r in results:
-        key = (r.m, r.n)
+        key = (max(r.m, r.n), min(r.m, r.n))
         if key not in matrix_map:
-            # Check optimal status in SubgraphDictionary
-            # Optimal if the best possible sequence matches
-            # For now, we will mark is_optimal = False (we can enrich this later if needed)
             matrix_map[key] = {
-                "m": r.m,
-                "n": r.n,
+                "m": key[0],
+                "n": key[1],
                 "min_rank": r.rank,
                 "solver_name": r.solver_name,
-                "is_optimal": False,  # placeholder until optimal logic is strictly defined
+                "is_optimal": False,
             }
 
     return list(matrix_map.values())
@@ -350,30 +358,35 @@ def get_matrix_leaderboard(token: str = Depends(verify_token), db: Session = Dep
 @app.get("/api/leaderboard/top_solvers")
 def get_top_solvers(token: str = Depends(verify_token), square_only: bool = False, db: Session = Depends(get_db)):
     """
-    Returns a list of players ranked by the total number of "First Place" records they hold.
-    All first places count, even ties.
+    Returns a list of players ranked by the total number of "First Place" records
+    they hold.  All first places count, even ties.
+    Groups (m, n) and (n, m) as the same canonical grid.
     """
-    query = db.query(GridSolution.m, GridSolution.n, func.min(GridSolution.rank).label("min_rank"))
+    canonical_m = func.max(GridSolution.m, GridSolution.n).label("canonical_m")
+    canonical_n = func.min(GridSolution.m, GridSolution.n).label("canonical_n")
+
+    query = db.query(
+        canonical_m,
+        canonical_n,
+        func.min(GridSolution.rank).label("min_rank"),
+    )
     if square_only:
         query = query.filter(GridSolution.m == GridSolution.n)
-    else:
-        query = query.filter(GridSolution.m >= GridSolution.n)  # count unique canonical shapes only
 
-    min_ranks = query.group_by(GridSolution.m, GridSolution.n).subquery()
+    min_ranks = query.group_by("canonical_m", "canonical_n").subquery()
 
-    # Join back to get ALL solvers who achieved the min_rank for that grid
     results = (
         db.query(GridSolution.solver_name)
         .join(
             min_ranks,
-            (GridSolution.m == min_ranks.c.m)
-            & (GridSolution.n == min_ranks.c.n)
+            (func.max(GridSolution.m, GridSolution.n) == min_ranks.c.canonical_m)
+            & (func.min(GridSolution.m, GridSolution.n) == min_ranks.c.canonical_n)
             & (GridSolution.rank == min_ranks.c.min_rank),
         )
         .all()
     )
 
-    counts = {}
+    counts: dict[str, int] = {}
     for r in results:
         counts[r.solver_name] = counts.get(r.solver_name, 0) + 1
 
@@ -383,9 +396,20 @@ def get_top_solvers(token: str = Depends(verify_token), square_only: bool = Fals
 
 @app.get("/api/leaderboard/grid/{m}/{n}")
 def get_grid_leaderboard(m: int, n: int, token: str = Depends(verify_token), db: Session = Depends(get_db)):
+    """
+    Drill-down view: returns all solutions for a specific canonical grid.
+    Queries both (m, n) and (n, m) orientations.
+    """
+    from sqlalchemy import or_
+
     results = (
         db.query(GridSolution)
-        .filter(GridSolution.m == m, GridSolution.n == n)
+        .filter(
+            or_(
+                (GridSolution.m == m) & (GridSolution.n == n),
+                (GridSolution.m == n) & (GridSolution.n == m),
+            )
+        )
         .order_by(GridSolution.rank.asc(), GridSolution.created_at.asc())
         .limit(50)
         .all()
