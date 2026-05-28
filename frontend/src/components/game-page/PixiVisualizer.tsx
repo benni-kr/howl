@@ -106,7 +106,7 @@ class PixiEngine {
 
   onNodeClick?: (vertex: Vertex, graphIndex: number) => void;
   onGraphClick?: (graphIndex: number) => void;
-  onDeepDiveClick?: (graphIndex: number) => void;
+  onDeepDiveRequest?: (graphIndex: number) => void;
 
   cellSize: number = BASE_CELL_SIZE;
   splitView: boolean = false;
@@ -255,12 +255,13 @@ class PixiEngine {
     isExecuting: boolean = false,
     hasCutsApplied: boolean = false,
     readOnly: boolean = false,
-    onDeepDiveClick?: (graphIndex: number) => void
+    onDeepDiveRequest?: (graphIndex: number) => void
   ) {
     this.palette = palette;
+    this.splitView = splitView;
     this.onNodeClick = onNodeClick;
     this.onGraphClick = onGraphClick;
-    this.onDeepDiveClick = onDeepDiveClick;
+    this.onDeepDiveRequest = onDeepDiveRequest;
     this.splitView = splitView;
 
     // If no graphs are provided, we don't need to change the layout or camera,
@@ -408,7 +409,7 @@ class PixiEngine {
         wandGroup.on("pointerdown", (e) => {
           e.stopPropagation();
           if (readOnly) {
-            this.onDeepDiveClick?.(graphIndex);
+            this.onDeepDiveRequest?.(graphIndex);
           } else {
             onAutoSolve?.(graphIndex);
           }
@@ -446,10 +447,15 @@ class PixiEngine {
           node.glowGraphics.x = targetX;
           node.glowGraphics.y = targetY;
           node.graphics.eventMode = "static";
-          node.graphics.cursor = "pointer";
-          node.graphics.on("pointerdown", (e) => {
+          node!.graphics.cursor = "pointer";
+          node!.graphics.on("pointerdown", (e) => {
             e.stopPropagation();
-            if (readOnly) return;
+            if (readOnly) {
+              if (node!.isPendingCut && this.onDeepDiveRequest) {
+                this.onDeepDiveRequest(graphIndex);
+              }
+              return;
+            }
             if (!this.splitView) {
               this.onNodeClick?.(vertex, graphIndex);
             } else {
@@ -468,10 +474,15 @@ class PixiEngine {
             gsap.to([node.graphics, node.glowGraphics], { x: targetX, y: targetY, duration: 0.6, ease: "power2.out" });
           }
 
-          node.graphics.off("pointerdown");
-          node.graphics.on("pointerdown", (e) => {
+          node!.graphics.off("pointerdown");
+          node!.graphics.on("pointerdown", (e) => {
             e.stopPropagation();
-            if (readOnly) return;
+            if (readOnly) {
+              if (node!.isPendingCut && this.onDeepDiveRequest) {
+                this.onDeepDiveRequest(graphIndex);
+              }
+              return;
+            }
             if (!this.splitView) {
               this.onNodeClick?.(vertex, graphIndex);
             } else {
@@ -511,6 +522,8 @@ class PixiEngine {
             onComplete: () => {
               this.nodeContainer.removeChild(node.graphics);
               this.glowContainer.removeChild(node.glowGraphics);
+              gsap.killTweensOf(node.graphics);
+              gsap.killTweensOf(node.glowGraphics);
               node.graphics.destroy();
               node.glowGraphics.destroy();
             },
@@ -530,6 +543,8 @@ class PixiEngine {
               this.spawnExplosion(node.graphics.x, node.graphics.y, shardColors);
               this.nodeContainer.removeChild(node.graphics);
               this.glowContainer.removeChild(node.glowGraphics);
+              gsap.killTweensOf(node.graphics);
+              gsap.killTweensOf(node.glowGraphics);
               node.graphics.destroy();
               node.glowGraphics.destroy();
               this._activeExplosions = Math.max(0, this._activeExplosions - 1);
@@ -550,6 +565,8 @@ class PixiEngine {
               this.spawnExplosion(node.graphics.x, node.graphics.y, shardColors);
               this.nodeContainer.removeChild(node.graphics);
               this.glowContainer.removeChild(node.glowGraphics);
+              gsap.killTweensOf(node.graphics);
+              gsap.killTweensOf(node.glowGraphics);
               node.graphics.destroy();
               node.glowGraphics.destroy();
               this._activeExplosions = Math.max(0, this._activeExplosions - 1);
@@ -574,6 +591,19 @@ class PixiEngine {
 
   destroy() {
     this.isDestroyed = true;
+    for (const [, node] of this.nodes.entries()) {
+      gsap.killTweensOf(node.graphics);
+      gsap.killTweensOf(node.glowGraphics);
+      gsap.killTweensOf(node.graphics.scale);
+      gsap.killTweensOf(node.glowGraphics.scale);
+    }
+    gsap.killTweensOf(this.stage.position);
+    gsap.killTweensOf(this.stage.scale);
+    for (const child of this.wandContainer.children) {
+      gsap.killTweensOf(child);
+      gsap.killTweensOf(child.scale);
+      gsap.killTweensOf(child.position);
+    }
     try {
       this.app.destroy(true, true);
     } catch (e) {
