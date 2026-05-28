@@ -460,6 +460,9 @@ class PixiEngine {
           node!.graphics.cursor = "pointer";
           node!.graphics.on("pointerdown", (e) => {
             e.stopPropagation();
+            if (e.pointerId !== undefined && (node!.graphics as any).hasPointerCapture?.(e.pointerId)) {
+              (node!.graphics as any).releasePointerCapture(e.pointerId);
+            }
             if (readOnly) {
               if (node!.isPendingCut && this.onDeepDiveRequest) {
                 this.onDeepDiveRequest(graphIndex);
@@ -491,6 +494,9 @@ class PixiEngine {
           node!.graphics.off("pointerdown");
           node!.graphics.on("pointerdown", (e) => {
             e.stopPropagation();
+            if (e.pointerId !== undefined && (node!.graphics as any).hasPointerCapture?.(e.pointerId)) {
+              (node!.graphics as any).releasePointerCapture(e.pointerId);
+            }
             if (readOnly) {
               if (node!.isPendingCut && this.onDeepDiveRequest) {
                 this.onDeepDiveRequest(graphIndex);
@@ -812,7 +818,18 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
       []
     );
 
-    return <div ref={containerRef} style={{ width, height, background: "transparent", overflow: "hidden" }} />;
+    return (
+      <div 
+        ref={containerRef} 
+        style={{ 
+          width, 
+          height, 
+          background: "transparent", 
+          overflow: "hidden", 
+          touchAction: "none" 
+        }} 
+      />
+    );
   }
 );
 
