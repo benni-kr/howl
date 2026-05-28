@@ -242,14 +242,29 @@ export default function ReplayPage() {
       {/* VCR Toolbar */}
       <div style={{ padding: '16px 32px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-card)', display: 'flex', alignItems: 'center', gap: '24px' }}>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="btn secondary" onClick={() => engine.setStep(engine.currentStep - 1)} disabled={engine.currentStep === 0}>
-            &#9194; Prev
+          <button className="btn secondary" onClick={() => engine.setStep(engine.currentStep - 1)} disabled={engine.currentStep === 0} style={{ padding: '8px 12px' }} title="Previous Step">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="17 19 7 12 17 5 17 19"></polygon>
+              <rect x="5" y="5" width="2" height="14"></rect>
+            </svg>
           </button>
-          <button className="btn primary" onClick={engine.isPlaying ? engine.pause : engine.play} style={{ width: '80px' }}>
-            {engine.isPlaying ? 'Pause' : 'Play'}
+          <button className="btn primary" onClick={engine.isPlaying ? engine.pause : engine.play} style={{ width: '60px', padding: '8px 12px', display: 'flex', justifyContent: 'center' }} title={engine.isPlaying ? "Pause" : "Play"}>
+            {engine.isPlaying ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="5" width="4" height="14"></rect>
+                <rect x="14" y="5" width="4" height="14"></rect>
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="6 4 20 12 6 20 6 4"></polygon>
+              </svg>
+            )}
           </button>
-          <button className="btn secondary" onClick={() => engine.setStep(engine.currentStep + 1)} disabled={engine.currentStep === engine.totalSteps}>
-            Next &#9193;
+          <button className="btn secondary" onClick={() => engine.setStep(engine.currentStep + 1)} disabled={engine.currentStep === engine.totalSteps} style={{ padding: '8px 12px' }} title="Next Step">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="7 19 17 12 7 5 7 19"></polygon>
+              <rect x="17" y="5" width="2" height="14"></rect>
+            </svg>
           </button>
         </div>
 
