@@ -184,7 +184,12 @@ const LeaderboardPage: React.FC = () => {
                     </thead>
                     <tbody>
                       {gridData.map((entry, idx) => (
-                        <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                        <tr 
+                          key={idx} 
+                          style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}
+                          onClick={() => navigate(`/replay/${drillM}/${drillN}/${entry.solver_name}`)}
+                          className="hover-row"
+                        >
                           <td style={{ padding: '12px' }}>#{entry.rank_position}</td>
                           <td style={{ padding: '12px', fontWeight: 600 }}>{entry.solver_name}</td>
                           <td style={{ padding: '12px' }}>{entry.achieved_rank}</td>
