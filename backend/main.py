@@ -299,7 +299,13 @@ def submit_solution(payload: SolutionCreate, token: str = Depends(verify_token),
 
 @app.get("/api/solution/{m}/{n}", response_model=Optional[SolutionResponse])
 def get_solution(m: int, n: int, solver_name: Optional[str] = None, token: str = Depends(verify_token), db: Session = Depends(get_db)):
-    query = db.query(GridSolution).filter(GridSolution.m == m, GridSolution.n == n)
+    from sqlalchemy import or_
+    query = db.query(GridSolution).filter(
+        or_(
+            (GridSolution.m == m) & (GridSolution.n == n),
+            (GridSolution.m == n) & (GridSolution.n == m),
+        )
+    )
     if solver_name:
         query = query.filter(GridSolution.solver_name == solver_name)
     return query.order_by(GridSolution.rank.asc(), GridSolution.created_at.asc()).first()

@@ -110,8 +110,10 @@ export default function ReplayPage() {
   const [globalSequence, setGlobalSequence] = useState<any[]>([]);
   const [rank, setRank] = useState(0);
   const [isTreeModalOpen, setIsTreeModalOpen] = useState(false);
+  const [actualM, setActualM] = useState<number>(mNum);
+  const [actualN, setActualN] = useState<number>(nNum);
 
-  const engine = useReplayEngine(mNum, nNum, globalSequence);
+  const engine = useReplayEngine(actualM, actualN, globalSequence);
 
   useEffect(() => {
     if (mNum > 0 && nNum > 0 && solverName) {
@@ -121,6 +123,8 @@ export default function ReplayPage() {
           if (data && data.cut_sequence) {
             setGlobalSequence(data.cut_sequence as any[]);
             setRank(data.rank);
+            if (data.m) setActualM(data.m);
+            if (data.n) setActualN(data.n);
           } else {
             setError("Could not load replay data.");
           }
