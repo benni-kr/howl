@@ -35,7 +35,7 @@ const LeaderboardPage: React.FC = () => {
   const rawView = searchParams.get('view');
   const activeTab: ViewTab = VALID_VIEWS.includes(rawView as ViewTab)
     ? (rawView as ViewTab)
-    : 'solvers';
+    : 'matrix';
 
   const rawMode = searchParams.get('mode');
   const matrixMode: MatrixMode = VALID_MODES.includes(rawMode as MatrixMode)
@@ -110,16 +110,16 @@ const LeaderboardPage: React.FC = () => {
           {/* Main tab toggles */}
           <div className="btn-group" style={{ flexWrap: 'wrap', gap: '4px' }}>
             <button
-              className={`btn ${activeTab === 'solvers' && !isDrillDown ? 'primary' : 'secondary'}`}
-              onClick={() => setView('solvers')}
-            >
-              Top Solvers
-            </button>
-            <button
               className={`btn ${activeTab === 'matrix' || isDrillDown ? 'primary' : 'secondary'}`}
               onClick={() => setView('matrix')}
             >
               The Matrix
+            </button>
+            <button
+              className={`btn ${activeTab === 'solvers' && !isDrillDown ? 'primary' : 'secondary'}`}
+              onClick={() => setView('solvers')}
+            >
+              Top Solvers
             </button>
           </div>
 
