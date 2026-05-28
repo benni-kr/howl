@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import MatrixView from '../components/leaderboard-page/MatrixView';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import MatrixView, { MatrixMode } from '../components/leaderboard-page/MatrixView';
 import {
   fetchMatrixLeaderboard,
   fetchTopSolvers,
@@ -9,19 +10,59 @@ import {
   GridLeaderboardEntry
 } from '../api/api';
 
+// ─── Valid URL values ────────────────────────────────────────────────
+type ViewTab = 'matrix' | 'solvers';
+const VALID_VIEWS: ViewTab[] = ['matrix', 'solvers'];
+const VALID_MODES: MatrixMode[] = ['min_rank', 'top_solver', 'density_area', 'density_linear'];
+
+const MODE_LABELS: Record<MatrixMode, string> = {
+  min_rank: 'Min Rank',
+  top_solver: 'Top Solver',
+  density_area: 'Density (Area)',
+  density_linear: 'Density (Linear)',
+};
+
 const LeaderboardPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'matrix' | 'solvers'>('matrix');
-  const [matrixMode, setMatrixMode] = useState<'min_rank' | 'top_solver' | 'density'>('min_rank');
+  const navigate = useNavigate();
+  const { m: mParam, n: nParam } = useParams<{ m: string; n: string }>();
+  const [searchParams] = useSearchParams();
+
+  // ── Derive state from URL ──────────────────────────────────────────
+  const isDrillDown = !!(mParam && nParam);
+  const drillM = isDrillDown ? parseInt(mParam, 10) : null;
+  const drillN = isDrillDown ? parseInt(nParam, 10) : null;
+
+  const rawView = searchParams.get('view');
+  const activeTab: ViewTab = VALID_VIEWS.includes(rawView as ViewTab)
+    ? (rawView as ViewTab)
+    : 'solvers';
+
+  const rawMode = searchParams.get('mode');
+  const matrixMode: MatrixMode = VALID_MODES.includes(rawMode as MatrixMode)
+    ? (rawMode as MatrixMode)
+    : 'min_rank';
+
+  const squareOnly = searchParams.get('square') === 'true';
+
+  // ── Data state (still local — it's server data, not UI state) ─────
   const [matrixData, setMatrixData] = useState<MatrixCellData[]>([]);
   const [topSolvers, setTopSolvers] = useState<TopSolverData[]>([]);
-  const [squareOnly, setSquareOnly] = useState(false);
+  const [gridData, setGridData] = useState<GridLeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Drill-down state
-  const [selectedGrid, setSelectedGrid] = useState<{ m: number; n: number } | null>(null);
-  const [gridData, setGridData] = useState<GridLeaderboardEntry[]>([]);
+  // ── Data fetching based on URL ────────────────────────────────────
+  useEffect(() => {
+    if (isDrillDown && drillM && drillN) {
+      setLoading(true);
+      fetchGridLeaderboard(drillM, drillN).then(data => {
+        setGridData(data);
+        setLoading(false);
+      });
+    }
+  }, [isDrillDown, drillM, drillN]);
 
   useEffect(() => {
+    if (isDrillDown) return; // don't fetch when drilling down
     if (activeTab === 'matrix') {
       setLoading(true);
       fetchMatrixLeaderboard().then(data => {
@@ -35,109 +76,140 @@ const LeaderboardPage: React.FC = () => {
         setLoading(false);
       });
     }
-  }, [activeTab, squareOnly]);
+  }, [activeTab, squareOnly, isDrillDown]);
 
-  useEffect(() => {
-    if (selectedGrid) {
-      setLoading(true);
-      fetchGridLeaderboard(selectedGrid.m, selectedGrid.n).then(data => {
-        setGridData(data);
-        setLoading(false);
-      });
-    }
-  }, [selectedGrid]);
+  // ── Navigation helpers ────────────────────────────────────────────
+  const setView = useCallback((view: ViewTab) => {
+    navigate(`/leaderboard?view=${view}`);
+  }, [navigate]);
 
-  const handleCellClick = (m: number, n: number) => {
-    setSelectedGrid({ m, n });
-  };
+  const setMode = useCallback((mode: MatrixMode) => {
+    navigate(`/leaderboard?view=matrix&mode=${mode}`);
+  }, [navigate]);
 
+  const toggleSquare = useCallback(() => {
+    const next = !squareOnly;
+    navigate(`/leaderboard?view=solvers${next ? '&square=true' : ''}`);
+  }, [navigate, squareOnly]);
+
+  const handleCellClick = useCallback((m: number, n: number) => {
+    // Preserve current mode in query params for back-nav context
+    navigate(`/leaderboard/${m}/${n}?view=matrix&mode=${matrixMode}`);
+  }, [navigate, matrixMode]);
+
+  const handleBack = useCallback(() => {
+    navigate(`/leaderboard?view=matrix&mode=${matrixMode}`);
+  }, [navigate, matrixMode]);
+
+  // ── Render ────────────────────────────────────────────────────────
   return (
     <div className="page-content">
       {/* Header */}
-      <div className="page-header">
-        <h2>Leaderboards</h2>
-        <div className="page-header-controls">
-          <div className="btn-group">
+      <div className="page-header" style={{ paddingBottom: '16px' }}>
+        <div className="page-header-controls" style={{ flexWrap: 'wrap', gap: '8px', width: '100%' }}>
+          {/* Main tab toggles */}
+          <div className="btn-group" style={{ flexWrap: 'wrap', gap: '4px' }}>
             <button
-              className={`btn ${activeTab === 'matrix' ? 'primary' : 'secondary'}`}
-              onClick={() => { setActiveTab('matrix'); setSelectedGrid(null); }}
-            >
-              The Matrix
-            </button>
-            <button
-              className={`btn ${activeTab === 'solvers' ? 'primary' : 'secondary'}`}
-              onClick={() => { setActiveTab('solvers'); setSelectedGrid(null); }}
+              className={`btn ${activeTab === 'solvers' && !isDrillDown ? 'primary' : 'secondary'}`}
+              onClick={() => setView('solvers')}
             >
               Top Solvers
             </button>
+            <button
+              className={`btn ${activeTab === 'matrix' || isDrillDown ? 'primary' : 'secondary'}`}
+              onClick={() => setView('matrix')}
+            >
+              The Matrix
+            </button>
           </div>
 
-          {activeTab === 'matrix' && !selectedGrid && (
-            <div className="btn-group">
-              <button className={`btn ${matrixMode === 'min_rank' ? 'primary' : 'secondary'}`} onClick={() => setMatrixMode('min_rank')}>Min Rank</button>
-              <button className={`btn ${matrixMode === 'top_solver' ? 'primary' : 'secondary'}`} onClick={() => setMatrixMode('top_solver')}>Top Solver</button>
-              <button className={`btn ${matrixMode === 'density' ? 'primary' : 'secondary'}`} onClick={() => setMatrixMode('density')}>Density</button>
+          {/* Matrix mode toggles */}
+          {activeTab === 'matrix' && !isDrillDown && (
+            <div className="btn-group" style={{ flexWrap: 'wrap', gap: '4px' }}>
+              {VALID_MODES.map(m => (
+                <button
+                  key={m}
+                  className={`btn ${matrixMode === m ? 'primary' : 'secondary'}`}
+                  onClick={() => setMode(m)}
+                >
+                  {MODE_LABELS[m]}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Square-only toggle (replaces checkbox) */}
+          {activeTab === 'solvers' && !isDrillDown && (
+            <div className="btn-group" style={{ flexWrap: 'wrap', gap: '4px' }}>
+              <button
+                className={`btn ${!squareOnly ? 'primary' : 'secondary'}`}
+                onClick={() => !squareOnly || toggleSquare()}
+              >
+                All Grids
+              </button>
+              <button
+                className={`btn ${squareOnly ? 'primary' : 'secondary'}`}
+                onClick={() => squareOnly || toggleSquare()}
+              >
+                Square Only
+              </button>
             </div>
           )}
         </div>
       </div>
 
       {/* Body */}
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
-        <div style={{ flex: 1, position: 'relative' }}>
-          {selectedGrid ? (
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', minWidth: 0, minHeight: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
+          {isDrillDown && drillM && drillN ? (
+            /* ─── Drill-Down View ─── */
             <div style={{ padding: '24px 32px', height: '100%', overflowY: 'auto' }}>
-              <button className="btn secondary" onClick={() => setSelectedGrid(null)} style={{ marginBottom: '16px' }}>
+              <button className="btn secondary" onClick={handleBack} style={{ marginBottom: '16px' }}>
                 &larr; Back to Matrix
               </button>
-              <h3 style={{ margin: '0 0 16px 0' }}>Grid {selectedGrid.m} &times; {selectedGrid.n} Leaderboard</h3>
+              <h3 style={{ margin: '0 0 16px 0' }}>Grid {drillM} &times; {drillN} Leaderboard</h3>
 
               {loading ? (
                 <div className="muted">Loading...</div>
               ) : gridData.length > 0 ? (
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid var(--border-subtle)' }}>
-                      <th style={{ padding: '12px' }}>Rank</th>
-                      <th style={{ padding: '12px' }}>Solver</th>
-                      <th style={{ padding: '12px' }}>Achieved Rank</th>
-                      <th style={{ padding: '12px' }}>Date</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {gridData.map((entry, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                        <td style={{ padding: '12px' }}>#{entry.rank_position}</td>
-                        <td style={{ padding: '12px', fontWeight: 600 }}>{entry.solver_name}</td>
-                        <td style={{ padding: '12px' }}>{entry.achieved_rank}</td>
-                        <td style={{ padding: '12px', color: 'var(--text-muted)' }}>{new Date(entry.created_at).toLocaleString()}</td>
+                <div style={{ width: '100%', overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--border-subtle)' }}>
+                        <th style={{ padding: '12px' }}>Rank</th>
+                        <th style={{ padding: '12px' }}>Solver</th>
+                        <th style={{ padding: '12px' }}>Achieved Rank</th>
+                        <th style={{ padding: '12px' }}>Date</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {gridData.map((entry, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                          <td style={{ padding: '12px' }}>#{entry.rank_position}</td>
+                          <td style={{ padding: '12px', fontWeight: 600 }}>{entry.solver_name}</td>
+                          <td style={{ padding: '12px' }}>{entry.achieved_rank}</td>
+                          <td style={{ padding: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{new Date(entry.created_at).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
                 <div className="muted">No records found for this grid yet.</div>
               )}
             </div>
+
           ) : activeTab === 'matrix' ? (
+            /* ─── Matrix View ─── */
             loading && matrixData.length === 0 ? (
               <div style={{ padding: '24px 32px' }} className="muted">Loading Matrix...</div>
             ) : (
               <MatrixView data={matrixData} onCellClick={handleCellClick} mode={matrixMode} />
             )
-          ) : (
-            <div style={{ padding: '24px 32px', height: '100%', overflowY: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={squareOnly}
-                    onChange={(e) => setSquareOnly(e.target.checked)}
-                  />
-                  Square Grids Only
-                </label>
-              </div>
 
+          ) : (
+            /* ─── Top Solvers View ─── */
+            <div style={{ padding: '24px 32px', height: '100%', overflowY: 'auto' }}>
               {loading && topSolvers.length === 0 ? (
                 <div className="muted">Loading Solvers...</div>
               ) : topSolvers.length > 0 ? (

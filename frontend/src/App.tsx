@@ -56,6 +56,7 @@ const App: React.FC = () => {
         }>
           <Route index element={<GamePage />} />
           <Route path="leaderboard" element={<LeaderboardPage />} />
+          <Route path="leaderboard/:m/:n" element={<LeaderboardPage />} />
           <Route path="docs" element={<DocsPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
