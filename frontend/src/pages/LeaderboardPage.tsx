@@ -19,9 +19,9 @@ const MODE_LABELS: Record<MatrixMode, string> = {
   min_rank: 'Min Rank',
   top_solver: 'Top Solver',
   perfection_gap: 'Perfection Gap',
-  density_linear: 'Linear Density',
-  log_adjusted_density: 'Log-Adjusted Density',
-  custom_formula: 'Custom Formula',
+  density_linear: 'Lin. Density',
+  log_adjusted_density: 'Log. Density',
+  custom_formula: 'Custom',
 };
 
 const LeaderboardPage: React.FC = () => {
@@ -48,7 +48,8 @@ const LeaderboardPage: React.FC = () => {
 
   // ── Data state (still local — it's server data, not UI state) ─────
   const [matrixData, setMatrixData] = useState<MatrixCellData[]>([]);
-  const [customFormula, setCustomFormula] = useState<string>('rank - (1.6 * min_edge)');
+  const [customFormula, setCustomFormula] = useState<string>('rank - m - n');
+  const [showDescriptions, setShowDescriptions] = useState(false);
   const [topSolvers, setTopSolvers] = useState<TopSolverData[]>([]);
   const [gridData, setGridData] = useState<GridLeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -139,6 +140,14 @@ const LeaderboardPage: React.FC = () => {
                     {MODE_LABELS[m]}
                   </button>
                 ))}
+                <button 
+                  className={`btn ${showDescriptions ? 'primary' : 'secondary'}`}
+                  style={{ width: '32px', padding: 0, fontWeight: 'bold' }}
+                  onClick={() => setShowDescriptions(!showDescriptions)}
+                  title="Toggle metric descriptions"
+                >
+                  ?
+                </button>
               </div>
               {matrixMode === 'custom_formula' && (
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -160,6 +169,30 @@ const LeaderboardPage: React.FC = () => {
                   />
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Metric Descriptions */}
+          {activeTab === 'matrix' && !isDrillDown && showDescriptions && (
+            <div style={{ 
+              marginTop: '8px', 
+              padding: '12px', 
+              background: 'var(--bg-inset)', 
+              borderRadius: '8px', 
+              border: '1px solid var(--border-subtle)',
+              fontSize: '13px',
+              color: 'var(--text-subtle)',
+              lineHeight: '1.5'
+            }}>
+              <strong>Metrics Explained:</strong>
+              <ul style={{ margin: '4px 0 0 20px', padding: 0 }}>
+                <li><strong>Min Rank:</strong> The lowest rank achieved by the community for the given m × n grid.</li>
+                <li><strong>Top Solver:</strong> The alias of the player who holds the optimal rank.</li>
+                <li><strong>Perfection Gap:</strong> <code>Min Rank - Lower Bound</code>. A lower bound is calculated based on known theoretical limits. 0 means optimal.</li>
+                <li><strong>Lin. Density:</strong> <code>Min Rank / max(m, n)</code>. Measures how sparse or dense the solution is relative to the largest dimension.</li>
+                <li><strong>Log. Density:</strong> <code>Min Rank / (min(m, n) + log2(max(m, n) + 1))</code>. An adjusted density scaling logarithmically with grid size.</li>
+                <li><strong>Custom:</strong> Enter a valid Math.js expression using: <code>m</code>, <code>n</code>, <code>min_edge</code>, <code>max_edge</code>, and <code>rank</code>. Example: <code>rank - m - n</code>.</li>
+              </ul>
             </div>
           )}
 
