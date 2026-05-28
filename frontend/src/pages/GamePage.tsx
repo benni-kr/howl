@@ -162,7 +162,6 @@ const GamePage: React.FC = () => {
   // Derived state to only show VictoryModal when game is actually completed
   // and we're not just waiting for an execution to finish
   const [hasSolved, setHasSolved] = useState(false);
-
   useEffect(() => {
     if (isGameWon && !hasSolved && !isExecuting && !isNewGameModalOpen) {
       const timer = setTimeout(() => {
@@ -417,7 +416,7 @@ const GamePage: React.FC = () => {
               </button>
               <button
                 className="btn secondary large"
-                disabled={pendingCutSet.length === 0 || isExecuting}
+                disabled={pendingCutSet.length === 0 || (activeGraph && pendingCutSet.length === activeGraph.vertices.length) || isExecuting}
                 onClick={handleCut}
               >
                 Cut
@@ -450,6 +449,7 @@ const GamePage: React.FC = () => {
           })()}
         </div>
       </main>
+
       <NewGameModal
         isOpen={isNewGameModalOpen}
         onClose={(started) => {
@@ -474,6 +474,11 @@ const GamePage: React.FC = () => {
           onPlayAgain={() => {
             setHasSolved(false);
             setIsNewGameModalOpen(true);
+          }}
+          onReviewBoard={() => {
+            setHasSolved(false);
+            dispatch(undoCut());
+            setResetToken((v) => v + 1);
           }}
         />
       )}

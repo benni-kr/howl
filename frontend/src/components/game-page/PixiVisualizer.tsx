@@ -104,7 +104,9 @@ class PixiEngine {
   edges: { from: string; to: string; graphics: PIXI.Graphics }[];
   particles: Particle[];
 
-  onNodeClick?: (vertex: Vertex, graphIndex: number) => void;
+  onNodePointerDown?: (vertex: Vertex, graphIndex: number) => void;
+  onNodePointerEnter?: (vertex: Vertex, graphIndex: number) => void;
+  onPointerUp?: () => void;
   onGraphClick?: (graphIndex: number) => void;
   onDeepDiveRequest?: (graphIndex: number) => void;
 
@@ -127,7 +129,7 @@ class PixiEngine {
     const blurFilter = new PIXI.BlurFilter();
     blurFilter.blur = 12;
     blurFilter.quality = 4;
-    blurFilter.padding = 24;
+    blurFilter.padding = 100;
     this.glowContainer.filters = [blurFilter];
 
     this.stage.addChild(this.glowContainer);
@@ -155,8 +157,12 @@ class PixiEngine {
     }
     this.container.appendChild(this.app.canvas);
     this.app.stage.addChild(this.stage);
-
     this.app.ticker.add(this.update.bind(this));
+
+    this.stage.eventMode = "static";
+    this.stage.hitArea = new PIXI.Rectangle(-10000, -10000, 20000, 20000);
+    this.stage.on("pointerup", () => this.onPointerUp?.());
+    this.stage.on("pointerupoutside", () => this.onPointerUp?.());
   }
 
   resize(width: number, height: number) {
@@ -249,7 +255,9 @@ class PixiEngine {
     bankedGraphs: Graph[],
     palette: Palette,
     optimalRanks: Map<string, { best_rank: number, is_optimal: boolean }>,
-    onNodeClick?: (vertex: Vertex, graphIndex: number) => void,
+    onNodePointerDown?: (vertex: Vertex, graphIndex: number) => void,
+    onNodePointerEnter?: (vertex: Vertex, graphIndex: number) => void,
+    onPointerUp?: () => void,
     onGraphClick?: (graphIndex: number) => void,
     onAutoSolve?: (graphIndex: number) => void,
     isExecuting: boolean = false,
@@ -259,7 +267,9 @@ class PixiEngine {
   ) {
     this.palette = palette;
     this.splitView = splitView;
-    this.onNodeClick = onNodeClick;
+    this.onNodePointerDown = onNodePointerDown;
+    this.onNodePointerEnter = onNodePointerEnter;
+    this.onPointerUp = onPointerUp;
     this.onGraphClick = onGraphClick;
     this.onDeepDiveRequest = onDeepDiveRequest;
     this.splitView = splitView;
@@ -450,6 +460,9 @@ class PixiEngine {
           node!.graphics.cursor = "pointer";
           node!.graphics.on("pointerdown", (e) => {
             e.stopPropagation();
+            if (e.pointerId !== undefined && (node!.graphics as any).hasPointerCapture?.(e.pointerId)) {
+              (node!.graphics as any).releasePointerCapture(e.pointerId);
+            }
             if (readOnly) {
               if (node!.isPendingCut && this.onDeepDiveRequest) {
                 this.onDeepDiveRequest(graphIndex);
@@ -457,10 +470,14 @@ class PixiEngine {
               return;
             }
             if (!this.splitView) {
-              this.onNodeClick?.(vertex, graphIndex);
+              this.onNodePointerDown?.(vertex, graphIndex);
             } else {
               this.onGraphClick?.(graphIndex);
             }
+          });
+          node!.graphics.on("pointerenter", () => {
+            if (readOnly || this.splitView) return;
+            this.onNodePointerEnter?.(vertex, graphIndex);
           });
           this.nodeContainer.addChild(node.graphics);
           this.glowContainer.addChild(node.glowGraphics);
@@ -477,6 +494,9 @@ class PixiEngine {
           node!.graphics.off("pointerdown");
           node!.graphics.on("pointerdown", (e) => {
             e.stopPropagation();
+            if (e.pointerId !== undefined && (node!.graphics as any).hasPointerCapture?.(e.pointerId)) {
+              (node!.graphics as any).releasePointerCapture(e.pointerId);
+            }
             if (readOnly) {
               if (node!.isPendingCut && this.onDeepDiveRequest) {
                 this.onDeepDiveRequest(graphIndex);
@@ -484,10 +504,15 @@ class PixiEngine {
               return;
             }
             if (!this.splitView) {
-              this.onNodeClick?.(vertex, graphIndex);
+              this.onNodePointerDown?.(vertex, graphIndex);
             } else {
               this.onGraphClick?.(graphIndex);
             }
+          });
+          node!.graphics.off("pointerenter");
+          node!.graphics.on("pointerenter", () => {
+            if (readOnly || this.splitView) return;
+            this.onNodePointerEnter?.(vertex, graphIndex);
           });
         }
 
@@ -649,13 +674,39 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
       return activeGraph ? [activeGraph] : [];
     }, [activeGraph, recentCutGraphs]);
 
-    const toggleVertex = useCallback((vertex: Vertex) => {
+    const isDraggingRef = useRef(false);
+    const dragTargetStateRef = useRef(true);
+
+    const onNodePointerDown = useCallback((vertex: Vertex, graphIndex: number) => {
+      if (graphIndex !== 0) return;
+      isDraggingRef.current = true;
       setPendingCutSet((prev) => {
-        if (prev.some((item) => isSameVertex(item, vertex))) {
+        const isSelected = prev.some((item) => isSameVertex(item, vertex));
+        dragTargetStateRef.current = !isSelected;
+        if (isSelected) {
           return prev.filter((item) => !isSameVertex(item, vertex));
+        } else {
+          return [...prev, vertex];
         }
-        return [...prev, vertex];
       });
+    }, []);
+
+    const onNodePointerEnter = useCallback((vertex: Vertex, graphIndex: number) => {
+      if (graphIndex !== 0 || !isDraggingRef.current) return;
+      const forceSelect = dragTargetStateRef.current;
+      setPendingCutSet((prev) => {
+        const isSelected = prev.some((item) => isSameVertex(item, vertex));
+        if (isSelected && !forceSelect) {
+          return prev.filter((item) => !isSameVertex(item, vertex));
+        } else if (!isSelected && forceSelect) {
+          return [...prev, vertex];
+        }
+        return prev;
+      });
+    }, []);
+
+    const onPointerUp = useCallback(() => {
+      isDraggingRef.current = false;
     }, []);
 
     useEffect(() => {
@@ -675,9 +726,9 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           bankedGraphs,
           selectActivePalette({ settings }),
           optimalRanks,
-          (vertex, graphIndex) => {
-            if (graphIndex === 0) toggleVertex(vertex);
-          },
+          onNodePointerDown,
+          onNodePointerEnter,
+          onPointerUp,
           (graphIndex) => {
             onSelectGraph?.(graphIndex);
           },
@@ -713,9 +764,9 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           bankedGraphs,
           selectActivePalette({ settings }),
           optimalRanks,
-          (vertex, graphIndex) => {
-            if (graphIndex === 0) toggleVertex(vertex);
-          },
+          onNodePointerDown,
+          onNodePointerEnter,
+          onPointerUp,
           (graphIndex) => {
             onSelectGraph?.(graphIndex);
           },
@@ -728,7 +779,7 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           onDeepDiveRequest
         );
       }
-    }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, onSelectGraph, onAutoSolve, toggleVertex, isExecuting, hasCutsApplied, readOnly, onDeepDiveRequest]);
+    }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, onSelectGraph, onAutoSolve, onNodePointerDown, onNodePointerEnter, onPointerUp, isExecuting, hasCutsApplied, readOnly, onDeepDiveRequest]);
 
     useEffect(() => {
       onPendingCutSetChange?.(pendingCutSet);
@@ -767,7 +818,18 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
       []
     );
 
-    return <div ref={containerRef} style={{ width, height, background: "transparent", overflow: "hidden" }} />;
+    return (
+      <div 
+        ref={containerRef} 
+        style={{ 
+          width, 
+          height, 
+          background: "transparent", 
+          overflow: "hidden", 
+          touchAction: "none" 
+        }} 
+      />
+    );
   }
 );
 

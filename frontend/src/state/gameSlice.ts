@@ -108,13 +108,13 @@ const snapshotState = (state: GameState): GameHistoryEntry => ({
 });
 
 const initialState: GameState = {
-  activeGraph: null,
+  activeGraph: buildGridGraph(5, 5),
   bankedGraphs: [],
   recentCutGraphs: [],
   history: [],
   futureHistory: [],
   maxRank: 0,
-  gridSize: { m: 0, n: 0 },
+  gridSize: { m: 5, n: 5 },
   cutsApplied: [],
 };
 
@@ -151,7 +151,7 @@ const gameSlice = createSlice({
      */
     applyCutResult(state, action: PayloadAction<{ subgraphs: Graph[], cutSet: Vertex[] }>) {
       const { subgraphs, cutSet } = action.payload;
-      if (subgraphs.length === 0 || !state.activeGraph) {
+      if (!state.activeGraph) {
         return;
       }
 
@@ -159,6 +159,15 @@ const gameSlice = createSlice({
       state.futureHistory = []; // Clear redo stack on new action
       
       state.cutsApplied.push({ type: "cut", vertices: cutSet });
+
+      if (subgraphs.length === 0) {
+        // The graph was completely eliminated.
+        const cutSize = state.activeGraph.vertices.length;
+        const finalRank = state.activeGraph.baseRank + cutSize;
+        state.maxRank = Math.max(state.maxRank, finalRank);
+        state.activeGraph = null;
+        return;
+      }
 
       const subgraphsVertexCount = subgraphs.reduce((sum, g) => sum + g.vertices.length, 0);
       const cutSize = state.activeGraph.vertices.length - subgraphsVertexCount;
