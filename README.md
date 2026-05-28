@@ -4,30 +4,38 @@ A web-based crowdsourcing game for solving vertex k-ranking problems on grid gra
 
 ## Project Structure
 
-```
+```text
 howl-project/
 ├── backend/                  # Python/FastAPI app + SQLite
-│   ├── venv/
-│   ├── main.py
-│   ├── database.py
-│   ├── models.py
-│   ├── schemas.py
-│   ├── graph_logic.py
-│   └── requirements.txt
+│   ├── venv/                 # Virtual environment
+│   ├── main.py               # FastAPI entry point & routes
+│   ├── database.py           # SQLite connection & session
+│   ├── models.py             # SQLAlchemy ORM models
+│   ├── schemas.py            # Pydantic validation schemas
+│   ├── graph_logic.py        # Replay engine & rank calculation
+│   ├── requirements.txt      # Python dependencies
+│   ├── .env                  # Backend environment variables
+│   └── ARCHITECTURE.md       # Backend architecture documentation
 │
 ├── frontend/                 # React/Vite app
-│   ├── package.json
-│   ├── vite.config.ts
-│   ├── public/
-│   └── src/
-│       ├── api/
-│       ├── components/
-│       ├── state/
-│       ├── utils/
-│       ├── styles/
-│       └── App.tsx
+│   ├── package.json          
+│   ├── vite.config.ts        
+│   ├── public/               
+│   ├── ARCHITECTURE.md       # Frontend architecture documentation
+│   └── src/                  
+│       ├── api/              # API wrapper functions
+│       ├── assets/           # Static images and SVGs
+│       ├── components/       # Reusable UI components
+│       ├── hooks/            # Custom React hooks (e.g., useAlias)
+│       ├── pages/            # Top-level route components (Game, Leaderboard, Login)
+│       ├── state/            # Redux Toolkit slices and store setup
+│       ├── styles/           # Vanilla CSS stylesheets
+│       ├── utils/            # Math and graph utility functions
+│       ├── App.tsx           # React Router setup
+│       └── main.tsx          # React DOM entry point
 │
 ├── .gitignore
+├── Problem_Description.md    # Mathematical foundation of the game
 └── README.md
 ```
 
