@@ -109,6 +109,7 @@ export default function ReplayPage() {
   const [error, setError] = useState<string | null>(null);
   const [globalSequence, setGlobalSequence] = useState<any[]>([]);
   const [rank, setRank] = useState(0);
+  const [isTreeModalOpen, setIsTreeModalOpen] = useState(false);
 
   const engine = useReplayEngine(mNum, nNum, globalSequence);
 
@@ -225,8 +226,16 @@ export default function ReplayPage() {
 
           {/* Pane 3: Elimination Tree (Dynamic) */}
           <div className="custom-scrollbar" style={{ flex: 1, borderTop: '1px solid var(--border-subtle)', overflow: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-            <div style={{ position: 'sticky', top: 0, left: 0, background: 'var(--bg-main)', zIndex: 10, padding: '16px 16px 8px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
+            <div style={{ position: 'sticky', top: 0, left: 0, background: 'var(--bg-main)', zIndex: 10, padding: '16px 16px 8px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0 }}>Elimination Tree</h3>
+              <button className="btn secondary" onClick={() => setIsTreeModalOpen(true)} title="Expand Tree" style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 3h6v6"></path>
+                  <path d="M9 21H3v-6"></path>
+                  <path d="M21 3l-7 7"></path>
+                  <path d="M3 21l7-7"></path>
+                </svg>
+              </button>
             </div>
             <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', minWidth: 'min-content' }}>
               <div className="muted" style={{ fontSize: '0.9em', lineHeight: '1.5', marginBottom: '16px', position: 'sticky', left: '16px' }}>
@@ -297,6 +306,36 @@ export default function ReplayPage() {
           </select>
         </div>
       </div>
+
+      {/* Tree Modal */}
+      {isTreeModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsTreeModalOpen(false)} style={{ zIndex: 1000 }}>
+          <div 
+            className="modal-content custom-scrollbar" 
+            onClick={e => e.stopPropagation()} 
+            style={{ 
+              width: '90vw', 
+              height: '90vh', 
+              maxWidth: 'none', 
+              overflow: 'auto', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              background: 'var(--bg-main)' 
+            }}
+          >
+            <div style={{ position: 'sticky', top: 0, left: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', zIndex: 10, background: 'var(--bg-main)', paddingBottom: '16px', borderBottom: '1px solid var(--border-subtle)' }}>
+              <div>
+                <h2 style={{ margin: 0 }}>Elimination Tree</h2>
+                <div className="muted" style={{ fontSize: '0.9em', marginTop: '8px' }}>Tree depth: <strong>{engine.boardState.maxRank}</strong></div>
+              </div>
+              <button className="btn secondary" onClick={() => setIsTreeModalOpen(false)}>Close</button>
+            </div>
+            <div style={{ flex: 1, display: 'flex', minWidth: 'min-content', padding: '16px' }}>
+              <DynamicEliminationTree rootNode={engine.boardState.treeRoot} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
