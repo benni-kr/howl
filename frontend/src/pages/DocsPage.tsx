@@ -78,14 +78,23 @@ const DocsPage: React.FC = () => {
       <div style={{ background: 'var(--bg-card)', padding: '32px', borderRadius: '12px', border: '1px solid var(--border-subtle)', marginBottom: '40px' }}>
         <h2 style={{ marginTop: 0, borderBottom: '2px solid var(--bg-inset)', paddingBottom: '12px' }}>Decoding the Leaderboards</h2>
         <p>
-          Comparing a 4&times;4 score to a 100&times;100 score directly doesn't make sense. That's why the Matrix views offer two distinct <strong>Density</strong> metrics:
+          Comparing a 4&times;4 score to a 100&times;100 score directly doesn't make sense. That's why the Matrix views offer advanced metrics to evaluate your score against mathematical theory:
         </p>
         <ul style={{ paddingLeft: '24px', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <li>
-            <strong>Area Density (Rank / Total Blocks):</strong> This is a fun, intuitive gamer metric. It answers: <em>How efficient were my cuts relative to the sheer mass of the board?</em>
+            <strong>Perfection Gap:</strong> The difference between the community's Min Rank and the theoretical <strong>Lower Bound</strong>. A gap of 0 means the solution is proven mathematically perfect!
+            <br/><br/>
+            <em>How the Lower Bound is calculated for an m &times; n grid:</em>
+            <ul style={{ marginTop: '8px', paddingLeft: '24px' }}>
+              <li>If <code>min(m, n) &lt; 5</code>, the grid behaves like a path. The lower bound is <code>floor(log2(max(m, n))) + 1</code>.</li>
+              <li>Otherwise, mathematical proofs guarantee the rank scales at roughly <sup>5</sup>&frasl;<sub>3</sub> the shortest edge. The lower bound is <code>ceil((5/3) &times; min(m, n) - (25/9))</code>.</li>
+            </ul>
           </li>
           <li>
-            <strong>Linear Density (Rank / Longest Edge):</strong> This is the <strong>true scientific metric</strong>. Mathematicians have proven that the rank number scales linearly with the length of the grid's edge, not its area. For example, the lower bound for an m &times; m grid has been proven to scale at roughly <sup>5</sup>&frasl;<sub>3</sub> m. By pushing Linear Density as low as possible, players are helping researchers discover the exact missing coefficients for these formulas.
+            <strong>Linear Density (Rank / Longest Edge):</strong> This is the <strong>true scientific metric</strong>. Mathematicians have proven that the rank number scales linearly with the length of the grid's edge, not its area. By pushing Linear Density as low as possible, players are helping researchers discover the exact missing coefficients for these formulas.
+          </li>
+          <li>
+            <strong>Log-Adjusted Density (Rank / (min(m, n) + log2(max(m, n) + 1))):</strong> A hybrid density scaling that dampens the penalty for extreme rectangles.
           </li>
         </ul>
       </div>
