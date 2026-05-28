@@ -594,6 +594,15 @@ class PixiEngine {
     for (const [, node] of this.nodes.entries()) {
       gsap.killTweensOf(node.graphics);
       gsap.killTweensOf(node.glowGraphics);
+      gsap.killTweensOf(node.graphics.scale);
+      gsap.killTweensOf(node.glowGraphics.scale);
+    }
+    gsap.killTweensOf(this.stage.position);
+    gsap.killTweensOf(this.stage.scale);
+    for (const child of this.wandContainer.children) {
+      gsap.killTweensOf(child);
+      gsap.killTweensOf(child.scale);
+      gsap.killTweensOf(child.position);
     }
     try {
       this.app.destroy(true, true);
