@@ -83,18 +83,42 @@ const DocsPage: React.FC = () => {
         <ul style={{ paddingLeft: '24px', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <li>
             <strong>Perfection Gap:</strong> The difference between the community's Min Rank and the theoretical <strong>Lower Bound</strong>. A gap of 0 means the solution is proven mathematically perfect!
-            <br/><br/>
-            <em>How the Lower Bound is calculated for an m &times; n grid:</em>
-            <ul style={{ marginTop: '8px', paddingLeft: '24px' }}>
-              <li>If <code>min(m, n) &lt; 5</code>, the grid behaves like a path. The lower bound is <code>floor(log2(max(m, n))) + 1</code>.</li>
-              <li>Otherwise, mathematical proofs guarantee the rank scales at roughly <sup>5</sup>&frasl;<sub>3</sub> the shortest edge. The lower bound is <code>ceil((5/3) &times; min(m, n) - (25/9))</code>.</li>
-            </ul>
+
+            <details style={{ marginTop: '12px', background: 'var(--bg-inset)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 'bold', userSelect: 'none' }}>
+                View Exact Mathematical Formulas
+              </summary>
+              <div style={{ marginTop: '16px', fontSize: '0.95em', lineHeight: '1.6' }}>
+                <p style={{ marginTop: 0 }}>
+                  The lower bound <code>r(m,n)</code> is calculated recursively. <strong>Assume <code>m &le; n</code></strong>:
+                </p>
+                <ul style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: 0 }}>
+                  <li>
+                    <strong>Paths (m = 1):</strong> Exact logarithmic bound.<br />
+                    <code style={{ background: 'var(--bg-card)', padding: '2px 6px', borderRadius: '4px' }}>r(1,n) = ⌊log<sub>2</sub>(n)⌋ + 1</code>
+                  </li>
+                  <li>
+                    <strong>Ladder Grids (m = 2):</strong> Exact recursive formula.<br />
+                    <code style={{ background: 'var(--bg-card)', padding: '2px 6px', borderRadius: '4px' }}>r(2,n) = 2 + r(2, ⌈(n - 2) / 2⌉)</code>
+                  </li>
+                  <li>
+                    <strong>Narrow Grids (m = 3, 4):</strong> Recursive lower limits.<br />
+                    <code style={{ background: 'var(--bg-card)', padding: '2px 6px', borderRadius: '4px' }}>r(3,n) ≥ 3 + r(3, ⌈(n - 3) / 2⌉)</code><br />
+                    <code style={{ background: 'var(--bg-card)', padding: '2px 6px', borderRadius: '4px', display: 'inline-block', marginTop: '4px' }}>r(4,n) ≥ 4 + r(4, ⌈(n - 4) / 2⌉)</code>
+                  </li>
+                  <li>
+                    <strong>Large Grids (m ≥ 5):</strong> Evaluated as the stricter of the linear square-grid limit or its largest 4&times;n subgrid.<br />
+                    <code style={{ background: 'var(--bg-card)', padding: '2px 6px', borderRadius: '4px' }}>r(m,n) ≥ max( ⌈(5/3)m - (25/9)⌉, r(4,n) )</code>
+                  </li>
+                </ul>
+              </div>
+            </details>
           </li>
           <li>
             <strong>Linear Density (Rank / Longest Edge):</strong> This is the <strong>true scientific metric</strong>. Mathematicians have proven that the rank number scales linearly with the length of the grid's edge, not its area. By pushing Linear Density as low as possible, players are helping researchers discover the exact missing coefficients for these formulas.
           </li>
           <li>
-            <strong>Log-Adjusted Density (Rank / (min(m, n) + log2(max(m, n) + 1))):</strong> A hybrid density scaling that dampens the penalty for extreme rectangles.
+            <strong>Log-Adjusted Density (Rank / (m + log<sub>2</sub>(n + 1))):</strong> A hybrid density scaling that dampens the penalty for extreme rectangles.
           </li>
         </ul>
       </div>
