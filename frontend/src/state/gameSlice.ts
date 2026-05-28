@@ -108,13 +108,13 @@ const snapshotState = (state: GameState): GameHistoryEntry => ({
 });
 
 const initialState: GameState = {
-  activeGraph: buildGridGraph(1, 1),
+  activeGraph: buildGridGraph(5, 5),
   bankedGraphs: [],
   recentCutGraphs: [],
   history: [],
   futureHistory: [],
   maxRank: 0,
-  gridSize: { m: 1, n: 1 },
+  gridSize: { m: 5, n: 5 },
   cutsApplied: [],
 };
 
