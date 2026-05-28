@@ -62,16 +62,18 @@ Runs on `http://127.0.0.1:8000` by default.
 - **Backend Integration**: Send cuts to Python backend for graph decomposition
 - **Score Persistence**: Submit global best ranks to SQLite (`grid_solutions` table)
 - **Subgraph Dictionary**: Every game replay extracts intermediate shapes and their optimal ranks into a crowdsourced dictionary (`subgraph_dictionary` table)
-- **Auto-Solve (Vaporize)**: When a subgraph on the board matches a previously solved shape in the dictionary, players can instantly "vaporize" it using the community's best known solution
+- **Magic Wand (Vaporize)**: When a subgraph on the board matches a previously solved shape in the dictionary, players can instantly "vaporize" it using the community's best known solution by clicking the Magic Wand icon directly on the subgraph
 - **Leaderboard**: Matrix view of best scores across all grid sizes, per-grid rankings, and top-solver standings
-- **Dark Theme UI**: Modern, sleek interface with multiple color palettes
+- **Dark Theme UI**: Modern, sleek, fully responsive interface with mobile support
+
+## Deployment
+
+The project is designed to be deployed across two separate services:
+- **Frontend**: Deployed on Vercel as a static Vite/React application. Expects a `VITE_API_URL` environment variable pointing to the backend.
+- **Backend**: Deployed on Render (or similar PAAS) running FastAPI. Uses a persistent disk for the `howl.db` SQLite database. Requires an `AUTH_SECRET` environment variable for admin gatekeeping.
 
 ## Architecture
 
-See [`backend/ARCHITECTURE.md`](backend/ARCHITECTURE.md) for a detailed technical overview of:
+See [`backend/ARCHITECTURE.md`](backend/ARCHITECTURE.md) for a detailed technical overview of the backend replay engine, canonical hashing, and intrinsic rank calculation.
 
-- The data flow between frontend and backend
-- The replay engine and intrinsic rank calculation
-- The canonical hash algorithm (rotation/reflection invariant)
-- The SubgraphDictionary lifecycle and Auto-Solve mechanic
-- Database schema and known limitations
+See [`frontend/ARCHITECTURE.md`](frontend/ARCHITECTURE.md) for details on the React/PixiJS rendering loop, Redux state management, and mobile-responsive layout.

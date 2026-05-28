@@ -161,11 +161,10 @@ correlate `checkShapes` API results back to their source graphs.
    This endpoint computes the canonical hash of each on-screen subgraph and
    looks it up in the dictionary.
 
-3. **Auto-Solve:** If a match is found, the frontend shows a "⚡ Auto-Solve"
-   button. Clicking it dispatches `autoSolveGraph`, which:
+3. **Auto-Solve (Magic Wand):** If a match is found, the frontend displays a Magic Wand icon directly over the subgraph on the PixiJS canvas. Clicking the subgraph dispatches `autoSolveGraph`, which:
    - Records a `vaporize` action in `cutsApplied`
    - Uses the dictionary's `best_rank` as `optimal_rank`
-   - The shape is "solved" without the player having to cut it
+   - The shape is "solved" and removed from the board without the player having to cut it
 
 4. **Score Computation:** When the vaporized game is submitted, the replay
    engine encounters the `vaporize` action and uses `optimal_rank` instead of
@@ -196,6 +195,16 @@ correlate `checkShapes` API results back to their source graphs.
 | hash      | TEXT    | Canonical hash (primary key)                   |
 | best_rank | INTEGER | Best known intrinsic rank for this shape        |
 | is_optimal| BOOLEAN | Reserved for future use (always false for now)  |
+
+---
+
+## Authentication
+
+HOWL implements a lightweight, global gatekeeper mechanism to prevent unauthorized spam/writes to the database:
+- The backend relies on a single `.env` variable: `AUTH_SECRET`.
+- The `POST /api/auth/login` endpoint expects `{"username": "admin", "password": "<AUTH_SECRET>"}`.
+- If successful, the backend simply returns the `AUTH_SECRET` as a bearer token.
+- Write endpoints (`/api/submit_solution` and `/api/delete_solution`) require this token in the `Authorization: Bearer <token>` header. Read endpoints (like checking shapes or fetching leaderboards) are unauthenticated.
 
 ---
 

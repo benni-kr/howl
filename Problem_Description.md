@@ -63,3 +63,9 @@ Where:
 Human players are exceptionally good at recognizing 2D spatial patterns, symmetries, and structural weaknesses in a grid—things that algorithmic heuristics often struggle to optimize without massive computational overhead. 
 
 By wrapping this graph theory problem in a satisfying, tactile puzzle game, HOWL captures the exact sequences of cuts (graph separators) that lead to new, scientifically valuable upper bounds for the rank numbers of grid graphs. These sequences are recorded in the database and contribute directly to ongoing mathematical research.
+
+### Caching Known Bounds (The Magic Wand)
+
+Because graphs frequently break down into the same common shapes (e.g., $2 \times 2$ squares, L-shapes, crosses), HOWL features a **Subgraph Dictionary**. Every time any player completes a grid, the optimal rank found for every intermediate shape is hashed (rotation and reflection invariant) and saved.
+
+When a player encounters a shape that the community has already solved, they can "vaporize" it using the **Magic Wand**. Mathematically, this simply short-circuits the recursive $\max(\chi_r(G_i))$ calculation by substituting the known optimal upper bound for that subgraph, saving the player from having to manually cut it again.
