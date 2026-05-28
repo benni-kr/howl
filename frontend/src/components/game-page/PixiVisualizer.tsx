@@ -42,6 +42,10 @@ type PixiVisualizerProps = {
   optimalRanks?: Map<string, { best_rank: number, is_optimal: boolean }>;
   onAutoSolve?: (graphIndex: number) => void;
   hasCutsApplied?: boolean;
+  overrideState?: { activeGraph: Graph | null; recentCutGraphs: Graph[] };
+  readOnly?: boolean;
+  onDeepDiveRequest?: (graphIndex: number) => void;
+  overridePendingCutSet?: Vertex[];
 };
 
 const BASE_CELL_SIZE = 20;
@@ -102,6 +106,7 @@ class PixiEngine {
 
   onNodeClick?: (vertex: Vertex, graphIndex: number) => void;
   onGraphClick?: (graphIndex: number) => void;
+  onDeepDiveClick?: (graphIndex: number) => void;
 
   cellSize: number = BASE_CELL_SIZE;
   splitView: boolean = false;
@@ -248,11 +253,14 @@ class PixiEngine {
     onGraphClick?: (graphIndex: number) => void,
     onAutoSolve?: (graphIndex: number) => void,
     isExecuting: boolean = false,
-    hasCutsApplied: boolean = false
+    hasCutsApplied: boolean = false,
+    readOnly: boolean = false,
+    onDeepDiveClick?: (graphIndex: number) => void
   ) {
     this.palette = palette;
     this.onNodeClick = onNodeClick;
     this.onGraphClick = onGraphClick;
+    this.onDeepDiveClick = onDeepDiveClick;
     this.splitView = splitView;
 
     // If no graphs are provided, we don't need to change the layout or camera,
@@ -399,7 +407,11 @@ class PixiEngine {
         wandGroup.cursor = "pointer";
         wandGroup.on("pointerdown", (e) => {
           e.stopPropagation();
-          onAutoSolve?.(graphIndex);
+          if (readOnly) {
+            this.onDeepDiveClick?.(graphIndex);
+          } else {
+            onAutoSolve?.(graphIndex);
+          }
         });
         wandGroup.on("pointerover", () => {
           gsap.to(wandGroup.scale, { x: wandScale * 1.15, y: wandScale * 1.15, duration: 0.2 });
@@ -437,6 +449,7 @@ class PixiEngine {
           node.graphics.cursor = "pointer";
           node.graphics.on("pointerdown", (e) => {
             e.stopPropagation();
+            if (readOnly) return;
             if (!this.splitView) {
               this.onNodeClick?.(vertex, graphIndex);
             } else {
@@ -458,6 +471,7 @@ class PixiEngine {
           node.graphics.off("pointerdown");
           node.graphics.on("pointerdown", (e) => {
             e.stopPropagation();
+            if (readOnly) return;
             if (!this.splitView) {
               this.onNodeClick?.(vertex, graphIndex);
             } else {
@@ -584,10 +598,15 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
       optimalRanks = new Map(),
       onAutoSolve,
       hasCutsApplied = false,
+      overrideState,
+      readOnly = false,
+      onDeepDiveRequest,
+      overridePendingCutSet,
     },
     ref
   ) => {
-    const { activeGraph, recentCutGraphs } = useSelector((state: RootState) => state.game);
+    const reduxGameState = useSelector((state: RootState) => state.game);
+    const { activeGraph, recentCutGraphs } = overrideState || reduxGameState;
     const containerRef = useRef<HTMLDivElement>(null);
     const engineRef = useRef<PixiEngine | null>(null);
     const [pendingCutSet, setPendingCutSet] = useState<Vertex[]>([]);
@@ -636,7 +655,9 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
             onAutoSolve?.(graphIndex);
           },
           isExecuting,
-          hasCutsApplied
+          hasCutsApplied,
+          readOnly,
+          onDeepDiveRequest
         );
       });
 
@@ -654,7 +675,7 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
         engineRef.current.resize(width, height);
         engineRef.current.syncState(
           displayGraphs,
-          pendingCutSet,
+          overridePendingCutSet || pendingCutSet,
           splitView,
           selectedGraphIndex ?? null,
           width,
@@ -672,10 +693,12 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
             onAutoSolve?.(graphIndex);
           },
           isExecuting,
-          hasCutsApplied
+          hasCutsApplied,
+          readOnly,
+          onDeepDiveRequest
         );
       }
-    }, [width, height, displayGraphs, pendingCutSet, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, onSelectGraph, onAutoSolve, toggleVertex, isExecuting, hasCutsApplied]);
+    }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, onSelectGraph, onAutoSolve, toggleVertex, isExecuting, hasCutsApplied, readOnly, onDeepDiveRequest]);
 
     useEffect(() => {
       onPendingCutSetChange?.(pendingCutSet);

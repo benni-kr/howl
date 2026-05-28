@@ -93,20 +93,30 @@ body {
   scrollbar-color: var(--border-subtle) transparent;
 }
 
-.sidebar-banked-section::-webkit-scrollbar {
-  width: 6px;
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
 }
 
-.sidebar-banked-section::-webkit-scrollbar-track {
+.sidebar-banked-section::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.sidebar-banked-section::-webkit-scrollbar-track,
+.custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.sidebar-banked-section::-webkit-scrollbar-thumb {
+.sidebar-banked-section::-webkit-scrollbar-thumb,
+.custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: var(--border-subtle);
   border-radius: 10px;
 }
 
-.sidebar-banked-section::-webkit-scrollbar-thumb:hover {
+.sidebar-banked-section::-webkit-scrollbar-thumb:hover,
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: var(--text-muted);
 }
 
