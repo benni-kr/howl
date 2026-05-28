@@ -61,7 +61,7 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode }) => {
   const nIndices = Array.from({ length: MAX_GRID_SIZE }, (_, i) => i + 1);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', minWidth: 0, minHeight: 0 }}>
       <div
         style={{
           flex: 1,
@@ -83,6 +83,19 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode }) => {
             position: 'relative'
           }}
         >
+          {/* Top-Left Empty Corner Cell */}
+          <div
+            style={{
+              gridRow: 1,
+              gridColumn: 1,
+              position: 'sticky',
+              top: 0,
+              left: 0,
+              zIndex: 20,
+              background: 'var(--tile-dark)',
+            }}
+          />
+
           {/* Column Headers (m) */}
           {mIndices.map(m => (
             <div
@@ -93,12 +106,12 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode }) => {
                 position: 'sticky',
                 top: 0,
                 zIndex: 10,
-                background: 'var(--bg-inset)',
+                background: 'var(--tile-dark)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontWeight: 800,
-                color: 'var(--text-main)',
+                color: '#ffffff',
                 fontSize: `${CELL_SIZE * 0.3}px`,
               }}
             >
@@ -112,13 +125,16 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode }) => {
               key={`row-${n}`}
               style={{
                 gridRow: n + 1,
-                gridColumn: n,
-                background: 'var(--bg-inset)',
+                gridColumn: 1,
+                position: 'sticky',
+                left: 0,
+                zIndex: 10,
+                background: 'var(--tile-dark)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontWeight: 800,
-                color: 'var(--text-main)',
+                color: '#ffffff',
                 fontSize: `${CELL_SIZE * 0.3}px`,
               }}
             >
