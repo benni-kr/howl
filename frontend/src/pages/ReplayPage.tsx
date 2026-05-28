@@ -229,9 +229,14 @@ export default function ReplayPage() {
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
             <button className="btn primary" onClick={handleFork}>
-              Fork Run (Take Over)
+              Fork Run
             </button>
-            <button className="btn secondary" onClick={() => navigate(-1)}>Close</button>
+            <button className="btn secondary" onClick={() => navigate(-1)} style={{ width: '36px', height: '36px', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px' }} title="Close">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -326,13 +331,13 @@ export default function ReplayPage() {
       {/* VCR Toolbar */}
       <div style={{ padding: '16px 32px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-card)', display: 'flex', alignItems: 'center', gap: '24px' }}>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="btn secondary" onClick={() => engine.setStep(engine.currentStep - 1)} disabled={engine.currentStep === 0} style={{ padding: '8px 12px' }} title="Previous Step">
+          <button className="btn secondary" onClick={() => engine.setStep(engine.currentStep - 1)} disabled={engine.currentStep === 0} style={{ width: '36px', height: '36px', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px' }} title="Previous Step">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <polygon points="17 19 7 12 17 5 17 19"></polygon>
               <rect x="5" y="5" width="2" height="14"></rect>
             </svg>
           </button>
-          <button className="btn primary" onClick={engine.isPlaying ? engine.pause : engine.play} style={{ width: '60px', padding: '8px 12px', display: 'flex', justifyContent: 'center' }} title={engine.isPlaying ? "Pause" : "Play"}>
+          <button className="btn primary" onClick={engine.isPlaying ? engine.pause : engine.play} style={{ width: '56px', height: '36px', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px' }} title={engine.isPlaying ? "Pause" : "Play"}>
             {engine.isPlaying ? (
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="5" width="4" height="14"></rect>
@@ -344,7 +349,7 @@ export default function ReplayPage() {
               </svg>
             )}
           </button>
-          <button className="btn secondary" onClick={() => engine.setStep(engine.currentStep + 1)} disabled={engine.currentStep === engine.totalSteps} style={{ padding: '8px 12px' }} title="Next Step">
+          <button className="btn secondary" onClick={() => engine.setStep(engine.currentStep + 1)} disabled={engine.currentStep === engine.totalSteps} style={{ width: '36px', height: '36px', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px' }} title="Next Step">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <polygon points="7 19 17 12 7 5 7 19"></polygon>
               <rect x="17" y="5" width="2" height="14"></rect>
@@ -362,7 +367,7 @@ export default function ReplayPage() {
             max={engine.totalSteps}
             value={engine.currentStep}
             onChange={(e) => engine.setStep(parseInt(e.target.value, 10))}
-            style={{ flex: 1, cursor: 'pointer' }}
+            style={{ flex: 1, cursor: 'pointer', accentColor: activeColor }}
           />
         </div>
 
