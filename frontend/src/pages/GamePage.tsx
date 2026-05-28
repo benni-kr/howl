@@ -162,15 +162,22 @@ const GamePage: React.FC = () => {
   // Derived state to only show VictoryModal when game is actually completed
   // and we're not just waiting for an execution to finish
   const [hasSolved, setHasSolved] = useState(false);
+  const [hasReviewedBoard, setHasReviewedBoard] = useState(false);
 
   useEffect(() => {
-    if (isGameWon && !hasSolved && !isExecuting && !isNewGameModalOpen) {
+    if (!isGameWon) {
+      setHasReviewedBoard(false);
+    }
+  }, [isGameWon]);
+
+  useEffect(() => {
+    if (isGameWon && !hasSolved && !hasReviewedBoard && !isExecuting && !isNewGameModalOpen) {
       const timer = setTimeout(() => {
         setHasSolved(true);
       }, 300); // Wait for explosion animations to finish
       return () => clearTimeout(timer);
     }
-  }, [isGameWon, hasSolved, isExecuting, isNewGameModalOpen]);
+  }, [isGameWon, hasSolved, hasReviewedBoard, isExecuting, isNewGameModalOpen]);
 
   // Reset split view if there's only one piece (e.g. new game started)
   useEffect(() => {
@@ -474,6 +481,10 @@ const GamePage: React.FC = () => {
           onPlayAgain={() => {
             setHasSolved(false);
             setIsNewGameModalOpen(true);
+          }}
+          onReviewBoard={() => {
+            setHasReviewedBoard(true);
+            setHasSolved(false);
           }}
         />
       )}

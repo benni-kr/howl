@@ -14,6 +14,7 @@ type VictoryModalProps = {
   palette: Palette;
   alias: string;
   onPlayAgain: () => void;
+  onReviewBoard: () => void;
 };
 
 const DEFAULT_SOLVER = "Anonymous";
@@ -26,6 +27,7 @@ const VictoryModal = ({
   palette,
   alias,
   onPlayAgain,
+  onReviewBoard,
 }: VictoryModalProps) => {
   const [status, setStatus] = useState<
     "idle" | "submitting" | "success" | "error"
@@ -205,7 +207,20 @@ const VictoryModal = ({
           </motion.div>
         ) : null}
 
-        <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'center' }}>
+        <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'center', gap: '12px' }}>
+          <button
+            className="btn secondary"
+            type="button"
+            onClick={onReviewBoard}
+            style={{
+              padding: '12px 24px',
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              borderRadius: '99px',
+            }}
+          >
+            Review Run
+          </button>
           <button
             className="btn primary"
             type="button"
