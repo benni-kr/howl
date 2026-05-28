@@ -1,9 +1,6 @@
-import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import React, { useMemo } from 'react';
 import { MatrixCellData } from '../../api/api';
 import { useAlias } from '../../hooks/useAlias';
-
-
 
 interface MatrixViewProps {
   data: MatrixCellData[];
@@ -13,120 +10,15 @@ interface MatrixViewProps {
 
 const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode }) => {
   const { alias } = useAlias();
-  const parentRef = useRef<HTMLDivElement>(null);
-
-  const [zoomLevel, setZoomLevel] = useState<number>(1);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
-
-  const BASE_CELL_SIZE = 48;
-  const CELL_GAP = 2;
-  const currentCellSize = Math.max(16, Math.min(BASE_CELL_SIZE * zoomLevel, 120));
 
   // Create a lookup map for fast rendering
   const dataMap = useMemo(() => {
     const map = new Map<string, MatrixCellData>();
     data.forEach(cell => {
-      // Internal state uses 1-indexed for visual m/n?
-      // Wait, in HOWL grids are m, n. The inputs are 1 to 100.
       map.set(`${cell.m}-${cell.n}`, cell);
     });
     return map;
   }, [data]);
-
-  const rowVirtualizer = useVirtualizer({
-    count: 101, // 0 is the axis
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => currentCellSize + CELL_GAP,
-    overscan: 5,
-  });
-
-  const columnVirtualizer = useVirtualizer({
-    horizontal: true,
-    count: 101, // 0 is the axis
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => currentCellSize + CELL_GAP,
-    overscan: 5,
-  });
-
-  // Panning logic
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (!parentRef.current) return;
-    setIsDragging(true);
-    setDragStart({
-      x: e.clientX,
-      y: e.clientY,
-      scrollLeft: parentRef.current.scrollLeft,
-      scrollTop: parentRef.current.scrollTop,
-    });
-    document.body.style.userSelect = 'none'; // Prevent text selection while dragging
-  }, []);
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging || !parentRef.current) return;
-    const dx = e.clientX - dragStart.x;
-    const dy = e.clientY - dragStart.y;
-    parentRef.current.scrollLeft = dragStart.scrollLeft - dx;
-    parentRef.current.scrollTop = dragStart.scrollTop - dy;
-  }, [isDragging, dragStart]);
-
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-    document.body.style.userSelect = '';
-  }, []);
-
-  useEffect(() => {
-    if (isDragging) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-    } else {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    }
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDragging, handleMouseMove, handleMouseUp]);
-
-  // Zoom logic
-  const handleWheel = useCallback((e: WheelEvent) => {
-    if (!parentRef.current) return;
-    e.preventDefault(); // Prevent native scroll
-
-    // Zoom around cursor
-    const rect = parentRef.current.getBoundingClientRect();
-    const cursorX = e.clientX - rect.left;
-    const cursorY = e.clientY - rect.top;
-
-    const oldScrollLeft = parentRef.current.scrollLeft;
-    const oldScrollTop = parentRef.current.scrollTop;
-    const oldCellSize = currentCellSize;
-
-    // Calculate new zoom
-    const zoomDelta = e.deltaY * -0.001;
-    let newZoom = zoomLevel + zoomDelta;
-    newZoom = Math.max(0.3, Math.min(newZoom, 3)); // Clamp zoom
-    setZoomLevel(newZoom);
-
-    // Adjust scroll to keep cursor anchored (will be applied in next effect)
-    requestAnimationFrame(() => {
-      if (!parentRef.current) return;
-      const newCellSize = Math.max(16, Math.min(BASE_CELL_SIZE * newZoom, 120));
-      const scale = newCellSize / oldCellSize;
-
-      parentRef.current.scrollLeft = (oldScrollLeft + cursorX) * scale - cursorX;
-      parentRef.current.scrollTop = (oldScrollTop + cursorY) * scale - cursorY;
-    });
-  }, [zoomLevel, currentCellSize]);
-
-  useEffect(() => {
-    const el = parentRef.current;
-    if (el) {
-      el.addEventListener('wheel', handleWheel, { passive: false });
-      return () => el.removeEventListener('wheel', handleWheel);
-    }
-  }, [handleWheel]);
 
   // Utility to determine cell styling
   const getCellContent = (m: number, n: number) => {
@@ -153,95 +45,125 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode }) => {
     } else if (mode === 'density') {
       const density = cellData.min_rank / (m * n);
       content = density.toFixed(2);
-      // Heatmap logic
       bgColor = 'var(--tile-dark)';
-      opacity = Math.max(0.2, Math.min(1, density * 2)); // Adjust multiplier as needed
+      opacity = Math.max(0.2, Math.min(1, density * 2));
       color = '#fff';
     }
 
     return { content, bgColor, color, border, opacity };
   };
 
+  const MAX_GRID_SIZE = 100;
+  const CELL_SIZE = 40;
+
+  // Generate arrays for mapping
+  const mIndices = Array.from({ length: MAX_GRID_SIZE }, (_, i) => i + 1);
+  const nIndices = Array.from({ length: MAX_GRID_SIZE }, (_, i) => i + 1);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
-      {/* Virtualized Container */}
       <div
-        ref={parentRef}
-        onMouseDown={handleMouseDown}
         style={{
           flex: 1,
           overflow: 'auto',
           background: 'var(--bg-inset)',
-          cursor: isDragging ? 'grabbing' : 'grab',
-          // hide scrollbars
           scrollbarWidth: 'none',
           msOverflowStyle: 'none',
         }}
-        className="hide-scrollbars" // Ensure we have css to hide webkit scrollbars
+        className="hide-scrollbars"
       >
         <div
           style={{
-            height: `${rowVirtualizer.getTotalSize()}px`,
-            width: `${columnVirtualizer.getTotalSize()}px`,
-            position: 'relative',
+            display: 'grid',
+            // We use grid columns 1 through MAX_GRID_SIZE + 1
+            gridTemplateColumns: `repeat(${MAX_GRID_SIZE + 1}, ${CELL_SIZE}px)`,
+            gridAutoRows: `${CELL_SIZE}px`,
+            gap: '2px',
+            padding: '16px',
+            position: 'relative'
           }}
         >
-          {rowVirtualizer.getVirtualItems().map((virtualRow) => (
-            <React.Fragment key={virtualRow.key}>
-              {columnVirtualizer.getVirtualItems().map((virtualColumn) => {
-                const m = virtualColumn.index; // 0 to 100
-                const n = virtualRow.index; // 0 to 100
-
-                // The 0,0 cell is empty
-                if (m === 0 && n === 0) return null;
-
-                const isAxis = m === 0 || n === 0;
-
-                // Only render where m >= n, unless it's an axis
-                if (!isAxis && m < n) return null;
-
-                const cellRender = isAxis ? null : getCellContent(m, n);
-
-                return (
-                  <div
-                    key={`${virtualRow.index}-${virtualColumn.index}`}
-                    onClick={() => {
-                      if (cellRender) onCellClick(m, n);
-                    }}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: `${currentCellSize}px`,
-                      height: `${currentCellSize}px`,
-                      transform: `translateX(${virtualColumn.start}px) translateY(${virtualRow.start}px)`,
-                      background: isAxis ? 'var(--bg-main)' : (cellRender ? cellRender.bgColor : 'rgba(0,0,0,0.05)'),
-                      border: isAxis ? 'none' : (cellRender ? cellRender.border : '1px dashed var(--border-subtle)'),
-                      borderRadius: '4px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: `${currentCellSize * 0.3}px`,
-                      fontWeight: isAxis ? 800 : 600,
-                      color: isAxis ? 'var(--text-main)' : (cellRender ? cellRender.color : 'transparent'),
-                      opacity: isAxis ? 1 : (cellRender ? cellRender.opacity : 0.5),
-                      boxSizing: 'border-box',
-                      cursor: (cellRender && !isAxis) ? 'pointer' : 'default',
-                      transition: 'background 0.2s, color 0.2s, opacity 0.2s',
-                      zIndex: isAxis ? 10 : 1, // Keep axis slightly above
-                    }}
-                  >
-                    {isAxis ? (m === 0 ? n : m) : (cellRender && currentCellSize > 20 ? cellRender.content : null)}
-
-                    {/* Tooltip hint on hover (simple native title) */}
-                    {cellRender && !isAxis && (
-                      <div title={`Grid: ${m}x${n}\nRank: ${dataMap.get(m + '-' + n)?.min_rank}\nSolver: ${dataMap.get(m + '-' + n)?.solver_name}`} style={{ position: 'absolute', width: '100%', height: '100%' }} />
-                    )}
-                  </div>
-                );
-              })}
-            </React.Fragment>
+          {/* Column Headers (m) */}
+          {mIndices.map(m => (
+            <div
+              key={`col-${m}`}
+              style={{
+                gridRow: 1,
+                gridColumn: m + 1,
+                position: 'sticky',
+                top: 0,
+                zIndex: 10,
+                background: 'var(--bg-inset)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 800,
+                color: 'var(--text-main)',
+                fontSize: `${CELL_SIZE * 0.3}px`,
+              }}
+            >
+              {m}
+            </div>
           ))}
+
+          {/* Row Headers (n) */}
+          {nIndices.map(n => (
+            <div
+              key={`row-${n}`}
+              style={{
+                gridRow: n + 1,
+                gridColumn: n,
+                background: 'var(--bg-inset)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 800,
+                color: 'var(--text-main)',
+                fontSize: `${CELL_SIZE * 0.3}px`,
+              }}
+            >
+              {n}
+            </div>
+          ))}
+
+          {/* Data Cells (m >= n) */}
+          {nIndices.map(n => 
+            mIndices.map(m => {
+              if (m < n) return null; // Staircase logic
+
+              const cellRender = getCellContent(m, n);
+              const cellData = dataMap.get(`${m}-${n}`);
+
+              return (
+                <div
+                  key={`cell-${m}-${n}`}
+                  onClick={() => {
+                    if (cellRender) onCellClick(m, n);
+                  }}
+                  title={cellRender ? `Grid: ${m}x${n}\nRank: ${cellData?.min_rank}\nSolver: ${cellData?.solver_name}` : undefined}
+                  style={{
+                    gridRow: n + 1,
+                    gridColumn: m + 1,
+                    background: cellRender ? cellRender.bgColor : 'rgba(0,0,0,0.05)',
+                    border: cellRender ? cellRender.border : '1px dashed var(--border-subtle)',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: `${CELL_SIZE * 0.3}px`,
+                    fontWeight: 600,
+                    color: cellRender ? cellRender.color : 'transparent',
+                    opacity: cellRender ? cellRender.opacity : 0.5,
+                    boxSizing: 'border-box',
+                    cursor: cellRender ? 'pointer' : 'default',
+                    transition: 'background 0.2s, color 0.2s, opacity 0.2s',
+                  }}
+                >
+                  {cellRender ? cellRender.content : null}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
       <style>{`

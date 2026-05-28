@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "@reduxjs/toolkit": "^1.9.7",
-    "@tanstack/react-virtual": "^3.13.25",
     "canvas-confetti": "^1.9.4",
     "framer-motion": "^12.40.0",
     "gsap": "^3.15.0",
