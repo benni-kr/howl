@@ -522,6 +522,8 @@ class PixiEngine {
             onComplete: () => {
               this.nodeContainer.removeChild(node.graphics);
               this.glowContainer.removeChild(node.glowGraphics);
+              gsap.killTweensOf(node.graphics);
+              gsap.killTweensOf(node.glowGraphics);
               node.graphics.destroy();
               node.glowGraphics.destroy();
             },
@@ -541,6 +543,8 @@ class PixiEngine {
               this.spawnExplosion(node.graphics.x, node.graphics.y, shardColors);
               this.nodeContainer.removeChild(node.graphics);
               this.glowContainer.removeChild(node.glowGraphics);
+              gsap.killTweensOf(node.graphics);
+              gsap.killTweensOf(node.glowGraphics);
               node.graphics.destroy();
               node.glowGraphics.destroy();
               this._activeExplosions = Math.max(0, this._activeExplosions - 1);
@@ -561,6 +565,8 @@ class PixiEngine {
               this.spawnExplosion(node.graphics.x, node.graphics.y, shardColors);
               this.nodeContainer.removeChild(node.graphics);
               this.glowContainer.removeChild(node.glowGraphics);
+              gsap.killTweensOf(node.graphics);
+              gsap.killTweensOf(node.glowGraphics);
               node.graphics.destroy();
               node.glowGraphics.destroy();
               this._activeExplosions = Math.max(0, this._activeExplosions - 1);
@@ -585,6 +591,10 @@ class PixiEngine {
 
   destroy() {
     this.isDestroyed = true;
+    for (const [, node] of this.nodes.entries()) {
+      gsap.killTweensOf(node.graphics);
+      gsap.killTweensOf(node.glowGraphics);
+    }
     try {
       this.app.destroy(true, true);
     } catch (e) {
