@@ -163,6 +163,13 @@ const GamePage: React.FC = () => {
   // and we're not just waiting for an execution to finish
   const [hasSolved, setHasSolved] = useState(false);
   const [hasReviewedBoard, setHasReviewedBoard] = useState(false);
+  const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
+
+  useEffect(() => {
+    if (hasReviewedBoard) {
+      setCurrentReviewIndex(history.length - 1);
+    }
+  }, [hasReviewedBoard, history.length]);
 
   useEffect(() => {
     if (!isGameWon) {
