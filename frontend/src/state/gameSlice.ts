@@ -405,13 +405,19 @@ const gameSlice = createSlice({
         }
       }
 
-      if (!state.activeGraph) {
+        if (!state.activeGraph) {
         if (state.recentCutGraphs.length > 0) {
           state.activeGraph = state.recentCutGraphs.shift() || null;
         } else if (state.bankedGraphs.length > 0) {
           state.activeGraph = state.bankedGraphs.pop() || null;
         }
       }
+    },
+    /**
+     * Completely overwrite the game state. Used for forking a replay.
+     */
+    forkGame(_state, action: PayloadAction<GameState>) {
+      return action.payload;
     },
   },
 });
@@ -427,6 +433,7 @@ export const {
   pullFromBankIfNeeded,
   autoSolveGraph,
   autoSolveMultipleGraphs,
+  forkGame,
 } = gameSlice.actions;
 
 const isSolvedGraph = (graph: Graph | null): boolean => {
