@@ -7,7 +7,9 @@ import PixiVisualizer, {
   PixiVisualizerHandle,
 } from "../components/game-page/PixiVisualizer";
 import VictoryModal from "../components/game-page/VictoryModal";
-import { executeCut, fetchTopScore, checkShapes, submitScore } from "../api/api";
+import { fetchTopScore, submitScore } from "../api/api";
+import { executeCutLocal } from "../utils/graphUtils";
+import { useShapeCache } from "../hooks/useShapeCache";
 import {
   applyCutResult,
   removeSolvedSubgraphs,
@@ -85,6 +87,7 @@ const GamePage: React.FC = () => {
   const [resetToken, setResetToken] = useState(0);
 
   const [optimalRanks, setOptimalRanks] = useState<Map<string, { best_rank: number, is_optimal: boolean }>>(new Map());
+  const { checkShapesCached } = useShapeCache();
 
   // Poll for optimal ranks when graphs change
   useEffect(() => {
@@ -96,7 +99,7 @@ const GamePage: React.FC = () => {
     ];
 
     if (graphsToCheck.length > 0) {
-      checkShapes(graphsToCheck).then((results) => {
+      checkShapesCached(graphsToCheck).then((results) => {
         if (!isMounted) return;
         console.log("CheckShapes API response:", results);
         const newRanks = new Map<string, { best_rank: number, is_optimal: boolean }>();
@@ -183,7 +186,7 @@ const GamePage: React.FC = () => {
     setIsExecuting(true);
     setErrorMessage(null);
     try {
-      const subgraphs = await executeCut(activeGraph, pendingCutSet);
+      const subgraphs = executeCutLocal(activeGraph, pendingCutSet);
 
       // ============================================================================
       // ANIMATION ORCHESTRATION PHASES
