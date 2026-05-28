@@ -298,8 +298,15 @@ from sqlalchemy import func, case
 # ── Helpers: canonical grid dimensions ──────────────────────────────────
 # A 3×5 grid and a 5×3 grid are the same shape.  We canonicalize so that
 # the larger dimension is always first:  canonical_m >= canonical_n.
-_canonical_m = func.max(GridSolution.m, GridSolution.n).label("canonical_m")
-_canonical_n = func.min(GridSolution.m, GridSolution.n).label("canonical_n")
+_canonical_m = case(
+    (GridSolution.m >= GridSolution.n, GridSolution.m),
+    else_=GridSolution.n
+).label("canonical_m")
+
+_canonical_n = case(
+    (GridSolution.m >= GridSolution.n, GridSolution.n),
+    else_=GridSolution.m
+).label("canonical_n")
 
 
 @app.get("/api/leaderboard/matrix")
@@ -309,8 +316,15 @@ def get_matrix_leaderboard(token: str = Depends(verify_token), db: Session = Dep
     Groups (m, n) and (n, m) as the same canonical grid and returns
     a flat list of {m, n, min_rank, solver_name, is_optimal}.
     """
-    canonical_m = func.max(GridSolution.m, GridSolution.n).label("canonical_m")
-    canonical_n = func.min(GridSolution.m, GridSolution.n).label("canonical_n")
+    canonical_m = case(
+        (GridSolution.m >= GridSolution.n, GridSolution.m),
+        else_=GridSolution.n
+    ).label("canonical_m")
+
+    canonical_n = case(
+        (GridSolution.m >= GridSolution.n, GridSolution.n),
+        else_=GridSolution.m
+    ).label("canonical_n")
 
     # Subquery: best rank per canonical grid
     min_ranks = (
@@ -331,8 +345,8 @@ def get_matrix_leaderboard(token: str = Depends(verify_token), db: Session = Dep
         db.query(GridSolution)
         .join(
             min_ranks,
-            (func.max(GridSolution.m, GridSolution.n) == min_ranks.c.canonical_m)
-            & (func.min(GridSolution.m, GridSolution.n) == min_ranks.c.canonical_n)
+            (case((GridSolution.m >= GridSolution.n, GridSolution.m), else_=GridSolution.n) == min_ranks.c.canonical_m)
+            & (case((GridSolution.m >= GridSolution.n, GridSolution.n), else_=GridSolution.m) == min_ranks.c.canonical_n)
             & (GridSolution.rank == min_ranks.c.min_rank),
         )
         .order_by(GridSolution.created_at.asc())
@@ -362,8 +376,15 @@ def get_top_solvers(token: str = Depends(verify_token), square_only: bool = Fals
     they hold.  All first places count, even ties.
     Groups (m, n) and (n, m) as the same canonical grid.
     """
-    canonical_m = func.max(GridSolution.m, GridSolution.n).label("canonical_m")
-    canonical_n = func.min(GridSolution.m, GridSolution.n).label("canonical_n")
+    canonical_m = case(
+        (GridSolution.m >= GridSolution.n, GridSolution.m),
+        else_=GridSolution.n
+    ).label("canonical_m")
+
+    canonical_n = case(
+        (GridSolution.m >= GridSolution.n, GridSolution.n),
+        else_=GridSolution.m
+    ).label("canonical_n")
 
     query = db.query(
         canonical_m,
@@ -379,8 +400,8 @@ def get_top_solvers(token: str = Depends(verify_token), square_only: bool = Fals
         db.query(GridSolution.solver_name)
         .join(
             min_ranks,
-            (func.max(GridSolution.m, GridSolution.n) == min_ranks.c.canonical_m)
-            & (func.min(GridSolution.m, GridSolution.n) == min_ranks.c.canonical_n)
+            (case((GridSolution.m >= GridSolution.n, GridSolution.m), else_=GridSolution.n) == min_ranks.c.canonical_m)
+            & (case((GridSolution.m >= GridSolution.n, GridSolution.n), else_=GridSolution.m) == min_ranks.c.canonical_n)
             & (GridSolution.rank == min_ranks.c.min_rank),
         )
         .all()
