@@ -3,7 +3,7 @@ import React from "react";
 const DocsPage: React.FC = () => {
   return (
     <div style={{ padding: '40px', maxWidth: '800px', margin: '0 auto', width: '100%', lineHeight: '1.6' }}>
-      <h1 style={{ fontSize: '2.5rem', marginBottom: '24px' }}>HOWL: Game Rules</h1>
+      {/* Title removed, now in TopNavBar */}
       
       <p style={{ fontSize: '1.2rem', color: 'var(--text-muted)', marginBottom: '32px' }}>
         HOWL is a mathematical puzzle game based on the cutting of rectangular grids into smaller squares.

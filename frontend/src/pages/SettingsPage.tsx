@@ -10,12 +10,7 @@ const SettingsPage: React.FC = () => {
 
   return (
     <div style={{ padding: '40px', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
-        <h2 className="title" style={{ fontSize: "1.4rem", margin: 0 }}>
-          Settings
-        </h2>
-      </div>
-
+      {/* Title removed, now in TopNavBar */}
       <div className="settings-section">
         <h3 className="section-title" style={{ marginBottom: "12px" }}>Appearance</h3>
         <div style={{ display: "flex", gap: "8px" }}>

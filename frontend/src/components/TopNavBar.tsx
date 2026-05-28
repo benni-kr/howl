@@ -17,11 +17,30 @@ const TopNavBar: React.FC<TopNavBarProps> = ({
   return (
     <div className="top-nav-bar">
       
-        <div className={`top-nav-left ${isGameRoute ? "desktop-hidden" : ""}`} style={{ display: 'flex', alignItems: 'center' }}>
+        <div className={`top-nav-left ${isGameRoute ? "desktop-hidden" : ""}`} style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
           <Link to="/" className="logo-text" style={{ display: 'flex', alignItems: 'center', gap: '12px', textDecoration: 'none', color: 'var(--logo-color)' }}>
             <WolfLogo size={36} />
             <span style={{ fontFamily: '"Permanent Marker", cursive', fontSize: '2.4rem', letterSpacing: '0.12rem', textTransform: 'uppercase', lineHeight: 1 }}>HOWL</span>
           </Link>
+          
+          {!isGameRoute && (
+            <div style={{
+              fontSize: '1.2rem',
+              fontWeight: 700,
+              color: 'var(--text-main)',
+              borderLeft: '2px solid var(--border-subtle)',
+              paddingLeft: '24px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em'
+            }}>
+              {location.pathname.startsWith('/leaderboard') && "Leaderboards"}
+              {location.pathname.startsWith('/settings') && "Settings"}
+              {location.pathname.startsWith('/docs') && "Documentation"}
+            </div>
+          )}
         </div>
 
       <div className="top-nav-right" style={{ display: 'flex', alignItems: 'center', gap: '16px', marginLeft: 'auto' }}>
