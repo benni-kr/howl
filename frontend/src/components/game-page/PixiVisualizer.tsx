@@ -127,7 +127,7 @@ class PixiEngine {
     const blurFilter = new PIXI.BlurFilter();
     blurFilter.blur = 12;
     blurFilter.quality = 4;
-    blurFilter.padding = 24;
+    blurFilter.padding = 100;
     this.glowContainer.filters = [blurFilter];
 
     this.stage.addChild(this.glowContainer);
