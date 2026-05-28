@@ -83,6 +83,7 @@ class ShapeResult(BaseModel):
     is_optimal: Optional[bool] = None
     best_cut_sequence: Optional[list] = None
     discovered_by: Optional[str] = None
+    last_updated: Optional[Any] = None
 
 
 class CheckShapesResponse(BaseModel):

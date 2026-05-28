@@ -28,5 +28,16 @@ def run_migration():
         except Exception as e:
             print(f"Migration for discovered_by skipped: {e}")
 
+        try:
+            print(f"Adding last_updated column as TIMESTAMP...")
+            if is_postgres:
+                conn.execute(text(f"ALTER TABLE subgraph_dictionary ADD COLUMN last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"))
+            else:
+                conn.execute(text(f"ALTER TABLE subgraph_dictionary ADD COLUMN last_updated TIMESTAMP;"))
+                conn.execute(text(f"UPDATE subgraph_dictionary SET last_updated = CURRENT_TIMESTAMP;"))
+            print("last_updated column added.")
+        except Exception as e:
+            print(f"Migration for last_updated skipped: {e}")
+
 if __name__ == "__main__":
     run_migration()

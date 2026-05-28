@@ -479,6 +479,7 @@ def check_shapes(payload: CheckShapesRequest, token: str = Depends(verify_token)
                     is_optimal=entry.is_optimal,
                     best_cut_sequence=entry.best_cut_sequence,
                     discovered_by=entry.discovered_by,
+                    last_updated=entry.last_updated,
                 )
             )
         else:

@@ -34,3 +34,4 @@ class SubgraphDictionary(Base):
     is_optimal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     best_cut_sequence: Mapped[object] = mapped_column(JSON, nullable=True)
     discovered_by: Mapped[str] = mapped_column(String, nullable=True)
+    last_updated = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=True)

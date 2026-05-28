@@ -8,7 +8,7 @@ import { RootState } from "../state/store";
 import { useReplayEngine } from "../hooks/useReplayEngine";
 import { checkShapes } from "../api/api";
 import { selectActivePalette } from "../state/settingsSlice";
-import { DynamicEliminationTree } from "../components/game-page/DynamicEliminationTree";
+import { DynamicEliminationTree } from "../components/replay-page/DynamicEliminationTree";
 
 const ActionLog: React.FC<{ sequence: any[], currentStep: number, activeColor: string }> = ({ sequence, currentStep, activeColor }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -29,42 +29,42 @@ const ActionLog: React.FC<{ sequence: any[], currentStep: number, activeColor: s
       </div>
       <div style={{ padding: '8px 16px 16px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {sequence.length === 0 && <div className="muted">No actions recorded.</div>}
-      {sequence.map((action, idx) => (
-        <div 
-          key={idx} 
-          className={idx === currentStep ? 'active-step' : ''}
-          style={{
-            padding: '12px',
-            borderRadius: '8px',
-            background: idx < currentStep ? 'var(--bg-card)' : (idx === currentStep ? activeColor : 'var(--bg-inset)'),
-            border: `1px solid ${idx === currentStep ? 'var(--border-strong)' : 'var(--border-subtle)'}`,
-            opacity: idx <= currentStep ? 1 : 0.5,
-            transition: 'all 0.2s ease',
-          }}
-        >
-          <div style={{ fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', color: idx === currentStep ? '#000' : 'inherit' }}>
-            <span>Step {idx + 1}</span>
-            <span style={{ 
-              color: idx === currentStep ? '#000' : (action.type === 'cut' ? 'var(--text-main)' : 'var(--text-highlight)'),
-              fontSize: '0.8em',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em'
-            }}>
-              {action.type}
-            </span>
+        {sequence.map((action, idx) => (
+          <div
+            key={idx}
+            className={idx === currentStep ? 'active-step' : ''}
+            style={{
+              padding: '12px',
+              borderRadius: '8px',
+              background: idx < currentStep ? 'var(--bg-card)' : (idx === currentStep ? activeColor : 'var(--bg-inset)'),
+              border: `1px solid ${idx === currentStep ? 'var(--border-strong)' : 'var(--border-subtle)'}`,
+              opacity: idx <= currentStep ? 1 : 0.5,
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <div style={{ fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', color: idx === currentStep ? '#000' : 'inherit' }}>
+              <span>Step {idx + 1}</span>
+              <span style={{
+                color: idx === currentStep ? '#000' : (action.type === 'cut' ? 'var(--text-main)' : 'var(--text-highlight)'),
+                fontSize: '0.8em',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em'
+              }}>
+                {action.type}
+              </span>
+            </div>
+            <div style={{ fontSize: '0.9em', color: idx === currentStep ? 'rgba(0,0,0,0.7)' : 'var(--text-muted)', marginTop: '4px' }}>
+              {action.type === 'vaporize'
+                ? `Optimal Rank: ${action.optimal_rank}`
+                : `Vertices: ${action.vertices.length}`}
+            </div>
           </div>
-          <div style={{ fontSize: '0.9em', color: idx === currentStep ? 'rgba(0,0,0,0.7)' : 'var(--text-muted)', marginTop: '4px' }}>
-            {action.type === 'vaporize' 
-              ? `Optimal Rank: ${action.optimal_rank}` 
-              : `Vertices: ${action.vertices.length}`}
+        ))}
+        {sequence.length > 0 && currentStep === sequence.length && (
+          <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-highlight)', fontWeight: 'bold' }}>
+            ✓ Solved
           </div>
-        </div>
-      ))}
-      {sequence.length > 0 && currentStep === sequence.length && (
-        <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-highlight)', fontWeight: 'bold' }}>
-          ✓ Solved
-        </div>
-      )}
+        )}
       </div>
     </div>
   );
@@ -98,7 +98,7 @@ export default function ReplayPage() {
   const settings = useSelector((state: RootState) => state.settings);
   const activePalette = selectActivePalette({ settings });
   const activeColor = '#' + activePalette.tileA.toString(16).padStart(6, '0');
-  
+
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const { width, height } = useStageSize(canvasContainerRef);
 
@@ -182,7 +182,7 @@ export default function ReplayPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 32px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-card)', flexShrink: 0 }}>
         <div>
           <h2 style={{ margin: '0 0 4px 0' }}>Replay: {mNum} &times; {nNum}</h2>
-          <div className="muted">Solver: <strong style={{ color: 'var(--text-main)'}}>{solverName}</strong> &bull; Rank: <strong>{rank}</strong></div>
+          <div className="muted">Solver: <strong style={{ color: 'var(--text-main)' }}>{solverName}</strong> &bull; Rank: <strong>{rank}</strong></div>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
           {engine.isDeepDiving && (
@@ -202,11 +202,11 @@ export default function ReplayPage() {
         {/* Pane 1: Canvas */}
         <div ref={canvasContainerRef} style={{ flex: 2, position: 'relative', borderRight: '1px solid var(--border-subtle)', background: 'var(--bg-main)', overflow: 'hidden' }}>
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
-            <PixiVisualizer 
+            <PixiVisualizer
               width={width}
               height={height}
               splitView={false}
-              onPendingCutSetChange={() => {}}
+              onPendingCutSetChange={() => { }}
               resetToken={0}
               bankedGraphs={engine.boardState.bankedGraphs}
               settings={settings}
@@ -232,7 +232,7 @@ export default function ReplayPage() {
               <div className="muted" style={{ fontSize: '0.9em', lineHeight: '1.5', marginBottom: '16px', position: 'sticky', left: '16px' }}>
                 Tree depth: <strong>{engine.boardState.maxRank}</strong>
               </div>
-              
+
               <DynamicEliminationTree rootNode={engine.boardState.treeRoot} />
             </div>
           </div>
@@ -257,21 +257,21 @@ export default function ReplayPage() {
           <span className="muted" style={{ fontFamily: 'monospace' }}>
             {String(engine.currentStep).padStart(2, '0')} / {String(engine.totalSteps).padStart(2, '0')}
           </span>
-          <input 
-            type="range" 
-            min={0} 
-            max={engine.totalSteps} 
+          <input
+            type="range"
+            min={0}
+            max={engine.totalSteps}
             value={engine.currentStep}
             onChange={(e) => engine.setStep(parseInt(e.target.value, 10))}
             style={{ flex: 1, cursor: 'pointer' }}
           />
         </div>
-        
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span className="muted" style={{ fontSize: '0.9em' }}>Speed:</span>
-          <select 
-            className="input" 
-            value={engine.playbackSpeed} 
+          <select
+            className="input"
+            value={engine.playbackSpeed}
             onChange={(e) => engine.setPlaybackSpeed(parseInt(e.target.value, 10))}
             style={{ padding: '4px 8px' }}
           >
