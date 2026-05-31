@@ -77,23 +77,32 @@ const ActionLog: React.FC<{ sequence: any[], currentStep: number, activeColor: s
   );
 };
 
-const useStageSize = (containerRef: React.RefObject<HTMLDivElement | null>) => {
-  const [size, setSize] = useState({ width: 800, height: 600 });
+const useStageSize = (_containerRef: React.RefObject<HTMLDivElement | null>) => {
+  const [size, setSize] = useState(() => {
+    const isMobile = window.innerWidth <= 1024;
+    const w = isMobile
+      ? Math.floor(window.innerWidth)
+      : Math.max(300, Math.min(1000, Math.floor(window.innerWidth * 0.6)));
+    const h = isMobile
+      ? w
+      : Math.max(300, Math.min(720, window.innerHeight - 230));
+    return { width: w, height: h };
+  });
 
   useEffect(() => {
-    if (!containerRef.current) return;
-    const observer = new ResizeObserver((entries) => {
-      for (let entry of entries) {
-        // Debounce or just set directly
-        setSize({
-          width: Math.floor(entry.contentRect.width),
-          height: Math.floor(entry.contentRect.height)
-        });
-      }
-    });
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, [containerRef]);
+    const update = () => {
+      const isMobile = window.innerWidth <= 1024;
+      const w = isMobile
+        ? Math.floor(window.innerWidth)
+        : Math.max(300, Math.min(1000, Math.floor(window.innerWidth * 0.6)));
+      const h = isMobile
+        ? w
+        : Math.max(300, Math.min(720, window.innerHeight - 230));
+      setSize({ width: w, height: h });
+    };
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
 
   return size;
 };
@@ -226,7 +235,7 @@ export default function ReplayPage() {
   const overridePendingCutSet = pendingAction?.vertices || [];
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', overflow: 'hidden' }}>
+    <div className="replay-page-root">
       {/* Header */}
       <div style={{ display: 'flex', flexDirection: 'column', padding: '16px 32px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-card)', flexShrink: 0 }}>
         <div className="replay-header">
