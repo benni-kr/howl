@@ -289,6 +289,7 @@ def submit_solution(payload: SolutionCreate, token: str = Depends(verify_token),
     if payload.achieved_rank < existing.rank:
         existing.rank = payload.achieved_rank
         existing.cut_sequence = payload.cut_sequence
+        existing.created_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(existing)
         return SubmitResponse(updated=True, solution=existing)
