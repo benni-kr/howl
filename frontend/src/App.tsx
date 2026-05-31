@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { RootState } from "./state/store";
 import { selectActivePalette } from "./state/settingsSlice";
+import rawWolfLogo from "./assets/wolf-logo.svg?raw";
 
 import Layout from "./components/Layout";
 import GamePage from "./pages/GamePage";
@@ -43,7 +44,22 @@ const App: React.FC = () => {
     
     // Logo color: Tile A in dark mode, Tile B in light mode
     const logoColor = settings.mode === 'light' ? activePalette.tileB : activePalette.tileA;
-    root.style.setProperty('--logo-color', toHex(logoColor));
+    const logoHex = toHex(logoColor);
+    root.style.setProperty('--logo-color', logoHex);
+
+    // Dynamically update the favicon
+    const coloredSvg = rawWolfLogo.replace(/#000000/g, logoHex);
+    const encodedSvg = encodeURIComponent(coloredSvg);
+    const dataUrl = `data:image/svg+xml;utf8,${encodedSvg}`;
+    
+    let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      link.type = 'image/svg+xml';
+      document.head.appendChild(link);
+    }
+    link.href = dataUrl;
   }, [activePalette, settings.mode]);
 
   return (
