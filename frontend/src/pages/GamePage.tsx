@@ -148,8 +148,8 @@ const GamePage: React.FC = () => {
 
   const [topScore, setTopScore] = useState<{ rank: number; solver_name: string } | null>(null);
 
-  const hasWand = Array.from(optimalRanks.values()).some(opt => opt.best_rank !== null);
-  const hasMicroscope = Array.from(optimalRanks.values()).some(opt => opt.is_optimal);
+  const hasWand = cutsApplied.length > 0 && Array.from(optimalRanks.values()).some(opt => opt.best_rank !== null);
+  const hasMicroscope = cutsApplied.length > 0 && Array.from(optimalRanks.values()).some(opt => opt.is_optimal);
 
   useEffect(() => {
     if (gridSize) {
@@ -445,6 +445,12 @@ const GamePage: React.FC = () => {
                 className="btn secondary large"
                 disabled={pendingCutSet.length === 0 || (activeGraph && pendingCutSet.length === activeGraph.vertices.length) || isExecuting}
                 onClick={handleCut}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  opacity: pendingCutSet.length > 0 ? 1 : 0.5,
+                  minWidth: '120px',
+                  justifyContent: 'center'
+                }}
               >
                 Cut
               </button>

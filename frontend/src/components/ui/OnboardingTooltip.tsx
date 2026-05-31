@@ -40,18 +40,22 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({
     if (position === 'fixed-canvas') {
       return {
         position: 'absolute',
-        top: '20px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 50,
+        top: '60px',
+        left: '0',
+        right: '0',
+        margin: '0 auto',
+        zIndex: 999,
+        width: 'max-content',
+        maxWidth: '220px'
       };
     }
     
     // Default positioning for wrapped elements
     const base: React.CSSProperties = {
       position: 'absolute',
-      zIndex: 50,
-      minWidth: '220px',
+      zIndex: 999,
+      width: 'max-content',
+      maxWidth: '220px',
     };
 
     switch (position) {
@@ -69,15 +73,11 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({
   };
 
   return (
-    <div style={{ position: position === 'fixed-canvas' ? 'static' : 'relative', display: 'inline-block' }}>
-      {/* Pulsing glow if wrapping an element */}
-      {position !== 'fixed-canvas' && (
-        <motion.div
-          animate={{ boxShadow: ['0 0 0px var(--tile-selected)', '0 0 15px var(--tile-selected)', '0 0 0px var(--tile-selected)'] }}
-          transition={{ repeat: Infinity, duration: 2 }}
-          style={{ position: 'absolute', inset: -4, borderRadius: '8px', pointerEvents: 'none' }}
-        />
-      )}
+    <div style={
+      position === 'fixed-canvas' 
+        ? { position: 'absolute', top: 0, left: 0, width: '100%', height: 0, pointerEvents: 'none', zIndex: 999 } 
+        : { position: 'relative', display: 'inline-block' }
+    }>
       
       {children}
       
@@ -94,6 +94,8 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({
           display: 'flex',
           flexDirection: 'column',
           gap: '12px',
+          boxSizing: 'border-box',
+          pointerEvents: 'auto'
         }}
       >
         <div style={{ color: 'var(--text-main)', fontSize: '14px', lineHeight: '1.5' }}>
