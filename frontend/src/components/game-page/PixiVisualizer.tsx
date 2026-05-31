@@ -103,6 +103,7 @@ class PixiEngine {
   nodes: Map<string, { x: number; y: number; vertex: Vertex; graphics: PIXI.Graphics; glowGraphics: PIXI.Graphics; isPendingCut: boolean; color: number }>;
   edges: { from: string; to: string; graphics: PIXI.Graphics }[];
   particles: Particle[];
+  dyingGraphics: Set<PIXI.Graphics>;
 
   onNodePointerDown?: (vertex: Vertex, graphIndex: number) => void;
   onNodePointerEnter?: (vertex: Vertex, graphIndex: number) => void;
@@ -141,6 +142,7 @@ class PixiEngine {
     this.nodes = new Map();
     this.edges = [];
     this.particles = [];
+    this.dyingGraphics = new Set();
   }
 
   async init(width: number, height: number) {
@@ -538,6 +540,11 @@ class PixiEngine {
       if (!activeKeys.has(key)) {
         const isBanked = bankedGraphs.some((g) => g.vertices.some((v) => isSameVertex(v, node.vertex)));
 
+        this.dyingGraphics.add(node.graphics);
+        this.dyingGraphics.add(node.glowGraphics);
+        gsap.killTweensOf(node.graphics);
+        gsap.killTweensOf(node.glowGraphics);
+
         if (isBanked) {
           gsap.to([node.graphics.scale, node.glowGraphics.scale], {
             x: 0,
@@ -549,6 +556,8 @@ class PixiEngine {
               this.glowContainer.removeChild(node.glowGraphics);
               gsap.killTweensOf(node.graphics);
               gsap.killTweensOf(node.glowGraphics);
+              this.dyingGraphics.delete(node.graphics);
+              this.dyingGraphics.delete(node.glowGraphics);
               node.graphics.destroy();
               node.glowGraphics.destroy();
             },
@@ -570,6 +579,8 @@ class PixiEngine {
               this.glowContainer.removeChild(node.glowGraphics);
               gsap.killTweensOf(node.graphics);
               gsap.killTweensOf(node.glowGraphics);
+              this.dyingGraphics.delete(node.graphics);
+              this.dyingGraphics.delete(node.glowGraphics);
               node.graphics.destroy();
               node.glowGraphics.destroy();
               this._activeExplosions = Math.max(0, this._activeExplosions - 1);
@@ -592,6 +603,8 @@ class PixiEngine {
               this.glowContainer.removeChild(node.glowGraphics);
               gsap.killTweensOf(node.graphics);
               gsap.killTweensOf(node.glowGraphics);
+              this.dyingGraphics.delete(node.graphics);
+              this.dyingGraphics.delete(node.glowGraphics);
               node.graphics.destroy();
               node.glowGraphics.destroy();
               this._activeExplosions = Math.max(0, this._activeExplosions - 1);
@@ -616,19 +629,7 @@ class PixiEngine {
 
   destroy() {
     this.isDestroyed = true;
-    for (const [, node] of this.nodes.entries()) {
-      gsap.killTweensOf(node.graphics);
-      gsap.killTweensOf(node.glowGraphics);
-      gsap.killTweensOf(node.graphics.scale);
-      gsap.killTweensOf(node.glowGraphics.scale);
-    }
-    gsap.killTweensOf(this.stage.position);
-    gsap.killTweensOf(this.stage.scale);
-    for (const child of this.wandContainer.children) {
-      gsap.killTweensOf(child);
-      gsap.killTweensOf(child.scale);
-      gsap.killTweensOf(child.position);
-    }
+    gsap.globalTimeline.clear();
     try {
       this.app.destroy(true, true);
     } catch (e) {
