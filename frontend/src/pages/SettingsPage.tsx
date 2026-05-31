@@ -1,9 +1,11 @@
-import React from "react";
+import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { setMode, setColorTheme, THEMES, SettingsState } from "../state/settingsSlice";
+import { resetTutorials } from "../state/userPreferencesSlice";
 
 const SettingsPage: React.FC = () => {
   const dispatch = useDispatch();
+  const [resetSuccess, setResetSuccess] = useState(false);
   const { mode, colorId } = useSelector(
     (state: { settings: SettingsState }) => state.settings
   );
@@ -68,6 +70,58 @@ const SettingsPage: React.FC = () => {
               </button>
             );
           })}
+        </div>
+      </div>
+      <div className="settings-section" style={{ marginTop: '32px' }}>
+        <h3 className="section-title" style={{ marginBottom: "12px" }}>Tutorials & Onboarding</h3>
+        
+        <div style={{
+          background: "var(--bg-card)",
+          border: "1px solid var(--border-subtle)",
+          borderRadius: "12px",
+          padding: "20px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: "16px"
+        }}>
+          <div style={{ flex: "1 1 200px" }}>
+            <h4 style={{ margin: "0 0 8px 0", color: "var(--text-main)", fontSize: "1rem" }}>Reset Onboarding</h4>
+            <p style={{ margin: 0, color: "var(--text-dim)", fontSize: "0.9rem", lineHeight: "1.4" }}>
+              Clear your tutorial history. Helpful hints and tooltips will appear again as you play.
+            </p>
+          </div>
+          <button
+            className={`btn ${resetSuccess ? "primary" : "secondary"}`}
+            style={{ 
+              whiteSpace: "nowrap",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              background: resetSuccess ? "var(--highlight)" : undefined,
+              borderColor: resetSuccess ? "var(--highlight)" : undefined,
+              color: resetSuccess ? "#fff" : undefined,
+              transition: "all 0.3s ease"
+            }}
+            onClick={() => {
+              dispatch(resetTutorials());
+              setResetSuccess(true);
+              setTimeout(() => setResetSuccess(false), 2000);
+            }}
+          >
+            {resetSuccess ? (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                Done!
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                Reset
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>
