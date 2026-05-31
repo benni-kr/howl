@@ -7,6 +7,7 @@ import { selectActivePalette } from '../../state/settingsSlice';
 import { MiniGraphPreview } from './MiniGraphPreview';
 import { GameStats } from './GameStats';
 import { WolfLogo } from '../WolfLogo';
+import { OnboardingTooltip } from '../ui/OnboardingTooltip';
 
 interface GameSidebarProps {
   setIsNewGameModalOpen: (open: boolean) => void;

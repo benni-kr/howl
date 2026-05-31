@@ -2,13 +2,13 @@ import React, { useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { motion } from 'framer-motion';
 import { RootState } from '../../state/store';
-import { markAsSeen, requestShowTooltip } from '../../state/userPreferencesSlice';
+import { markAsSeen, requestShowTooltip, clearActiveTooltip } from '../../state/userPreferencesSlice';
 
 interface OnboardingTooltipProps {
   tutorialKey: string;
   content: React.ReactNode;
   children?: React.ReactNode;
-  position?: 'top' | 'bottom' | 'left' | 'right' | 'fixed-canvas';
+  position?: 'top' | 'bottom' | 'left' | 'right' | 'fixed-canvas' | 'canvas-left' | 'canvas-right';
 }
 
 export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({
@@ -23,10 +23,17 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({
   const isActive = activeTooltip === tutorialKey;
 
   useEffect(() => {
-    if (!hasSeen) {
+    if (!hasSeen && activeTooltip === null) {
       dispatch(requestShowTooltip(tutorialKey));
     }
-  }, [hasSeen, tutorialKey, dispatch]);
+    
+    // Cleanup if this tooltip unmounts while it is active
+    return () => {
+      if (activeTooltip === tutorialKey) {
+        dispatch(clearActiveTooltip(tutorialKey));
+      }
+    };
+  }, [hasSeen, activeTooltip, tutorialKey, dispatch]);
 
   const handleDismiss = () => {
     dispatch(markAsSeen(tutorialKey));
@@ -47,7 +54,29 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({
         maxWidth: '220px'
       };
     }
-    
+
+    if (position === 'canvas-left') {
+      return {
+        position: 'absolute',
+        top: '60px',
+        left: '20px',
+        zIndex: 999,
+        width: 'max-content',
+        maxWidth: '220px'
+      };
+    }
+
+    if (position === 'canvas-right') {
+      return {
+        position: 'absolute',
+        top: '60px',
+        right: '20px',
+        zIndex: 999,
+        width: 'max-content',
+        maxWidth: '220px'
+      };
+    }
+
     // Default positioning for wrapped elements
     const base: React.CSSProperties = {
       position: 'absolute',
@@ -72,7 +101,7 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({
 
   return (
     <div style={
-      position === 'fixed-canvas' 
+      position === 'fixed-canvas' || position === 'canvas-left' || position === 'canvas-right'
         ? { position: 'absolute', top: 0, left: 0, width: '100%', height: 0, pointerEvents: 'none', zIndex: 999 } 
         : { position: 'relative', display: 'inline-block' }
     }>

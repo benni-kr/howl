@@ -32,9 +32,14 @@ export const userPreferencesSlice = createSlice({
       state.tutorialsSeen = {};
       state.activeTooltip = null;
     },
+    clearActiveTooltip: (state, action: PayloadAction<string>) => {
+      if (state.activeTooltip === action.payload) {
+        state.activeTooltip = null;
+      }
+    },
   },
 });
 
-export const { markAsSeen, requestShowTooltip, resetTutorials } = userPreferencesSlice.actions;
+export const { markAsSeen, requestShowTooltip, resetTutorials, clearActiveTooltip } = userPreferencesSlice.actions;
 
 export default userPreferencesSlice.reducer;

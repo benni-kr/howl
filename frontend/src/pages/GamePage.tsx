@@ -276,25 +276,32 @@ const GamePage: React.FC = () => {
       <main className="main-stage" style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
 
         {/* Onboarding Tooltips */}
+        {splitView && (
+          <OnboardingTooltip 
+            tutorialKey="hasSeenCanvasSelect" 
+            position="fixed-canvas"
+            content="✂️ Tip: You've split the board! Click on a piece to select which one you want to continue working on, then click 'Select'."
+          />
+        )}
+        {bankedGraphs.length > 0 && (
+          <OnboardingTooltip
+            tutorialKey="hasSeenBankedGraph"
+            position="canvas-left"
+            content="🏦 Tip: You have a shape in the bank! You can click on it to swap it with your active board."
+          />
+        )}
         {hasWand && (
           <OnboardingTooltip 
             tutorialKey="hasSeenVaporize" 
             position="fixed-canvas"
-            content="Tip: The Magic Wand 🪄 means the community has found a good score for this shape. Click the wand on the board to vaporize the shape and inherit that score!"
+            content="🪄 Tip: The Magic Wand means the community has found a good score for this shape. Click the wand on the board to vaporize the shape and inherit that score!"
           />
         )}
         {hasMicroscope && (
           <OnboardingTooltip 
             tutorialKey="hasSeenMicroscope" 
             position="fixed-canvas"
-            content="Tip: The Microscope 🔬 means the score is mathematically perfect. Click it to securely vaporize the shape!"
-          />
-        )}
-        {splitView && (
-          <OnboardingTooltip 
-            tutorialKey="hasSeenCanvasSelect" 
-            position="fixed-canvas"
-            content="You've split the board! Click on a piece to select which one you want to continue working on, then click 'Select'."
+            content="🔬 Tip: The Microscope means the score is mathematically perfect. Click it to securely vaporize the shape!"
           />
         )}
 

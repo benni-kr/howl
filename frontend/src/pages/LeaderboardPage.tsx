@@ -114,18 +114,12 @@ const LeaderboardPage: React.FC = () => {
         <div className="page-header-controls" style={{ flexWrap: 'wrap', gap: '8px', width: '100%' }}>
           {/* Main tab toggles */}
           <div className="btn-group" style={{ flexWrap: 'wrap', gap: '4px' }}>
-            <OnboardingTooltip 
-              tutorialKey="hasSeenMatrixView" 
-              position="bottom"
-              content="Tip: The Matrix View lets you visualize community scores across all possible grid dimensions!"
+            <button
+              className={`btn ${activeTab === 'matrix' || isDrillDown ? 'primary' : 'secondary'}`}
+              onClick={() => setView('matrix')}
             >
-              <button
-                className={`btn ${activeTab === 'matrix' || isDrillDown ? 'primary' : 'secondary'}`}
-                onClick={() => setView('matrix')}
-              >
-                The Matrix
-              </button>
-            </OnboardingTooltip>
+              The Matrix
+            </button>
             <button
               className={`btn ${activeTab === 'solvers' && !isDrillDown ? 'primary' : 'secondary'}`}
               onClick={() => setView('solvers')}
@@ -234,6 +228,12 @@ const LeaderboardPage: React.FC = () => {
               </button>
               <h3 style={{ margin: '0 0 16px 0' }}>Grid {drillM} &times; {drillN} Leaderboard</h3>
 
+              <OnboardingTooltip
+                tutorialKey="hasSeenRunClick"
+                position="fixed-canvas"
+                content="⏪ Tip: Click on any run to watch a step-by-step replay of how this score was achieved!"
+              />
+
               {loading ? (
                 <div className="muted">Loading...</div>
               ) : gridData.length > 0 ? (
@@ -274,12 +274,19 @@ const LeaderboardPage: React.FC = () => {
             loading && matrixData.length === 0 ? (
               <div style={{ padding: '24px 32px' }} className="muted">Loading Matrix...</div>
             ) : (
-              <MatrixView 
-                data={matrixData} 
-                onCellClick={handleCellClick} 
-                mode={matrixMode} 
-                customFormula={customFormula}
-              />
+              <div style={{ width: '100%', height: '100%' }}>
+                <OnboardingTooltip
+                  tutorialKey="hasSeenMatrixTileClick"
+                  position="fixed-canvas"
+                  content="👆 Tip: Click on any populated tile to view the detailed leaderboard for that specific grid size!"
+                />
+                <MatrixView 
+                  data={matrixData} 
+                  onCellClick={handleCellClick} 
+                  mode={matrixMode} 
+                  customFormula={customFormula}
+                />
+              </div>
             )
 
           ) : (

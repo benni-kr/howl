@@ -35,6 +35,20 @@ Manages user preferences.
 - **`theme`** / **`mode`**: Toggles between light and dark mode color palettes.
 - **`alias`**: The player's chosen name for leaderboard submissions.
 
+### `userPreferencesSlice.ts`
+Manages the Just-In-Time (JIT) onboarding tutorial state.
+- **`tutorialsSeen`**: A record of boolean flags indicating which contextual tooltips the user has already seen.
+- **`activeTooltip`**: The key of the currently active tooltip.
+
+**Available Tooltips (JIT Onboarding):**
+1. **`hasSeenVaporize`**: Appears on the game board when the community has already solved a shape you created. Explains the Magic Wand.
+2. **`hasSeenMicroscope`**: Appears on the game board when a shape's score is mathematically perfect. Explains the Microscope.
+3. **`hasSeenCanvasSelect`**: Appears when you make a cut that splits the board into multiple non-trivial pieces. Guides you to select which piece to keep active.
+4. **`hasSeenBankedGraph`**: Appears when a graph is sent to the Bank, reminding the user they can swap it with the active board.
+5. **`hasSeenMatrixTileClick`**: Appears on the Matrix View, guiding the user to click a populated tile to see its specific grid leaderboard.
+6. **`hasSeenRunClick`**: Appears on a specific grid leaderboard, guiding the user to click a run to view its replay.
+7. **`hasSeenReplayDeepDive`**: Appears in Replay Mode when a vaporize step is reached, explaining that the vaporized block can be clicked to enter a deep dive.
+
 ---
 
 ## The Rendering Engine (`PixiVisualizer`)
