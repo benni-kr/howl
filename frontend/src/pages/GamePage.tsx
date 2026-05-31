@@ -149,7 +149,7 @@ const GamePage: React.FC = () => {
   const [topScore, setTopScore] = useState<{ rank: number; solver_name: string } | null>(null);
 
   const hasWand = cutsApplied.length > 0 && Array.from(optimalRanks.values()).some(opt => opt.best_rank !== null);
-  const hasMicroscope = cutsApplied.length > 0 && Array.from(optimalRanks.values()).some(opt => opt.is_optimal);
+  const hasAbacus = cutsApplied.length > 0 && Array.from(optimalRanks.values()).some(opt => opt.is_optimal);
 
   useEffect(() => {
     if (gridSize) {
@@ -297,11 +297,11 @@ const GamePage: React.FC = () => {
             content="🪄 Tip: The Magic Wand means the community has found a good score for this shape. Click the wand on the board to vaporize the shape and inherit that score!"
           />
         )}
-        {hasMicroscope && (
+        {hasAbacus && (
           <OnboardingTooltip 
-            tutorialKey="hasSeenMicroscope" 
+            tutorialKey="hasSeenAbacus" 
             position="fixed-canvas"
-            content="🔬 Tip: The Microscope means the score is mathematically perfect. Click it to securely vaporize the shape!"
+            content="🧮 Tip: The Abacus means the score is mathematically perfect. Click it to securely vaporize the shape!"
           />
         )}
 
