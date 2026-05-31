@@ -9,6 +9,7 @@ import { useReplayEngine } from "../hooks/useReplayEngine";
 import { checkShapes } from "../api/api";
 import { selectActivePalette } from "../state/settingsSlice";
 import { DynamicEliminationTree } from "../components/replay-page/DynamicEliminationTree";
+import { OnboardingTooltip } from "../components/ui/OnboardingTooltip";
 
 const ActionLog: React.FC<{ sequence: any[], currentStep: number, activeColor: string }> = ({ sequence, currentStep, activeColor }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -296,6 +297,13 @@ export default function ReplayPage() {
               onDeepDiveRequest={handleDeepDiveRequest}
               overridePendingCutSet={overridePendingCutSet}
             />
+            {pendingAction?.type === 'vaporize' && (
+              <OnboardingTooltip
+                tutorialKey="hasSeenReplayDeepDive"
+                position="fixed-canvas"
+                content="🤿 Tip: You can click on vaporized blocks to dive deep and see exactly how they were solved!"
+              />
+            )}
           </div>
         </div>
 

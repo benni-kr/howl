@@ -28,6 +28,7 @@ import { selectActivePalette } from "../state/settingsSlice";
 import NewGameModal from "../components/game-page/NewGameModal";
 import { useAlias } from "../hooks/useAlias";
 import { GameSidebar } from "../components/game-page/GameSidebar";
+import { OnboardingTooltip } from "../components/ui/OnboardingTooltip";
 
 const DEBUG_SPAWN_AREA = false;
 
@@ -146,6 +147,9 @@ const GamePage: React.FC = () => {
   const [isNewGameModalOpen, setIsNewGameModalOpen] = useState(false);
 
   const [topScore, setTopScore] = useState<{ rank: number; solver_name: string } | null>(null);
+
+  const hasWand = cutsApplied.length > 0 && Array.from(optimalRanks.values()).some(opt => opt.best_rank !== null);
+  const hasMicroscope = cutsApplied.length > 0 && Array.from(optimalRanks.values()).some(opt => opt.is_optimal);
 
   useEffect(() => {
     if (gridSize) {
@@ -270,6 +274,36 @@ const GamePage: React.FC = () => {
       />
 
       <main className="main-stage" style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+
+        {/* Onboarding Tooltips */}
+        {splitView && (
+          <OnboardingTooltip 
+            tutorialKey="hasSeenCanvasSelect" 
+            position="fixed-canvas"
+            content="✂️ Tip: You've split the board! Click on a piece to select which one you want to continue working on, then click 'Select'."
+          />
+        )}
+        {bankedGraphs.length > 0 && (
+          <OnboardingTooltip
+            tutorialKey="hasSeenBankedGraph"
+            position="canvas-left"
+            content="🏦 Tip: You have a shape in the bank! You can click on it to swap it with your active board."
+          />
+        )}
+        {hasWand && (
+          <OnboardingTooltip 
+            tutorialKey="hasSeenVaporize" 
+            position="fixed-canvas"
+            content="🪄 Tip: The Magic Wand means the community has found a good score for this shape. Click the wand on the board to vaporize the shape and inherit that score!"
+          />
+        )}
+        {hasMicroscope && (
+          <OnboardingTooltip 
+            tutorialKey="hasSeenMicroscope" 
+            position="fixed-canvas"
+            content="🔬 Tip: The Microscope means the score is mathematically perfect. Click it to securely vaporize the shape!"
+          />
+        )}
 
         {gridSize && gridSize.m > 0 && (
           <div
@@ -418,6 +452,12 @@ const GamePage: React.FC = () => {
                 className="btn secondary large"
                 disabled={pendingCutSet.length === 0 || (activeGraph && pendingCutSet.length === activeGraph.vertices.length) || isExecuting}
                 onClick={handleCut}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  opacity: pendingCutSet.length > 0 ? 1 : 0.5,
+                  minWidth: '120px',
+                  justifyContent: 'center'
+                }}
               >
                 Cut
               </button>
