@@ -9,6 +9,7 @@ import {
   TopSolverData,
   GridLeaderboardEntry
 } from '../api/api';
+import { OnboardingTooltip } from '../components/ui/OnboardingTooltip';
 
 // ─── Valid URL values ────────────────────────────────────────────────
 type ViewTab = 'matrix' | 'solvers';
@@ -113,12 +114,18 @@ const LeaderboardPage: React.FC = () => {
         <div className="page-header-controls" style={{ flexWrap: 'wrap', gap: '8px', width: '100%' }}>
           {/* Main tab toggles */}
           <div className="btn-group" style={{ flexWrap: 'wrap', gap: '4px' }}>
-            <button
-              className={`btn ${activeTab === 'matrix' || isDrillDown ? 'primary' : 'secondary'}`}
-              onClick={() => setView('matrix')}
+            <OnboardingTooltip 
+              tutorialKey="hasSeenMatrixView" 
+              position="bottom"
+              content="Tip: The Matrix View lets you visualize community scores across all possible grid dimensions!"
             >
-              The Matrix
-            </button>
+              <button
+                className={`btn ${activeTab === 'matrix' || isDrillDown ? 'primary' : 'secondary'}`}
+                onClick={() => setView('matrix')}
+              >
+                The Matrix
+              </button>
+            </OnboardingTooltip>
             <button
               className={`btn ${activeTab === 'solvers' && !isDrillDown ? 'primary' : 'secondary'}`}
               onClick={() => setView('solvers')}
