@@ -240,28 +240,34 @@ const LeaderboardPage: React.FC = () => {
                 <div style={{ width: '100%', overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                     <thead>
-                      <tr style={{ borderBottom: '2px solid var(--border-subtle)' }}>
-                        <th style={{ padding: '12px' }}>Rank</th>
-                        <th style={{ padding: '12px' }}>Solver</th>
-                        <th style={{ padding: '12px' }}>Achieved Rank</th>
-                        <th style={{ padding: '12px' }}>Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {gridData.map((entry, idx) => (
-                        <tr 
-                          key={idx} 
-                          style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}
-                          onClick={() => navigate(`/replay/${drillM}/${drillN}/${entry.solver_name}`)}
-                          className="hover-row"
-                        >
-                          <td style={{ padding: '12px' }}>#{entry.rank_position}</td>
-                          <td style={{ padding: '12px', fontWeight: 600 }}>{entry.solver_name}</td>
-                          <td style={{ padding: '12px' }}>{entry.achieved_rank}</td>
-                          <td style={{ padding: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{new Date(entry.created_at).toLocaleString()}</td>
+                        <tr style={{ borderBottom: '2px solid var(--border-subtle)' }}>
+                          <th style={{ padding: '12px' }}>Rank</th>
+                          <th style={{ padding: '12px' }}>Solver</th>
+                          <th style={{ padding: '12px' }}>Achieved Rank</th>
+                          <th style={{ padding: '12px' }}>Date</th>
+                          <th style={{ padding: '12px' }}></th>
                         </tr>
-                      ))}
-                    </tbody>
+                      </thead>
+                      <tbody>
+                        {gridData.map((entry, idx) => (
+                          <tr 
+                            key={idx} 
+                            style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}
+                            onClick={() => navigate(`/replay/${drillM}/${drillN}/${entry.solver_name}`)}
+                            className="hover-row"
+                          >
+                            <td style={{ padding: '12px' }}>#{entry.rank_position}</td>
+                            <td style={{ padding: '12px', fontWeight: 600 }}>{entry.solver_name}</td>
+                            <td style={{ padding: '12px' }}>{entry.achieved_rank}</td>
+                            <td style={{ padding: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{new Date(entry.created_at).toLocaleString()}</td>
+                            <td style={{ padding: '12px', textAlign: 'right' }}>
+                              <div className="row-action-icon">
+                                ▶
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
                   </table>
                 </div>
               ) : (

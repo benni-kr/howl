@@ -635,3 +635,39 @@ body {
     margin-top: 0;
   }
 }
+
+/* Leaderboard Interactive Rows */
+.hover-row {
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.hover-row:active {
+  background-color: var(--btn-primary-hover);
+  transform: scale(0.995);
+}
+
+.row-action-icon {
+  opacity: 0.5;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  color: var(--tile-primary);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  font-size: 1.2rem;
+}
+
+@media (hover: hover) {
+  .hover-row:hover {
+    background-color: var(--btn-primary-hover);
+  }
+  
+  .hover-row .row-action-icon {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  
+  .hover-row:hover .row-action-icon {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
