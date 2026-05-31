@@ -41,9 +41,7 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({
       return {
         position: 'absolute',
         top: '60px',
-        left: '0',
-        right: '0',
-        margin: '0 auto',
+        right: '20px',
         zIndex: 999,
         width: 'max-content',
         maxWidth: '220px'
