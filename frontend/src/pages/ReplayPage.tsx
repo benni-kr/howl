@@ -16,9 +16,15 @@ const ActionLog: React.FC<{ sequence: any[], currentStep: number, activeColor: s
 
   useEffect(() => {
     if (containerRef.current) {
-      const activeEl = containerRef.current.querySelector('.active-step');
-      if (activeEl) {
-        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const container = containerRef.current;
+      const activeEl = container.querySelector('.active-step') as HTMLElement;
+      if (activeEl && window.innerWidth > 1024) {
+        // Manually scroll only the container so the main window doesn't jump
+        const topOffset = activeEl.offsetTop - container.clientHeight / 2 + activeEl.clientHeight / 2;
+        container.scrollTo({
+          top: topOffset,
+          behavior: 'smooth'
+        });
       }
     }
   }, [currentStep]);
@@ -223,7 +229,7 @@ export default function ReplayPage() {
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', overflow: 'hidden' }}>
       {/* Header */}
       <div style={{ display: 'flex', flexDirection: 'column', padding: '16px 32px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-card)', flexShrink: 0 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="replay-header">
           <div>
             <h2 style={{ margin: '0 0 4px 0' }}>Replay: {mNum} &times; {nNum}</h2>
             <div className="muted">Solver: <strong style={{ color: 'var(--text-main)' }}>{solverName}</strong> &bull; Rank: <strong>{rank}</strong></div>
@@ -280,9 +286,9 @@ export default function ReplayPage() {
       </div>
 
       {/* 3-Pane Layout */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, opacity: isFetchingDive ? 0.6 : 1, transition: 'opacity 0.2s ease' }}>
+      <div className="replay-container" style={{ opacity: isFetchingDive ? 0.6 : 1 }}>
         {/* Pane 1: Canvas */}
-        <div ref={canvasContainerRef} style={{ flex: 2, position: 'relative', borderRight: '1px solid var(--border-subtle)', background: 'var(--bg-main)', overflow: 'hidden' }}>
+        <div ref={canvasContainerRef} className="replay-canvas-pane">
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
             <PixiVisualizer
               width={width}
@@ -308,7 +314,7 @@ export default function ReplayPage() {
         </div>
 
         {/* Right Panes */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', minWidth: '300px', maxWidth: '35%', borderLeft: '1px solid var(--border-subtle)' }}>
+        <div className="replay-side-pane">
           {/* Pane 2: Action Log */}
           <ActionLog sequence={engine.activeContext.sequence} currentStep={engine.currentStep} activeColor={activeColor} />
 
@@ -337,7 +343,7 @@ export default function ReplayPage() {
       </div>
 
       {/* VCR Toolbar */}
-      <div style={{ padding: '16px 32px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-card)', display: 'flex', alignItems: 'center', gap: '24px' }}>
+      <div className="replay-toolbar">
         <div style={{ display: 'flex', gap: '8px' }}>
           <button className="btn secondary" onClick={() => engine.setStep(engine.currentStep - 1)} disabled={engine.currentStep === 0} style={{ width: '36px', height: '36px', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px' }} title="Previous Step">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
