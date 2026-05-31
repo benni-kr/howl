@@ -380,7 +380,7 @@ class PixiEngine {
         wandBg.fill({ color: this.palette?.tileA ?? 0x334155, alpha: 0.95 });
         wandBg.stroke({ width: 2, color: this.palette?.highlight ?? 0x10b981, alpha: 0.8 });
 
-        const icon = optRank.is_optimal ? '🔬' : '🪄';
+        const icon = optRank.is_optimal ? '🧮' : '🪄';
         const text = new PIXI.Text({
           text: `${icon} [${optRank.best_rank}]`,
           style: {

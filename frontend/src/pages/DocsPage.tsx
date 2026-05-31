@@ -33,7 +33,7 @@ const DocsPage: React.FC = () => {
             <strong>The Magic Wand:</strong> See a shape the community has already solved? Click it with the Magic Wand to instantly "vaporize" it using the best score the community has ever found.
           </li>
           <li>
-            <strong>The Microscope:</strong> Sometimes, the backend knows a shape's score is mathematically perfect. The Microscope vaporizes the shape knowing it can never be improved.
+            <strong>The Abacus:</strong> Sometimes, the backend knows a shape's score is mathematically perfect. The Abacus vaporizes the shape knowing it can never be improved.
           </li>
         </ul>
       </div>
