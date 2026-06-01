@@ -389,27 +389,19 @@ const GamePage: React.FC = () => {
           />
           {(() => {
             const solvableTargets: { location: 'active' | 'recent', index?: number, optimalRank: number }[] = [];
-            const duplicateTargets: { location: 'active' | 'recent', index?: number }[] = [];
+            const duplicateTargets: { location: 'active' | 'recent' | 'banked', index?: number }[] = [];
             let maxResultingRank = maxRank;
             let allStrictlyOptimal = true;
 
             const seenHashes = new Set<string>();
-            bankedGraphs.forEach((g) => {
-              const fp = getLocalGraphFingerprint(g);
-              const opt = optimalRanks.get(fp);
-              seenHashes.add(opt?.hash || fp);
-            });
 
+            // 1. Process active graph first (highest priority to KEEP)
             if (activeGraph) {
               const fp = getLocalGraphFingerprint(activeGraph);
               const opt = optimalRanks.get(fp);
               const hashToUse = opt?.hash || fp;
               
-              if (seenHashes.has(hashToUse)) {
-                duplicateTargets.push({ location: 'active' });
-              } else {
-                seenHashes.add(hashToUse);
-              }
+              seenHashes.add(hashToUse);
 
               if (opt && cutsApplied.length > 0) {
                 // If it has an optimal rank from a previous discovery, it's solvable
@@ -421,6 +413,7 @@ const GamePage: React.FC = () => {
               }
             }
 
+            // 2. Process recent cut graphs (second priority to KEEP)
             recentCutGraphs.forEach((graph, index) => {
               const fp = getLocalGraphFingerprint(graph);
               const opt = optimalRanks.get(fp);
@@ -441,12 +434,25 @@ const GamePage: React.FC = () => {
               }
             });
 
+            // 3. Process banked graphs (highest priority to DELETE)
+            bankedGraphs.forEach((graph, index) => {
+              const fp = getLocalGraphFingerprint(graph);
+              const opt = optimalRanks.get(fp);
+              const hashToUse = opt?.hash || fp;
+
+              if (seenHashes.has(hashToUse)) {
+                duplicateTargets.push({ location: 'banked', index });
+              } else {
+                seenHashes.add(hashToUse);
+              }
+            });
+
             const icon = allStrictlyOptimal ? '🔬' : '🪄';
 
             return (
               (solvableTargets.length > 1 || duplicateTargets.length > 0) && !isExecuting && (
                 <div style={{ position: "absolute", bottom: "-12px", display: "flex", gap: "12px", justifyContent: "center", width: "100%", pointerEvents: "none" }}>
-                  {duplicateTargets.length > 0 && splitView && (
+                  {duplicateTargets.length > 0 && (
                     <button
                       className="btn primary"
                       style={{
