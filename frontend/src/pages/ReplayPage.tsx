@@ -245,7 +245,13 @@ export default function ReplayPage() {
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
             {engine.stack.length === 1 && (
-              <button className="btn primary" onClick={handleFork}>
+              <button 
+                className="btn primary" 
+                onClick={handleFork}
+                disabled={engine.boardState.activeGraph === null}
+                style={engine.boardState.activeGraph === null ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                title={engine.boardState.activeGraph === null ? "Cannot fork a completed run" : "Fork this run"}
+              >
                 Fork Run
               </button>
             )}
