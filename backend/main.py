@@ -416,19 +416,27 @@ def get_top_solvers(token: str = Depends(verify_token), square_only: bool = Fals
     min_ranks = query.group_by("canonical_m", "canonical_n").subquery()
 
     results = (
-        db.query(GridSolution.solver_name)
+        db.query(GridSolution)
         .join(
             min_ranks,
             (case((GridSolution.m >= GridSolution.n, GridSolution.m), else_=GridSolution.n) == min_ranks.c.canonical_m)
             & (case((GridSolution.m >= GridSolution.n, GridSolution.n), else_=GridSolution.m) == min_ranks.c.canonical_n)
             & (GridSolution.rank == min_ranks.c.min_rank),
         )
+        .order_by(GridSolution.created_at.asc())
         .all()
     )
 
-    counts: dict[str, int] = {}
+    # De-duplicate ties — keep only the earliest submission per canonical grid.
+    matrix_map = {}
     for r in results:
-        counts[r.solver_name] = counts.get(r.solver_name, 0) + 1
+        key = (max(r.m, r.n), min(r.m, r.n))
+        if key not in matrix_map:
+            matrix_map[key] = r.solver_name
+
+    counts: dict[str, int] = {}
+    for solver_name in matrix_map.values():
+        counts[solver_name] = counts.get(solver_name, 0) + 1
 
     sorted_solvers = sorted(counts.items(), key=lambda x: x[1], reverse=True)
     return [{"solver_name": s[0], "first_places": s[1]} for s in sorted_solvers]
