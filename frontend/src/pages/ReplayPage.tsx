@@ -244,9 +244,11 @@ export default function ReplayPage() {
             <div className="muted">Solver: <strong style={{ color: 'var(--text-main)' }}>{solverName}</strong> &bull; Rank: <strong>{rank}</strong></div>
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <button className="btn primary" onClick={handleFork}>
-              Fork Run
-            </button>
+            {engine.stack.length === 1 && (
+              <button className="btn primary" onClick={handleFork}>
+                Fork Run
+              </button>
+            )}
             <button className="btn secondary" onClick={() => navigate(-1)} style={{ width: '36px', height: '36px', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px' }} title="Close">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
