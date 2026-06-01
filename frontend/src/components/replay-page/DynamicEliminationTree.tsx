@@ -44,6 +44,25 @@ const TreeNode: React.FC<{ node: EliminationNode }> = ({ node }) => {
         }}>
           🪄 {node.action.optimal_rank}
         </div>
+      ) : node.action.type === 'ignore' ? (
+        <div style={{
+          padding: '4px 12px',
+          borderRadius: '20px',
+          background: '#334155', // Slate
+          color: 'var(--text-main)',
+          border: `2px solid ${lineColor}`,
+          fontSize: '0.9rem',
+          fontWeight: 'bold',
+          zIndex: 2,
+          boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          whiteSpace: 'nowrap',
+          width: 'max-content'
+        }}>
+          🪞 Duplicate
+        </div>
       ) : (
         <div style={{
           padding: '4px 12px',

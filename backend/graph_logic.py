@@ -195,6 +195,7 @@ class TreeNode:
         self.children: list[TreeNode] = []
         self.cut_size: int = 0
         self.vaporized_rank: int | None = None
+        self.ignored: bool = False
 
 def _to_tuples(vertices: list) -> list[tuple[int, int]]:
     """Convert a vertex list from either format to (x, y) tuples.
@@ -243,12 +244,12 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
             raw_vertices = action.get("vertices", [])
 
         # ------------------------------------------------------------------
-        # Handle VAPORIZE
-        # Frontend sends: { type: "vaporize", vertices: Vertex[], optimal_rank: N }
-        # The vertices describe the entire subgraph that was auto-solved.
+        # Handle VAPORIZE and IGNORE
+        # Frontend sends: { type: "vaporize" | "ignore", vertices: Vertex[], optimal_rank?: N }
+        # The vertices describe the entire subgraph that was auto-solved or ignored.
         # Match by exact spatial coordinates for order-independence without ambiguity.
         # ------------------------------------------------------------------
-        if action_type == "vaporize":
+        if action_type in ["vaporize", "ignore"]:
             vap_tuples = _to_tuples(raw_vertices)
             if not vap_tuples:
                 continue
@@ -272,7 +273,10 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
                         
             if target_node:
                 active_nodes.remove(target_node)
-                target_node.vaporized_rank = action.get("optimal_rank", 999999)
+                if action_type == "vaporize":
+                    target_node.vaporized_rank = action.get("optimal_rank", 999999)
+                elif action_type == "ignore":
+                    target_node.ignored = True
             continue
 
         # ------------------------------------------------------------------
@@ -354,7 +358,9 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
 
     def calc_intrinsic_rank(node: TreeNode) -> int:
         """Compute the intrinsic rank of a tree node bottom-up."""
-        if node.vaporized_rank is not None:
+        if getattr(node, "ignored", False):
+            rank = 0
+        elif node.vaporized_rank is not None:
             rank = node.vaporized_rank
         elif node.original_vertex_count <= 1:
             rank = 1
@@ -370,9 +376,9 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
             child_ranks = [calc_intrinsic_rank(child) for child in node.children]
             rank = node.cut_size + max(child_ranks)
 
-        # Only save non-obliterated, non-sentinel entries.
+        # Only save non-obliterated, non-sentinel entries, and skip ignored nodes.
         is_obliterated = node.original_vertex_count > 1 and not node.children
-        if rank < 999999 and node.canonical_hash and not is_obliterated:
+        if rank < 999999 and node.canonical_hash and not is_obliterated and not getattr(node, "ignored", False):
             if node.canonical_hash not in ranks_dict or rank < ranks_dict[node.canonical_hash]["rank"]:
                 local_seq = extract_local_sequence(node.original_vertices, flat_cut_sequence)
                 transformed_seq = transform_sequence(local_seq, node.canonical_data)

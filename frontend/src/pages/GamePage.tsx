@@ -20,6 +20,7 @@ import {
   pullFromBankIfNeeded,
   autoSolveGraph,
   autoSolveMultipleGraphs,
+  ignoreMultipleGraphs,
   getLocalGraphFingerprint,
 } from "../state/gameSlice";
 
@@ -87,7 +88,8 @@ const GamePage: React.FC = () => {
   const [pendingCutSet, setPendingCutSet] = useState<Vertex[]>([]);
   const [resetToken, setResetToken] = useState(0);
 
-  const [optimalRanks, setOptimalRanks] = useState<Map<string, { best_rank: number, is_optimal: boolean, discovered_by?: string | null }>>(new Map());
+  const [optimalRanks, setOptimalRanks] = useState<Map<string, { best_rank: number, is_optimal: boolean, discovered_by?: string | null, hash: string }>>(new Map());
+
   const { checkShapesCached } = useShapeCache();
 
   // Poll for optimal ranks when graphs change
@@ -102,12 +104,15 @@ const GamePage: React.FC = () => {
     if (graphsToCheck.length > 0) {
       checkShapesCached(graphsToCheck).then((results) => {
         if (!isMounted) return;
-        console.log("CheckShapes API response:", results);
-        const newRanks = new Map<string, { best_rank: number, is_optimal: boolean, discovered_by?: string | null }>();
+        const newRanks = new Map<string, { best_rank: number, is_optimal: boolean, discovered_by?: string | null, hash: string }>();
         results.forEach((res, index) => {
-          console.log(`Graph ${index} found: ${res.found}, best_rank: ${res.best_rank}, is_optimal: ${res.is_optimal}`);
-          if (res.found && res.best_rank !== null) {
-            newRanks.set(getLocalGraphFingerprint(graphsToCheck[index]), { best_rank: res.best_rank, is_optimal: !!res.is_optimal, discovered_by: res.discovered_by ?? null });
+          if (res.hash) {
+            newRanks.set(getLocalGraphFingerprint(graphsToCheck[index]), { 
+              best_rank: res.best_rank ?? 999999, 
+              is_optimal: !!res.is_optimal, 
+              discovered_by: res.discovered_by ?? null,
+              hash: res.hash
+            });
           }
         });
         setOptimalRanks(newRanks);
@@ -384,61 +389,126 @@ const GamePage: React.FC = () => {
           />
           {(() => {
             const solvableTargets: { location: 'active' | 'recent', index?: number, optimalRank: number }[] = [];
+            const duplicateTargets: { location: 'active' | 'recent', index?: number }[] = [];
             let maxResultingRank = maxRank;
             let allStrictlyOptimal = true;
 
+            const seenHashes = new Set<string>();
+            bankedGraphs.forEach((g) => {
+              const fp = getLocalGraphFingerprint(g);
+              const opt = optimalRanks.get(fp);
+              seenHashes.add(opt?.hash || fp);
+            });
+
             if (activeGraph) {
-              const opt = optimalRanks.get(getLocalGraphFingerprint(activeGraph));
+              const fp = getLocalGraphFingerprint(activeGraph);
+              const opt = optimalRanks.get(fp);
+              const hashToUse = opt?.hash || fp;
+              
+              if (seenHashes.has(hashToUse)) {
+                duplicateTargets.push({ location: 'active' });
+              } else {
+                seenHashes.add(hashToUse);
+              }
+
               if (opt && cutsApplied.length > 0) {
-                solvableTargets.push({ location: 'active', optimalRank: opt.best_rank });
-                maxResultingRank = Math.max(maxResultingRank, activeGraph.baseRank + opt.best_rank);
-                if (!opt.is_optimal) allStrictlyOptimal = false;
+                // If it has an optimal rank from a previous discovery, it's solvable
+                if (opt.best_rank !== 999999) {
+                  solvableTargets.push({ location: 'active', optimalRank: opt.best_rank });
+                  maxResultingRank = Math.max(maxResultingRank, activeGraph.baseRank + opt.best_rank);
+                  if (!opt.is_optimal) allStrictlyOptimal = false;
+                }
               }
             }
+
             recentCutGraphs.forEach((graph, index) => {
-              const opt = optimalRanks.get(getLocalGraphFingerprint(graph));
+              const fp = getLocalGraphFingerprint(graph);
+              const opt = optimalRanks.get(fp);
+              const hashToUse = opt?.hash || fp;
+
+              if (seenHashes.has(hashToUse)) {
+                duplicateTargets.push({ location: 'recent', index });
+              } else {
+                seenHashes.add(hashToUse);
+              }
+
               if (opt && cutsApplied.length > 0) {
-                solvableTargets.push({ location: 'recent', index, optimalRank: opt.best_rank });
-                maxResultingRank = Math.max(maxResultingRank, graph.baseRank + opt.best_rank);
-                if (!opt.is_optimal) allStrictlyOptimal = false;
+                if (opt.best_rank !== 999999) {
+                  solvableTargets.push({ location: 'recent', index, optimalRank: opt.best_rank });
+                  maxResultingRank = Math.max(maxResultingRank, graph.baseRank + opt.best_rank);
+                  if (!opt.is_optimal) allStrictlyOptimal = false;
+                }
               }
             });
 
             const icon = allStrictlyOptimal ? '🔬' : '🪄';
 
             return (
-              solvableTargets.length > 1 && !isExecuting && (
-                <div style={{ position: "absolute", bottom: "-12px", display: "flex", justifyContent: "center", width: "100%", pointerEvents: "none" }}>
-                  <button
-                    className="btn primary"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "8px 16px",
-                      borderRadius: "20px",
-                      background: rankColorHex,
-                      color: "#1e293b",
-                      fontWeight: "bold",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-                      border: "none",
-                      pointerEvents: "auto",
-                    }}
-                    onClick={() => {
-                      dispatch(autoSolveMultipleGraphs({ targets: solvableTargets }));
-                      // After batch vaporize, check if unsolved subgraphs remain
-                      const stateAfterSolve = store.getState().game;
-                      if (stateAfterSolve.recentCutGraphs.length > 0) {
-                        setSplitView(true);
-                        setSelectedGraphIndex(null);
-                      } else {
-                        setSplitView(false);
-                      }
-                      setResetToken((v) => v + 1);
-                    }}
-                  >
-                    {icon} Auto-Solve All Known Pieces (Max Rank → {maxResultingRank})
-                  </button>
+              (solvableTargets.length > 1 || duplicateTargets.length > 0) && !isExecuting && (
+                <div style={{ position: "absolute", bottom: "-12px", display: "flex", gap: "12px", justifyContent: "center", width: "100%", pointerEvents: "none" }}>
+                  {duplicateTargets.length > 0 && splitView && (
+                    <button
+                      className="btn primary"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "8px 16px",
+                        borderRadius: "20px",
+                        background: rankColorHex,
+                        color: "#1e293b",
+                        fontWeight: "bold",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                        border: "none",
+                        pointerEvents: "auto",
+                      }}
+                      onClick={() => {
+                        dispatch(ignoreMultipleGraphs({ targets: duplicateTargets }));
+                        const stateAfter = store.getState().game;
+                        if (stateAfter.recentCutGraphs.length > 0) {
+                          setSplitView(true);
+                          setSelectedGraphIndex(null);
+                        } else {
+                          setSplitView(false);
+                        }
+                        setResetToken((v) => v + 1);
+                      }}
+                    >
+                      🪞 Delete Duplicates
+                    </button>
+                  )}
+                  {solvableTargets.length > 1 && (
+                    <button
+                      className="btn primary"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "8px 16px",
+                        borderRadius: "20px",
+                        background: rankColorHex,
+                        color: "#1e293b",
+                        fontWeight: "bold",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                        border: "none",
+                        pointerEvents: "auto",
+                      }}
+                      onClick={() => {
+                        dispatch(autoSolveMultipleGraphs({ targets: solvableTargets }));
+                        // After batch vaporize, check if unsolved subgraphs remain
+                        const stateAfterSolve = store.getState().game;
+                        if (stateAfterSolve.recentCutGraphs.length > 0) {
+                          setSplitView(true);
+                          setSelectedGraphIndex(null);
+                        } else {
+                          setSplitView(false);
+                        }
+                        setResetToken((v) => v + 1);
+                      }}
+                    >
+                      {icon} Auto-Solve All (Max Rank → {maxResultingRank})
+                    </button>
+                  )}
                 </div>
               )
             );
