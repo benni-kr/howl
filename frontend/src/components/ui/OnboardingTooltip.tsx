@@ -114,15 +114,16 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({
         style={{
           ...getPositionStyles(),
           background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: '8px',
+          border: '2px solid var(--tile-primary)',
+          borderRadius: '12px',
           padding: '16px',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.5), 0 0 15px color-mix(in srgb, var(--tile-primary) 40%, transparent)',
           display: 'flex',
           flexDirection: 'column',
           gap: '12px',
           boxSizing: 'border-box',
-          pointerEvents: 'auto'
+          pointerEvents: 'auto',
+          zIndex: 1000
         }}
       >
         <div style={{ color: 'var(--text-main)', fontSize: '14px', lineHeight: '1.5' }}>
@@ -134,12 +135,13 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({
             background: 'var(--tile-primary)',
             color: '#fff',
             border: 'none',
-            borderRadius: '4px',
-            padding: '6px 12px',
+            borderRadius: '6px',
+            padding: '8px 14px',
             cursor: 'pointer',
             fontWeight: 'bold',
             alignSelf: 'flex-end',
-            fontSize: '13px'
+            fontSize: '13px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
           }}
         >
           Got it!
