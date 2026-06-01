@@ -57,13 +57,13 @@ const ActionLog: React.FC<{ sequence: any[], currentStep: number, activeColor: s
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em'
               }}>
-                {action.type}
+                {action.type === 'ignore' ? 'duplicate' : action.type}
               </span>
             </div>
             <div style={{ fontSize: '0.9em', color: idx === currentStep ? 'rgba(0,0,0,0.7)' : 'var(--text-muted)', marginTop: '4px' }}>
               {action.type === 'vaporize'
                 ? `Optimal Rank: ${action.optimal_rank}`
-                : `Vertices: ${action.vertices.length}`}
+                : (action.type === 'ignore' ? `Duplicate shape trimmed` : `Vertices: ${action.vertices.length}`)}
             </div>
           </div>
         ))}
@@ -245,7 +245,13 @@ export default function ReplayPage() {
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
             {engine.stack.length === 1 && (
-              <button className="btn primary" onClick={handleFork}>
+              <button 
+                className="btn primary" 
+                onClick={handleFork}
+                disabled={engine.boardState.activeGraph === null}
+                style={engine.boardState.activeGraph === null ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                title={engine.boardState.activeGraph === null ? "Cannot fork a completed run" : "Fork this run"}
+              >
                 Fork Run
               </button>
             )}

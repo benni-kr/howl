@@ -18,6 +18,7 @@ export type EliminationNode = {
   action?: CutHistoryAction;
   children: EliminationNode[];
   isVaporized?: boolean;
+  isIgnored?: boolean;
 };
 
 const buildGridGraph = (m: number, n: number): Graph => {
@@ -161,13 +162,19 @@ export const useReplayEngine = (initialM: number, initialN: number, globalSequen
             }));
             activeNodes.splice(nodeIndex, 1, ...targetNode.children);
           }
-        } else if (action.type === "vaporize") {
-          // Vaporize action means the graph is completely removed
-          maxRank = Math.max(maxRank, targetGraph.baseRank + action.optimal_rank);
+        } else if (action.type === "vaporize" || action.type === "ignore") {
+          // Vaporize/Ignore action means the graph is completely removed
+          if (action.type === "vaporize") {
+            maxRank = Math.max(maxRank, targetGraph.baseRank + action.optimal_rank);
+          }
           graphs.splice(targetIndex, 1);
 
           if (targetNode) {
-            targetNode.isVaporized = true;
+            if (action.type === "vaporize") {
+              targetNode.isVaporized = true;
+            } else {
+              targetNode.isIgnored = true;
+            }
             activeNodes.splice(nodeIndex, 1);
           }
         }

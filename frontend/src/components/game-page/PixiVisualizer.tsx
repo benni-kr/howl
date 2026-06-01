@@ -39,8 +39,9 @@ type PixiVisualizerProps = {
   bankedGraphs: Graph[];
   settings: SettingsState;
   isExecuting?: boolean;
-  optimalRanks?: Map<string, { best_rank: number, is_optimal: boolean, discovered_by?: string | null }>;
+  optimalRanks?: Map<string, { best_rank: number, is_optimal: boolean, discovered_by?: string | null, hash: string }>;
   onAutoSolve?: (graphIndex: number) => void;
+  onIgnoreDuplicate?: (graphIndex: number) => void;
   hasCutsApplied?: boolean;
   overrideState?: { activeGraph: Graph | null; recentCutGraphs: Graph[] };
   readOnly?: boolean;
@@ -110,6 +111,8 @@ class PixiEngine {
   onPointerUp?: () => void;
   onGraphClick?: (graphIndex: number) => void;
   onDeepDiveRequest?: (graphIndex: number) => void;
+  onAutoSolve?: (graphIndex: number) => void;
+  onIgnoreDuplicate?: (graphIndex: number) => void;
 
   cellSize: number = BASE_CELL_SIZE;
   splitView: boolean = false;
@@ -256,12 +259,13 @@ class PixiEngine {
     height: number,
     bankedGraphs: Graph[],
     palette: Palette,
-    optimalRanks: Map<string, { best_rank: number, is_optimal: boolean, discovered_by?: string | null }>,
+    optimalRanks: Map<string, { best_rank: number, is_optimal: boolean, discovered_by?: string | null, hash: string }>,
     onNodePointerDown?: (vertex: Vertex, graphIndex: number) => void,
     onNodePointerEnter?: (vertex: Vertex, graphIndex: number) => void,
     onPointerUp?: () => void,
     onGraphClick?: (graphIndex: number) => void,
     onAutoSolve?: (graphIndex: number) => void,
+    onIgnoreDuplicate?: (graphIndex: number) => void,
     isExecuting: boolean = false,
     hasCutsApplied: boolean = false,
     readOnly: boolean = false,
@@ -273,6 +277,8 @@ class PixiEngine {
     this.onNodePointerEnter = onNodePointerEnter;
     this.onPointerUp = onPointerUp;
     this.onGraphClick = onGraphClick;
+    this.onAutoSolve = onAutoSolve;
+    this.onIgnoreDuplicate = onIgnoreDuplicate;
     this.onDeepDiveRequest = onDeepDiveRequest;
     this.splitView = splitView;
 
@@ -364,6 +370,14 @@ class PixiEngine {
 
     this.wandContainer.removeChildren();
 
+    const seenHashes = new Set<string>();
+    if (splitView && optimalRanks) {
+      bankedGraphs.forEach(bg => {
+        const h = optimalRanks.get(getLocalGraphFingerprint(bg))?.hash;
+        if (h) seenHashes.add(h);
+      });
+    }
+
     graphs.forEach((graph, graphIndex) => {
       const meta = graphMetas[graphIndex];
       const layout = layouts[graphIndex];
@@ -372,7 +386,8 @@ class PixiEngine {
 
       const isUntouchedFirstGraph = graphIndex === 0 && !hasCutsApplied;
       const optRank = optimalRanks.get(meta.graphFingerprint);
-      if (optRank && !isExecuting && pendingCutSet.length === 0 && !isUntouchedFirstGraph) {
+
+      if (optRank && optRank.best_rank !== 999999 && !isExecuting && pendingCutSet.length === 0 && !isUntouchedFirstGraph) {
         const wandScale = 1 / targetScale; // Inverse scale so it stays a subtle size regardless of camera zoom
 
         const wandBg = new PIXI.Graphics();
@@ -381,8 +396,9 @@ class PixiEngine {
         wandBg.stroke({ width: 2, color: this.palette?.highlight ?? 0x10b981, alpha: 0.8 });
 
         const icon = optRank.is_optimal ? '🧮' : '🪄';
+        const textStr = `${icon} [${optRank.best_rank}]`;
         const text = new PIXI.Text({
-          text: `${icon} [${optRank.best_rank}]`,
+          text: textStr,
           style: {
             fontFamily: "sans-serif",
             fontSize: 12,
@@ -453,7 +469,7 @@ class PixiEngine {
           if (readOnly) {
             this.onDeepDiveRequest?.(graphIndex);
           } else {
-            onAutoSolve?.(graphIndex);
+            this.onAutoSolve?.(graphIndex);
           }
         });
         wandGroup.on("pointerover", () => {
@@ -689,6 +705,7 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
       isExecuting = false,
       optimalRanks = new Map(),
       onAutoSolve,
+      onIgnoreDuplicate,
       hasCutsApplied = false,
       overrideState,
       readOnly = false,
@@ -772,6 +789,9 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           (graphIndex) => {
             onAutoSolve?.(graphIndex);
           },
+          (graphIndex) => {
+            onIgnoreDuplicate?.(graphIndex);
+          },
           isExecuting,
           hasCutsApplied,
           readOnly,
@@ -810,13 +830,16 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           (graphIndex) => {
             onAutoSolve?.(graphIndex);
           },
+          (graphIndex) => {
+            onIgnoreDuplicate?.(graphIndex);
+          },
           isExecuting,
           hasCutsApplied,
           readOnly,
           onDeepDiveRequest
         );
       }
-    }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, onSelectGraph, onAutoSolve, onNodePointerDown, onNodePointerEnter, onPointerUp, isExecuting, hasCutsApplied, readOnly, onDeepDiveRequest]);
+    }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, onSelectGraph, onAutoSolve, onIgnoreDuplicate, onNodePointerDown, onNodePointerEnter, onPointerUp, isExecuting, hasCutsApplied, readOnly, onDeepDiveRequest]);
 
     useEffect(() => {
       onPendingCutSetChange?.(pendingCutSet);

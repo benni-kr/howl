@@ -31,7 +31,8 @@ export const getLocalGraphFingerprint = (graph: Graph) => {
 
 export type CutHistoryAction =
   | { type: "cut"; vertices: Vertex[] }
-  | { type: "vaporize"; vertices: Vertex[]; optimal_rank: number };
+  | { type: "vaporize"; vertices: Vertex[]; optimal_rank: number }
+  | { type: "ignore"; vertices: Vertex[] };
 
 export interface GameHistoryEntry {
   activeGraph: Graph | null;
@@ -367,6 +368,46 @@ const gameSlice = createSlice({
       }
     },
     /**
+     * Ignore a graph (for duplicates).
+     *
+     * - Removes the target graph from its location.
+     * - Records an `ignore` action in `cutsApplied` so the backend knows to skip it.
+     */
+    ignoreGraph(state, action: PayloadAction<{ location: 'active' | 'banked' | 'recent', index?: number }>) {
+      const { location, index } = action.payload;
+      
+      state.history.push(snapshotState(state));
+      state.futureHistory = [];
+
+      let targetGraph: Graph | null = null;
+
+      if (location === 'active') {
+        targetGraph = state.activeGraph;
+        state.activeGraph = null;
+      } else if (location === 'banked' && index !== undefined) {
+        targetGraph = state.bankedGraphs[index];
+        state.bankedGraphs.splice(index, 1);
+      } else if (location === 'recent' && index !== undefined) {
+        targetGraph = state.recentCutGraphs[index];
+        state.recentCutGraphs.splice(index, 1);
+      }
+
+      if (targetGraph) {
+        state.cutsApplied.push({
+          type: "ignore",
+          vertices: [...targetGraph.vertices]
+        });
+      }
+
+      if (!state.activeGraph) {
+        if (state.recentCutGraphs.length > 0) {
+          state.activeGraph = state.recentCutGraphs.shift() || null;
+        } else if (state.bankedGraphs.length > 0) {
+          state.activeGraph = state.bankedGraphs.pop() || null;
+        }
+      }
+    },
+    /**
      * Vaporize multiple graphs simultaneously.
      * 
      * Gathers all provided targets, removes them from active/recent/banked,
@@ -422,6 +463,48 @@ const gameSlice = createSlice({
         }
       }
     },
+    ignoreMultipleGraphs(state, action: PayloadAction<{ targets: { location: 'active' | 'banked' | 'recent', index?: number }[] }>) {
+      const { targets } = action.payload;
+      if (targets.length === 0) return;
+
+      state.history.push(snapshotState(state));
+      state.futureHistory = [];
+
+      const sortedTargets = [...targets].sort((a, b) => {
+        const indexA = a.index ?? -1;
+        const indexB = b.index ?? -1;
+        return indexB - indexA;
+      });
+
+      for (const target of sortedTargets) {
+        let targetGraph: Graph | null = null;
+        if (target.location === 'active' && state.activeGraph) {
+          targetGraph = state.activeGraph;
+          state.activeGraph = null;
+        } else if (target.location === 'banked' && target.index !== undefined) {
+          targetGraph = state.bankedGraphs[target.index];
+          state.bankedGraphs.splice(target.index, 1);
+        } else if (target.location === 'recent' && target.index !== undefined) {
+          targetGraph = state.recentCutGraphs[target.index];
+          state.recentCutGraphs.splice(target.index, 1);
+        }
+
+        if (targetGraph) {
+          state.cutsApplied.push({
+            type: "ignore",
+            vertices: [...targetGraph.vertices]
+          });
+        }
+      }
+
+      if (!state.activeGraph) {
+        if (state.recentCutGraphs.length > 0) {
+          state.activeGraph = state.recentCutGraphs.shift() || null;
+        } else if (state.bankedGraphs.length > 0) {
+          state.activeGraph = state.bankedGraphs.pop() || null;
+        }
+      }
+    },
     /**
      * Completely overwrite the game state. Used for forking a replay.
      */
@@ -441,7 +524,9 @@ export const {
   removeSolvedSubgraphs,
   pullFromBankIfNeeded,
   autoSolveGraph,
+  ignoreGraph,
   autoSolveMultipleGraphs,
+  ignoreMultipleGraphs,
   forkGame,
 } = gameSlice.actions;
 
