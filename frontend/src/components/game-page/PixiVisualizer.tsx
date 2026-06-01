@@ -39,7 +39,7 @@ type PixiVisualizerProps = {
   bankedGraphs: Graph[];
   settings: SettingsState;
   isExecuting?: boolean;
-  optimalRanks?: Map<string, { best_rank: number, is_optimal: boolean }>;
+  optimalRanks?: Map<string, { best_rank: number, is_optimal: boolean, discovered_by?: string | null }>;
   onAutoSolve?: (graphIndex: number) => void;
   hasCutsApplied?: boolean;
   overrideState?: { activeGraph: Graph | null; recentCutGraphs: Graph[] };
@@ -256,7 +256,7 @@ class PixiEngine {
     height: number,
     bankedGraphs: Graph[],
     palette: Palette,
-    optimalRanks: Map<string, { best_rank: number, is_optimal: boolean }>,
+    optimalRanks: Map<string, { best_rank: number, is_optimal: boolean, discovered_by?: string | null }>,
     onNodePointerDown?: (vertex: Vertex, graphIndex: number) => void,
     onNodePointerEnter?: (vertex: Vertex, graphIndex: number) => void,
     onPointerUp?: () => void,
@@ -397,6 +397,36 @@ class PixiEngine {
         wandGroup.addChild(wandBg);
         wandGroup.addChild(text);
 
+        // Discoverer tooltip (hidden by default)
+        let tooltipGroup: PIXI.Container | null = null;
+        const discovererName = optRank.discovered_by;
+        if (discovererName) {
+          tooltipGroup = new PIXI.Container();
+          const tooltipText = new PIXI.Text({
+            text: `by ${discovererName}`,
+            style: {
+              fontFamily: "sans-serif",
+              fontSize: 9,
+              fontStyle: "italic",
+              fill: this.palette?.highlight ?? 0x10b981,
+            }
+          });
+          const tooltipPadX = 6;
+          const tooltipPadY = 3;
+          const tooltipBg = new PIXI.Graphics();
+          tooltipBg.roundRect(0, 0, tooltipText.width + tooltipPadX * 2, tooltipText.height + tooltipPadY * 2, 6);
+          tooltipBg.fill({ color: this.palette?.tileA ?? 0x334155, alpha: 0.9 });
+          tooltipText.x = tooltipPadX;
+          tooltipText.y = tooltipPadY;
+          tooltipGroup.addChild(tooltipBg);
+          tooltipGroup.addChild(tooltipText);
+          // Center below the wand badge
+          tooltipGroup.x = 28 - (tooltipText.width + tooltipPadX * 2) / 2;
+          tooltipGroup.y = 26;
+          tooltipGroup.alpha = 0;
+          wandGroup.addChild(tooltipGroup);
+        }
+
         // Calculate the top-right-most vertex of this specific graph
         const minYVertex = Math.min(...graph.vertices.map(v => v.y));
         const topRowVertices = graph.vertices.filter(v => v.y === minYVertex);
@@ -428,9 +458,15 @@ class PixiEngine {
         });
         wandGroup.on("pointerover", () => {
           gsap.to(wandGroup.scale, { x: wandScale * 1.15, y: wandScale * 1.15, duration: 0.2 });
+          if (tooltipGroup) {
+            gsap.to(tooltipGroup, { alpha: 1, duration: 0.15 });
+          }
         });
         wandGroup.on("pointerout", () => {
           gsap.to(wandGroup.scale, { x: wandScale, y: wandScale, duration: 0.2 });
+          if (tooltipGroup) {
+            gsap.to(tooltipGroup, { alpha: 0, duration: 0.15 });
+          }
         });
 
         this.wandContainer.addChild(wandGroup);

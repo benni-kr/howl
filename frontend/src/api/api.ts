@@ -97,6 +97,7 @@ export type ShapeResult = {
   found: boolean;
   best_rank: number | null;
   is_optimal: boolean | null;
+  discovered_by?: string | null;
 };
 
 export const checkShapes = async (graphs: Graph[]): Promise<ShapeResult[]> => {

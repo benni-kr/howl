@@ -87,7 +87,7 @@ const GamePage: React.FC = () => {
   const [pendingCutSet, setPendingCutSet] = useState<Vertex[]>([]);
   const [resetToken, setResetToken] = useState(0);
 
-  const [optimalRanks, setOptimalRanks] = useState<Map<string, { best_rank: number, is_optimal: boolean }>>(new Map());
+  const [optimalRanks, setOptimalRanks] = useState<Map<string, { best_rank: number, is_optimal: boolean, discovered_by?: string | null }>>(new Map());
   const { checkShapesCached } = useShapeCache();
 
   // Poll for optimal ranks when graphs change
@@ -103,11 +103,11 @@ const GamePage: React.FC = () => {
       checkShapesCached(graphsToCheck).then((results) => {
         if (!isMounted) return;
         console.log("CheckShapes API response:", results);
-        const newRanks = new Map<string, { best_rank: number, is_optimal: boolean }>();
+        const newRanks = new Map<string, { best_rank: number, is_optimal: boolean, discovered_by?: string | null }>();
         results.forEach((res, index) => {
           console.log(`Graph ${index} found: ${res.found}, best_rank: ${res.best_rank}, is_optimal: ${res.is_optimal}`);
           if (res.found && res.best_rank !== null) {
-            newRanks.set(getLocalGraphFingerprint(graphsToCheck[index]), { best_rank: res.best_rank, is_optimal: !!res.is_optimal });
+            newRanks.set(getLocalGraphFingerprint(graphsToCheck[index]), { best_rank: res.best_rank, is_optimal: !!res.is_optimal, discovered_by: res.discovered_by ?? null });
           }
         });
         setOptimalRanks(newRanks);
@@ -369,6 +369,14 @@ const GamePage: React.FC = () => {
                   index: graphIndex === 0 ? undefined : graphIndex - 1,
                   optimalRank: opt.best_rank
                 }));
+                // After vaporizing, check if multiple subgraphs remain — if so, enter split view
+                const stateAfterSolve = store.getState().game;
+                if (stateAfterSolve.recentCutGraphs.length > 0) {
+                  setSplitView(true);
+                  setSelectedGraphIndex(null);
+                } else {
+                  setSplitView(false);
+                }
                 setResetToken((v) => v + 1);
               }
             }}
@@ -418,7 +426,14 @@ const GamePage: React.FC = () => {
                     }}
                     onClick={() => {
                       dispatch(autoSolveMultipleGraphs({ targets: solvableTargets }));
-                      setSplitView(false); // Make sure we exit split view if vaporizing everything
+                      // After batch vaporize, check if unsolved subgraphs remain
+                      const stateAfterSolve = store.getState().game;
+                      if (stateAfterSolve.recentCutGraphs.length > 0) {
+                        setSplitView(true);
+                        setSelectedGraphIndex(null);
+                      } else {
+                        setSplitView(false);
+                      }
                       setResetToken((v) => v + 1);
                     }}
                   >
