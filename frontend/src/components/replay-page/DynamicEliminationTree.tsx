@@ -48,9 +48,8 @@ const TreeNode: React.FC<{ node: EliminationNode }> = ({ node }) => {
         <div style={{
           padding: '4px 12px',
           borderRadius: '20px',
-          background: '#334155', // Slate
-          color: 'var(--text-main)',
-          border: `2px solid ${lineColor}`,
+          background: '#1e1b4b', // Deep purple
+          color: '#fbbf24', // Gold text
           fontSize: '0.9rem',
           fontWeight: 'bold',
           zIndex: 2,
@@ -61,7 +60,7 @@ const TreeNode: React.FC<{ node: EliminationNode }> = ({ node }) => {
           whiteSpace: 'nowrap',
           width: 'max-content'
         }}>
-          🪞 Duplicate
+          🪞
         </div>
       ) : (
         <div style={{
