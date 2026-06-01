@@ -36,7 +36,7 @@ const DocsPage: React.FC = () => {
             <strong>The Abacus:</strong> Sometimes, the backend knows a shape's score is mathematically perfect. The Abacus vaporizes the shape knowing it can never be improved.
           </li>
           <li>
-            <strong>🪞 Delete Duplicates:</strong> If a cut creates identical subgraphs, or you have identical shapes in your bank, you only need to solve one of them! Click the "Delete Duplicates" button to automatically trim the redundant shapes from the game tree.
+            <strong>Delete Duplicates:</strong> If a cut creates identical subgraphs, you only need to solve one of them! Click the "Delete Duplicates" button to automatically trim the redundant shapes from the game tree.
           </li>
         </ul>
       </div>
