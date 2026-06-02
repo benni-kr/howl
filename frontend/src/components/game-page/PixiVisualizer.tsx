@@ -902,12 +902,14 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
     useEffect(() => {
       if (resetToken !== undefined) {
         setPendingCutSet([]);
+        lastClickedVertexRef.current = null;
       }
     }, [resetToken]);
 
     useEffect(() => {
       if (splitView) {
         setPendingCutSet([]);
+        lastClickedVertexRef.current = null;
       }
     }, [splitView]);
 

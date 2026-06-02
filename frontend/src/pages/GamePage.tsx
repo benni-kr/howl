@@ -588,6 +588,7 @@ const GamePage: React.FC = () => {
           if (started) {
             setHasSolved(false); // Reset the won state for the new game
             setTopScore(null); // Clear top score until fetched
+            setResetToken((v) => v + 1); // Reset active selections
           } else if (isGameWon) {
             setHasSolved(true);
           }
