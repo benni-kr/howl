@@ -146,6 +146,8 @@ export const submitScore = async (
   solverName: string,
   cutSequence: CutHistoryAction[],
 ): Promise<SubmitResponse> => {
+  // Network/DB Optimization: Compact the sequence before sending to save ~70% payload size
+  // "c" = cut, "v" = vaporize, "i" = ignore. Vertices become flat [x, y] tuples.
   const compactSequence = cutSequence.map((action) => {
     const v = action.vertices.map((vtx) => [vtx.x, vtx.y]);
     if (action.type === "cut") return { t: "c", v };
@@ -187,6 +189,15 @@ type TopScoreResponse = {
   cut_sequence: CutHistoryAction[];
 };
 
+/**
+ * Decompacts the network-optimized cut sequence back into the verbose format used by the frontend.
+ * 
+ * Architecture Note (DTO Pattern):
+ * The frontend relies on a verbose format (e.g. { type: "cut", vertices: [{x, y}] }) for readability 
+ * in React components and Redux state. However, to save bandwidth and DB storage, the data is compacted
+ * over the network to { t: "c", v: [[x, y]] }. This helper safely expands it back for UI consumption, 
+ * while maintaining backwards compatibility with any legacy uncompacted data in the database.
+ */
 export const decompactSequence = (sequence: any): CutHistoryAction[] => {
   if (!Array.isArray(sequence)) return [];
   

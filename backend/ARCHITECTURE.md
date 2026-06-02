@@ -59,25 +59,20 @@ When a player wins, the frontend sends a flat log of actions (`cutsApplied`).
 The backend replays this log on a fresh m×n grid to reconstruct the *tree* of
 every intermediate subgraph. This tree is then scored bottom-up.
 
-### Input: `cut_sequence`
+### Input: `cut_sequence` (DTO Pattern)
 
-Two formats are accepted (for backward compatibility):
+To save bandwidth and storage, the frontend submits a highly compact JSON payload.
 
 ```python
-# Legacy (database records from before typed actions):
+# Compact DTO Format (frontend sends this):
 [
-    [[0, 0], [0, 1], [1, 0]],   # plain list of [x, y] pairs
-    [[2, 0], [2, 1]],
-]
-
-# Current (frontend sends this):
-[
-    {"type": "cut",      "vertices": [{"x": 0, "y": 0}, {"x": 0, "y": 1}]},
-    {"type": "vaporize", "vertices": [{"x": 2, "y": 0}], "optimal_rank": 1},
+    {"t": "c", "v": [[0, 0], [0, 1]]},
+    {"t": "v", "v": [[2, 0]], "r": 1},
+    {"t": "i", "v": [[3, 3]]}
 ]
 ```
 
-The `_to_tuples()` helper normalizes both formats to `list[tuple[int, int]]`.
+The `_to_tuples()` helper normalizes the flat `[x, y]` coordinates into `list[tuple[int, int]]` for the replay engine.
 
 ### Tree Construction
 
@@ -220,7 +215,3 @@ HOWL implements a lightweight, global gatekeeper mechanism to prevent unauthoriz
 3. **`is_optimal` is always false:** The `SubgraphDictionary.is_optimal` flag
    is reserved for a future feature where we can mathematically prove a rank
    is optimal. Currently unused.
-
-4. **Legacy data:** Some old `grid_solutions` rows contain the legacy
-   `[[x,y], ...]` format in `cut_sequence`. The `_to_tuples()` normalizer
-   handles this transparently.

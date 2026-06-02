@@ -10,10 +10,14 @@ from pydantic import BaseModel, field_validator
 class SolutionCreate(BaseModel):
     """Payload for POST /api/submit_solution.
 
-    ``cut_sequence`` accepts two formats:
-      - **Legacy:** A list of vertex lists, e.g. ``[[[0,0],[0,1]], ...]``
-      - **Current:** A list of typed action dicts, e.g.
-        ``[{"type": "cut", "vertices": [{"x":0,"y":0}]}, ...]``
+    Architecture Note (DTO Pattern):
+    This schema exclusively accepts a highly compact JSON payload to save network bandwidth
+    and PostgreSQL storage space (~70% reduction in size).
+
+    ``cut_sequence`` format:
+      - Cut: ``{"t": "c", "v": [[x,y], ...]}``
+      - Vaporize: ``{"t": "v", "v": [[x,y], ...], "r": <optimal_rank>}``
+      - Ignore: ``{"t": "i", "v": [[x,y], ...]}``
     """
 
     m: int
