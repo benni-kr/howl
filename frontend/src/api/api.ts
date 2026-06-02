@@ -135,7 +135,7 @@ type SubmitResponse = {
     n: number;
     rank: number;
     solver_name: string;
-    cut_sequence: unknown;
+    cut_sequence: CutHistoryAction[];
   };
 };
 
@@ -168,12 +168,14 @@ export const submitScore = async (
   });
 
   if (!response.ok) {
-    const errorBody = await response.text();
-    console.error("FastAPI Error:", errorBody);
     throw new Error(`Submit score failed with status ${response.status}`);
   }
 
-  return (await response.json()) as SubmitResponse;
+  const data = await response.json();
+  if (data?.solution?.cut_sequence) {
+    data.solution.cut_sequence = decompactSequence(data.solution.cut_sequence);
+  }
+  return data as SubmitResponse;
 };
 
 type TopScoreResponse = {
@@ -182,7 +184,32 @@ type TopScoreResponse = {
   n: number;
   rank: number;
   solver_name: string;
-  cut_sequence: unknown;
+  cut_sequence: CutHistoryAction[];
+};
+
+export const decompactSequence = (sequence: any): CutHistoryAction[] => {
+  if (!Array.isArray(sequence)) return [];
+  
+  return sequence.map(action => {
+    // Legacy / uncompacted format
+    if (action.type && action.vertices && (!action.vertices.length || ('x' in action.vertices[0]))) {
+      return action as CutHistoryAction;
+    }
+    
+    // Compact format { t, v, r }
+    let type: "cut" | "vaporize" | "ignore" = "ignore";
+    if (action.t === "c") type = "cut";
+    else if (action.t === "v") type = "vaporize";
+    
+    const parsedAction: CutHistoryAction = {
+      type,
+      vertices: Array.isArray(action.v) ? action.v.map(([x, y]: number[]) => ({ x, y })) : [],
+    };
+    if (action.r !== undefined) {
+      parsedAction.optimal_rank = action.r;
+    }
+    return parsedAction;
+  });
 };
 
 export const fetchTopScore = async (
@@ -202,6 +229,9 @@ export const fetchTopScore = async (
       return null; // gracefully handle failure
     }
     const data = await response.json();
+    if (data && data.cut_sequence) {
+      data.cut_sequence = decompactSequence(data.cut_sequence);
+    }
     return data || null;
   } catch (error) {
     console.error("fetchTopScore failed:", error);
