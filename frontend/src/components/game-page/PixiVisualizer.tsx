@@ -95,14 +95,14 @@ class PixiEngine {
   app: PIXI.Application;
   container: HTMLDivElement;
   stage: PIXI.Container;
-  edgeContainer: PIXI.Container;
+  edgeGraphics: PIXI.Graphics;
   nodeContainer: PIXI.Container;
   particleContainer: PIXI.Container;
   glowContainer: PIXI.Container;
   wandContainer: PIXI.Container;
 
   nodes: Map<string, { x: number; y: number; vertex: Vertex; graphics: PIXI.Graphics; glowGraphics: PIXI.Graphics; isPendingCut: boolean; color: number }>;
-  edges: { from: string; to: string; graphics: PIXI.Graphics }[];
+  activeEdges: Set<string>;
   particles: Particle[];
   dyingGraphics: Set<PIXI.Graphics>;
 
@@ -119,12 +119,13 @@ class PixiEngine {
   isDestroyed: boolean = false;
   palette: Palette | null = null;
   _activeExplosions: number = 0;
+  _edgesDirty: boolean = true;
 
   constructor(container: HTMLDivElement) {
     this.container = container;
     this.app = new PIXI.Application();
     this.stage = new PIXI.Container();
-    this.edgeContainer = new PIXI.Container();
+    this.edgeGraphics = new PIXI.Graphics();
     this.nodeContainer = new PIXI.Container();
     this.particleContainer = new PIXI.Container();
     this.glowContainer = new PIXI.Container();
@@ -137,13 +138,13 @@ class PixiEngine {
     this.glowContainer.filters = [blurFilter];
 
     this.stage.addChild(this.glowContainer);
-    this.stage.addChild(this.edgeContainer);
+    this.stage.addChild(this.edgeGraphics);
     this.stage.addChild(this.nodeContainer);
     this.stage.addChild(this.wandContainer);
     this.stage.addChild(this.particleContainer);
 
     this.nodes = new Map();
-    this.edges = [];
+    this.activeEdges = new Set();
     this.particles = [];
     this.dyingGraphics = new Set();
   }
@@ -175,20 +176,24 @@ class PixiEngine {
   }
 
   update() {
-    for (const edge of this.edges) {
-      const fromNode = this.nodes.get(edge.from);
-      const toNode = this.nodes.get(edge.to);
-      if (fromNode && toNode) {
-        const scaleAlpha = Math.min(fromNode.graphics.scale.x, toNode.graphics.scale.x);
-        edge.graphics.clear();
-        if (scaleAlpha > 0.01) {
-          edge.graphics.moveTo(fromNode.graphics.x, fromNode.graphics.y);
-          edge.graphics.lineTo(toNode.graphics.x, toNode.graphics.y);
-          edge.graphics.stroke({ color: this.palette?.border ?? 0x334155, width: 2, alpha: 0.4 * scaleAlpha });
+    // Only redraw edges when positions have changed
+    if (this._edgesDirty) {
+      this.edgeGraphics.clear();
+      const edgeColor = this.palette?.border ?? 0x334155;
+      for (const edgeKey of this.activeEdges) {
+        const [fromKey, toKey] = edgeKey.split('-');
+        const fromNode = this.nodes.get(fromKey);
+        const toNode = this.nodes.get(toKey);
+        if (fromNode && toNode) {
+          const scaleAlpha = Math.min(fromNode.graphics.scale.x, toNode.graphics.scale.x);
+          if (scaleAlpha > 0.01) {
+            this.edgeGraphics.moveTo(fromNode.graphics.x, fromNode.graphics.y);
+            this.edgeGraphics.lineTo(toNode.graphics.x, toNode.graphics.y);
+            this.edgeGraphics.stroke({ color: edgeColor, width: 2, alpha: 0.4 * scaleAlpha });
+          }
         }
-      } else {
-        edge.graphics.clear();
       }
+      this._edgesDirty = false;
     }
 
     for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -199,6 +204,10 @@ class PixiEngine {
         this.particles.splice(i, 1);
       }
     }
+  }
+
+  markEdgesDirty() {
+    this._edgesDirty = true;
   }
 
   spawnExplosion(x: number, y: number, colors: number[]) {
@@ -286,17 +295,24 @@ class PixiEngine {
     // we just let the cleanup loop delete all remaining nodes (which triggers explosions)
 
     const graphMetas = graphs.map((graph) => {
-      const xs = graph.vertices.map((v) => v.x);
-      const ys = graph.vertices.map((v) => v.y);
-      const minX = xs.length ? Math.min(...xs) : 0;
-      const maxX = xs.length ? Math.max(...xs) : 0;
-      const minY = ys.length ? Math.min(...ys) : 0;
-      const maxY = ys.length ? Math.max(...ys) : 0;
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+      for (const v of graph.vertices) {
+        if (v.x < minX) minX = v.x;
+        if (v.x > maxX) maxX = v.x;
+        if (v.y < minY) minY = v.y;
+        if (v.y > maxY) maxY = v.y;
+      }
+      if (graph.vertices.length === 0) { minX = 0; maxX = 0; minY = 0; maxY = 0; }
       return { minX, maxX, minY, maxY, widthCells: maxX - minX + 1, heightCells: maxY - minY + 1, graphFingerprint: getLocalGraphFingerprint(graph) };
     });
 
-    const maxWidthCells = graphs.length > 0 ? Math.max(...graphMetas.map((m) => m.widthCells)) : 0;
-    const maxHeightCells = graphs.length > 0 ? Math.max(...graphMetas.map((m) => m.heightCells)) : 0;
+    let maxWidthCells = 0;
+    let maxHeightCells = 0;
+    for (const m of graphMetas) {
+      if (m.widthCells > maxWidthCells) maxWidthCells = m.widthCells;
+      if (m.heightCells > maxHeightCells) maxHeightCells = m.heightCells;
+    }
     const fitCellSize = Math.min(
       width / Math.max(1, maxWidthCells),
       height / Math.max(1, maxHeightCells)
@@ -344,8 +360,14 @@ class PixiEngine {
     let targetScale = 1;
 
     if (graphs.length > 0) {
-      const totalWidth = layouts.length > 0 ? Math.max(...layouts.map((l) => l.offsetX + l.pixelWidth)) : 0;
-      const totalHeight = layouts.length > 0 ? Math.max(...layouts.map((l) => l.offsetY + l.pixelHeight)) : 0;
+      let totalWidth = 0;
+      let totalHeight = 0;
+      for (const l of layouts) {
+        const right = l.offsetX + l.pixelWidth;
+        const bottom = l.offsetY + l.pixelHeight;
+        if (right > totalWidth) totalWidth = right;
+        if (bottom > totalHeight) totalHeight = bottom;
+      }
       const viewPadding = Math.max(this.cellSize, 16);
       const vWidth = totalWidth + viewPadding * 2;
       const vHeight = totalHeight + viewPadding * 2;
@@ -444,7 +466,10 @@ class PixiEngine {
         }
 
         // Calculate the top-right-most vertex of this specific graph
-        const minYVertex = Math.min(...graph.vertices.map(v => v.y));
+        let minYVertex = Infinity;
+        for (const v of graph.vertices) {
+          if (v.y < minYVertex) minYVertex = v.y;
+        }
         const topRowVertices = graph.vertices.filter(v => v.y === minYVertex);
         const topRightVertex = topRowVertices.reduce((prev, curr) => (curr.x > prev.x ? curr : prev));
 
@@ -539,10 +564,10 @@ class PixiEngine {
 
           node.graphics.scale.set(0);
           node.glowGraphics.scale.set(0);
-          gsap.to([node.graphics.scale, node.glowGraphics.scale], { x: 1, y: 1, duration: 0.4, delay: layoutDelay, ease: "back.out(1.7)" });
+          gsap.to([node.graphics.scale, node.glowGraphics.scale], { x: 1, y: 1, duration: 0.4, delay: layoutDelay, ease: "back.out(1.7)", onUpdate: () => this.markEdgesDirty() });
         } else {
           if (!isExecuting) {
-            gsap.to([node.graphics, node.glowGraphics], { x: targetX, y: targetY, duration: 0.6, ease: "power2.out" });
+            gsap.to([node.graphics, node.glowGraphics], { x: targetX, y: targetY, duration: 0.6, ease: "power2.out", onUpdate: () => this.markEdgesDirty() });
           }
 
           node!.graphics.off("pointerdown");
@@ -574,19 +599,10 @@ class PixiEngine {
         this.drawNode(node, isSelected);
       });
 
-      graph.edges.forEach((edge) => {
-        const k1 = `${edge.from.x},${edge.from.y}`;
-        const k2 = `${edge.to.x},${edge.to.y}`;
-        const edgeKey = k1 < k2 ? `${k1}-${k2}` : `${k2}-${k1}`;
-        activeEdges.add(edgeKey);
-
-        if (!this.edges.find((e) => e.from === k1 && e.to === k2 || e.from === k2 && e.to === k1)) {
-          const g = new PIXI.Graphics();
-          this.edgeContainer.addChild(g);
-          this.edges.push({ from: k1, to: k2, graphics: g });
-        }
-      });
     });
+
+    // Update the set of active edges (no per-edge Graphics objects needed)
+    this.activeEdges = activeEdges;
 
     for (const [key, node] of this.nodes.entries()) {
       if (!activeKeys.has(key)) {
@@ -603,6 +619,7 @@ class PixiEngine {
             y: 0,
             duration: 0.3,
             ease: "back.in(1.5)",
+            onUpdate: () => this.markEdgesDirty(),
             onComplete: () => {
               this.nodeContainer.removeChild(node.graphics);
               this.glowContainer.removeChild(node.glowGraphics);
@@ -624,6 +641,7 @@ class PixiEngine {
             yoyo: true,
             repeat: 1,
             ease: "power2.out",
+            onUpdate: () => this.markEdgesDirty(),
             onComplete: () => {
               const shardColors = this.palette ? [this.palette.select, this.palette.selectBorder] : [node.color, 0xdcfce7];
               this.spawnExplosion(node.graphics.x, node.graphics.y, shardColors);
@@ -648,6 +666,7 @@ class PixiEngine {
             yoyo: true,
             repeat: 1,
             ease: "power2.out",
+            onUpdate: () => this.markEdgesDirty(),
             onComplete: () => {
               const shardColors = this.palette ? [this.palette.tileA, this.palette.tileB] : [0x10b981, 0x34d399, 0xfcd34d];
               this.spawnExplosion(node.graphics.x, node.graphics.y, shardColors);
@@ -668,15 +687,8 @@ class PixiEngine {
       }
     }
 
-    for (let i = this.edges.length - 1; i >= 0; i--) {
-      const edge = this.edges[i];
-      const edgeKey = edge.from < edge.to ? `${edge.from}-${edge.to}` : `${edge.to}-${edge.from}`;
-      if (!activeEdges.has(edgeKey)) {
-        this.edgeContainer.removeChild(edge.graphics);
-        edge.graphics.destroy();
-        this.edges.splice(i, 1);
-      }
-    }
+    // Mark edges dirty so the batched redraw picks up the new topology
+    this._edgesDirty = true;
   }
 
   destroy() {

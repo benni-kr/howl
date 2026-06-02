@@ -135,7 +135,18 @@ const GamePage: React.FC = () => {
     if (isGameWon && activeGraph === null && recentCutGraphs.length === 0 && bankedGraphs.length === 0) {
       if (gridM && gridN && solverName && !hasSubmittedScoreRef.current) {
         hasSubmittedScoreRef.current = true;
-        submitScore(gridM, gridN, maxRank, solverName, cutsApplied).catch(err => {
+
+        // Compact the cut sequence to minimize payload size.
+        // "c" = cut, "v" = vaporize, "i" = ignore.
+        // Vertices are stored as flat [x, y] pairs instead of {x, y} objects.
+        const compactSequence = cutsApplied.map((action) => {
+          const v = action.vertices.map((vtx) => [vtx.x, vtx.y]);
+          if (action.type === "cut") return { t: "c", v };
+          if (action.type === "vaporize") return { t: "v", v, r: action.optimal_rank };
+          /* ignore */ return { t: "i", v };
+        });
+
+        submitScore(gridM, gridN, maxRank, solverName, compactSequence).catch(err => {
           console.error("Failed to submit score:", err);
           hasSubmittedScoreRef.current = false;
         });

@@ -198,18 +198,9 @@ class TreeNode:
         self.ignored: bool = False
 
 def _to_tuples(vertices: list) -> list[tuple[int, int]]:
-    """Convert a vertex list from either format to (x, y) tuples.
-
-    Handles two formats that exist in the database:
-      - Old format: ``[[0, 1], [2, 3]]``  (plain nested lists)
-      - New format: ``[{"x": 0, "y": 1}, {"x": 2, "y": 3}]``  (typed dicts)
-    """
+    """Convert a vertex list of [x, y] pairs to (x, y) tuples."""
     if not vertices:
         return []
-    sample = vertices[0]
-    if isinstance(sample, dict):
-        return [(v["x"], v["y"]) for v in vertices]
-    # list / tuple of [x, y]
     return [(v[0], v[1]) for v in vertices]
 
 
@@ -218,9 +209,10 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
     Replay a chronological sequence of cuts to build a tree of subgraphs,
     then calculate the intrinsic optimal rank for every node bottom-up.
 
-    Accepts two payload formats:
-      - **Old** (legacy): Each action is a plain list of ``[x, y]`` pairs.
-      - **New** (current): Each action is ``{type: "cut"|"vaporize", vertices, ...}``.
+    Compact payload format:
+      ``{t: "c", v: [[x,y], ...]}``           — cut
+      ``{t: "v", v: [[x,y], ...], r: N}``     — vaporize with known rank
+      ``{t: "i", v: [[x,y], ...]}``           — ignore (duplicate removal)
 
     Returns:
         dict: Mapping from canonical_hash to dict with rank and best_cut_sequence.
@@ -235,21 +227,13 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
         # ------------------------------------------------------------------
         # Determine action type and raw vertex list
         # ------------------------------------------------------------------
-        if isinstance(action, list):
-            # Legacy format: action itself is the vertex list
-            action_type = "cut"
-            raw_vertices = action
-        else:
-            action_type = action.get("type", "cut")
-            raw_vertices = action.get("vertices", [])
+        action_type = action.get("t", "c")
+        raw_vertices = action.get("v", [])
 
         # ------------------------------------------------------------------
         # Handle VAPORIZE and IGNORE
-        # Frontend sends: { type: "vaporize" | "ignore", vertices: Vertex[], optimal_rank?: N }
-        # The vertices describe the entire subgraph that was auto-solved or ignored.
-        # Match by exact spatial coordinates for order-independence without ambiguity.
         # ------------------------------------------------------------------
-        if action_type in ["vaporize", "ignore"]:
+        if action_type in ("v", "i"):
             vap_tuples = _to_tuples(raw_vertices)
             if not vap_tuples:
                 continue
@@ -273,9 +257,9 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
                         
             if target_node:
                 active_nodes.remove(target_node)
-                if action_type == "vaporize":
-                    target_node.vaporized_rank = action.get("optimal_rank", 999999)
-                elif action_type == "ignore":
+                if action_type == "v":
+                    target_node.vaporized_rank = action.get("r", 999999)
+                elif action_type == "i":
                     target_node.ignored = True
             continue
 
@@ -318,12 +302,7 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
         for action in global_sequence:
             if not action:
                 continue
-            if isinstance(action, list):
-                # Legacy cut format
-                action_vertices = set((x, y) for x, y in action)
-            else:
-                # New dict format (cut or vaporize)
-                action_vertices = set((v["x"], v["y"]) for v in action.get("vertices", []))
+            action_vertices = set((x, y) for x, y in action.get("v", []))
             
             if action_vertices and action_vertices.issubset(original_vertices):
                 local_seq.append(action)
@@ -336,19 +315,13 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
 
         transformed_seq = []
         for action in local_seq:
-            if isinstance(action, list):
-                # Legacy cut format
-                new_action = [[transform(x, y)[0] - dx, transform(x, y)[1] - dy] for x, y in action]
-                transformed_seq.append(new_action)
-            else:
-                # Dict format (cut or vaporize)
-                new_action = dict(action) # shallow copy
-                new_vertices = []
-                for v in action.get("vertices", []):
-                    tx, ty = transform(v["x"], v["y"])
-                    new_vertices.append({"x": tx - dx, "y": ty - dy})
-                new_action["vertices"] = new_vertices
-                transformed_seq.append(new_action)
+            new_action = dict(action)  # shallow copy
+            new_vertices = []
+            for coord in action.get("v", []):
+                tx, ty = transform(coord[0], coord[1])
+                new_vertices.append([tx - dx, ty - dy])
+            new_action["v"] = new_vertices
+            transformed_seq.append(new_action)
         return transformed_seq
 
     # ------------------------------------------------------------------

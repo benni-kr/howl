@@ -270,7 +270,7 @@ def submit_solution(payload: SolutionCreate, token: str = Depends(verify_token),
             db.rollback()
             # Concurrent insert — re-query. Subgraph dictionary writes were
             # already flushed; re-apply them in the new transaction.
-            update_subgraph_dictionary(db, payload.m, payload.n, payload.cut_sequence)
+            update_subgraph_dictionary(db, payload.m, payload.n, payload.cut_sequence, payload.solver_name)
             existing = (
                 db.query(GridSolution)
                 .filter(

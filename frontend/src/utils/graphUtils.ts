@@ -33,11 +33,13 @@ export const executeCutLocal = (activeGraph: Graph, cutSet: Vertex[]): Graph[] =
 
     const componentVertices: Vertex[] = [];
     const queue: Vertex[] = [startVertex];
+    let head = 0;
     visited.add(startKey);
 
     // Run BFS to find all connected vertices in this subgraph
-    while (queue.length > 0) {
-      const curr = queue.shift()!;
+    // Uses index-based queue (O(1) dequeue) instead of Array.shift() (O(n))
+    while (head < queue.length) {
+      const curr = queue[head++];
       componentVertices.push(curr);
 
       for (const neighbor of getNeighbors(curr)) {

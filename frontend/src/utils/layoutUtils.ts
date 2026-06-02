@@ -22,12 +22,14 @@ function calculateBoundingBox(graph: Graph): BoundingBox {
     return { minX: 0, maxX: 0, minY: 0, maxY: 0, width: 1, height: 1 };
   }
 
-  const xs = graph.vertices.map((v) => v.x);
-  const ys = graph.vertices.map((v) => v.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  for (const v of graph.vertices) {
+    if (v.x < minX) minX = v.x;
+    if (v.x > maxX) maxX = v.x;
+    if (v.y < minY) minY = v.y;
+    if (v.y > maxY) maxY = v.y;
+  }
 
   return {
     minX,

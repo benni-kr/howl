@@ -28,18 +28,19 @@ class SolutionCreate(BaseModel):
         if not isinstance(v, list):
             raise ValueError("cut_sequence must be a list")
         for i, action in enumerate(v):
-            if isinstance(action, list):
-                # Legacy format: list of [x, y] pairs — accepted as-is
-                continue
-            if isinstance(action, dict):
-                if "type" not in action and "vertices" not in action:
-                    raise ValueError(
-                        f"cut_sequence[{i}]: dict must have 'type' or 'vertices' key"
-                    )
-                continue
-            raise ValueError(
-                f"cut_sequence[{i}]: expected list or dict, got {type(action).__name__}"
-            )
+            if not isinstance(action, dict):
+                raise ValueError(
+                    f"cut_sequence[{i}]: expected dict, got {type(action).__name__}"
+                )
+            t = action.get("t")
+            if t not in ("c", "v", "i"):
+                raise ValueError(
+                    f"cut_sequence[{i}]: 't' must be 'c', 'v', or 'i', got {t!r}"
+                )
+            if "v" not in action or not isinstance(action["v"], list):
+                raise ValueError(
+                    f"cut_sequence[{i}]: must have 'v' as a list of [x, y] pairs"
+                )
         return v
 
 

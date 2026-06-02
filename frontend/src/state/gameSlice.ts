@@ -79,17 +79,25 @@ const buildGridGraph = (m: number, n: number): Graph => {
   return { vertices, edges, baseRank: 0 };
 };
 
+/**
+ * Maximum number of undo history entries to retain.
+ * Oldest entries are dropped when this limit is exceeded.
+ */
+const MAX_HISTORY_LENGTH = 30;
+
+/**
+ * Shallow-clone a graph.  Vertex and Edge objects are immutable value
+ * objects (never mutated after creation), so we only need to copy the
+ * arrays themselves, not each element.
+ */
 const cloneGraph = (graph: Graph | null): Graph | null => {
   if (!graph) {
     return null;
   }
 
   return {
-    vertices: graph.vertices.map((v) => ({ x: v.x, y: v.y })),
-    edges: graph.edges.map((e) => ({
-      from: { x: e.from.x, y: e.from.y },
-      to: { x: e.to.x, y: e.to.y },
-    })),
+    vertices: [...graph.vertices],
+    edges: [...graph.edges],
     baseRank: graph.baseRank,
   };
 };
@@ -102,11 +110,17 @@ const snapshotState = (state: GameState): GameHistoryEntry => ({
   ),
   maxRank: state.maxRank,
   gridSize: { ...state.gridSize },
-  cutsApplied: state.cutsApplied.map((a) => ({
-    ...a,
-    vertices: a.vertices.map((v) => ({ ...v })),
-  })),
+  cutsApplied: [...state.cutsApplied],
 });
+
+/** Push a snapshot onto history, capping at MAX_HISTORY_LENGTH. */
+const pushHistory = (state: GameState) => {
+  state.history.push(snapshotState(state));
+  if (state.history.length > MAX_HISTORY_LENGTH) {
+    state.history.splice(0, state.history.length - MAX_HISTORY_LENGTH);
+  }
+  state.futureHistory = [];
+};
 
 const initialState: GameState = {
   activeGraph: buildGridGraph(5, 5),
@@ -157,6 +171,9 @@ const gameSlice = createSlice({
       }
 
       state.history.push(snapshotState(state));
+      if (state.history.length > MAX_HISTORY_LENGTH) {
+        state.history.splice(0, state.history.length - MAX_HISTORY_LENGTH);
+      }
       state.futureHistory = []; // Clear redo stack on new action
       
       state.cutsApplied.push({ type: "cut", vertices: cutSet });
@@ -333,9 +350,7 @@ const gameSlice = createSlice({
     autoSolveGraph(state, action: PayloadAction<{ location: 'active' | 'banked' | 'recent', index?: number, optimalRank: number }>) {
       const { location, index, optimalRank } = action.payload;
       
-      // Save state to history before vaporizing
-      state.history.push(snapshotState(state));
-      state.futureHistory = [];
+      pushHistory(state);
 
       let targetGraph: Graph | null = null;
 
@@ -376,8 +391,7 @@ const gameSlice = createSlice({
     ignoreGraph(state, action: PayloadAction<{ location: 'active' | 'banked' | 'recent', index?: number }>) {
       const { location, index } = action.payload;
       
-      state.history.push(snapshotState(state));
-      state.futureHistory = [];
+      pushHistory(state);
 
       let targetGraph: Graph | null = null;
 
@@ -418,8 +432,7 @@ const gameSlice = createSlice({
       const { targets } = action.payload;
       if (targets.length === 0) return;
 
-      state.history.push(snapshotState(state));
-      state.futureHistory = [];
+      pushHistory(state);
 
       // Sort targets: we must process removals from arrays in descending index order
       // to avoid index shifting.
@@ -467,8 +480,7 @@ const gameSlice = createSlice({
       const { targets } = action.payload;
       if (targets.length === 0) return;
 
-      state.history.push(snapshotState(state));
-      state.futureHistory = [];
+      pushHistory(state);
 
       const sortedTargets = [...targets].sort((a, b) => {
         const indexA = a.index ?? -1;
