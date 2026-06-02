@@ -1,7 +1,12 @@
 import os
+import sys
 import hashlib
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+# Add parent directory to sys.path so we can import backend modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from models import SubgraphDictionary
 
 # Get DATABASE_URL (or fallback to sqlite local)
