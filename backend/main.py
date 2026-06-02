@@ -192,8 +192,8 @@ logger = logging.getLogger("howl.submit")
 def update_subgraph_dictionary(db: Session, m: int, n: int, cut_sequence: object, solver_name: str) -> None:
     """Replay *cut_sequence* on an m×n grid and upsert discovered subgraph ranks.
 
-    This is intentionally **fault-tolerant**: a replay crash or DB timeout is logged but
-    never blocks the caller from saving the ``GridSolution``.
+    This acts as a strict validation layer: if the replay engine fails to 
+    reconstruct the run, the entire score submission is rejected.
     """
     try:
         ranks_dict = replay_and_extract_subgraphs(m, n, cut_sequence)
@@ -237,11 +237,14 @@ def update_subgraph_dictionary(db: Session, m: int, n: int, cut_sequence: object
         # IntegrityError rollback on the GridSolution insert later.
         db.flush()
 
-    except Exception:
-        # If anything fails (replay engine crash, database timeout, serialization error),
-        # rollback just the dictionary transaction and let the main score submission proceed.
+    except Exception as e:
+        # Replay failed: meaning the run is mathematically invalid or corrupted.
         db.rollback()
-        logger.error("Subgraph dictionary update failed for %dx%d:\n%s", m, n, _tb.format_exc())
+        logger.error("Subgraph validation failed for %dx%d:\n%s", m, n, _tb.format_exc())
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid cut sequence: the replay engine failed to reconstruct the run. ({str(e)})"
+        )
 
 
 @app.post("/api/submit_solution", response_model=SubmitResponse)
