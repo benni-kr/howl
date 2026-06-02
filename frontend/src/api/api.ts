@@ -1,4 +1,4 @@
-import type { Graph, Vertex } from "../state/gameSlice";
+import type { Graph, Vertex, CutHistoryAction } from "../state/gameSlice";
 
 type ApiGraph = {
   vertices: number[][];
@@ -144,8 +144,15 @@ export const submitScore = async (
   n: number,
   rank: number,
   solverName: string,
-  cutSequence: unknown,
+  cutSequence: CutHistoryAction[],
 ): Promise<SubmitResponse> => {
+  const compactSequence = cutSequence.map((action) => {
+    const v = action.vertices.map((vtx) => [vtx.x, vtx.y]);
+    if (action.type === "cut") return { t: "c", v };
+    if (action.type === "vaporize") return { t: "v", v, r: action.optimal_rank };
+    return { t: "i", v };
+  });
+
   const response = await apiFetch(`${API_BASE_URL}/submit_solution`, {
     method: "POST",
     headers: {
@@ -156,11 +163,13 @@ export const submitScore = async (
       n,
       achieved_rank: rank,
       solver_name: solverName,
-      cut_sequence: cutSequence,
+      cut_sequence: compactSequence,
     }),
   });
 
   if (!response.ok) {
+    const errorBody = await response.text();
+    console.error("FastAPI Error:", errorBody);
     throw new Error(`Submit score failed with status ${response.status}`);
   }
 
