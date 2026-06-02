@@ -793,10 +793,10 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           }
         }
 
+        lastClickedVertexRef.current = newSet.length > 0 ? newSet[newSet.length - 1] : null;
+
         return newSet;
       });
-
-      lastClickedVertexRef.current = vertex;
     }, [displayGraphs]);
 
     const onNodePointerEnter = useCallback((vertex: Vertex, graphIndex: number) => {
@@ -804,12 +804,16 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
       const forceSelect = dragTargetStateRef.current;
       setPendingCutSet((prev) => {
         const isSelected = prev.some((item) => isSameVertex(item, vertex));
+        let newSet = [...prev];
         if (isSelected && !forceSelect) {
-          return prev.filter((item) => !isSameVertex(item, vertex));
+          newSet = prev.filter((item) => !isSameVertex(item, vertex));
         } else if (!isSelected && forceSelect) {
-          return [...prev, vertex];
+          newSet.push(vertex);
         }
-        return prev;
+        
+        lastClickedVertexRef.current = newSet.length > 0 ? newSet[newSet.length - 1] : null;
+        
+        return newSet;
       });
     }, []);
 
