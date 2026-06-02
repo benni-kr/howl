@@ -28,6 +28,14 @@ def migrate_to_md5():
         deleted = 0
         skipped = 0
 
+        # Build a set of hashes we already have to prevent N+1 queries
+        seen_hashes = set()
+
+        # First pass: record all entries that are ALREADY migrated
+        for entry in entries:
+            if len(entry.hash) == 32 and "|" not in entry.hash:
+                seen_hashes.add(entry.hash)
+
         for entry in entries:
             old_hash = entry.hash
             
@@ -39,20 +47,21 @@ def migrate_to_md5():
             # Compute new MD5
             new_hash = hashlib.md5(old_hash.encode('utf-8')).hexdigest()
             
-            # Check if the new hash already exists in the database
-            existing_new = session.query(SubgraphDictionary).filter(SubgraphDictionary.hash == new_hash).first()
-            
-            if existing_new:
+            # Check if the new hash already exists in our local memory tracking
+            if new_hash in seen_hashes:
                 # If it already exists, the old one is redundant and should be deleted
                 print(f"Collision detected for {new_hash}. Deleting old duplicate.")
                 session.delete(entry)
                 deleted += 1
             else:
                 # Update the primary key
-                # Note: modifying a primary key directly on an ORM object can sometimes be tricky,
-                # but SQLAlchemy supports it. If it fails, we can use a direct UPDATE statement.
                 entry.hash = new_hash
+                seen_hashes.add(new_hash)
                 updated += 1
+                
+                # Periodically print progress so the user knows it's working
+                if updated % 100 == 0:
+                    print(f"Processed {updated} updates...")
                 
         # Commit the transaction
         session.commit()
