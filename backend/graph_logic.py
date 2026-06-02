@@ -139,6 +139,8 @@ def generate_canonical_data(vertices: list[dict]) -> dict:
     if not vertices:
         return {"hash": "", "transform_idx": 0, "shift_x": 0, "shift_y": 0}
 
+    import hashlib
+
     coords = [(v["x"], v["y"]) for v in vertices]
     transforms = get_transformations()
     
@@ -155,8 +157,12 @@ def generate_canonical_data(vertices: list[dict]) -> dict:
         
         if best_hash is None or candidate_string < best_hash:
             best_hash = candidate_string
+            # Use an MD5 hash to guarantee a short, fixed-length primary key for PostgreSQL
+            # avoiding B-Tree index size limits on very large grids (e.g. 30x30).
+            md5_hash = hashlib.md5(candidate_string.encode('utf-8')).hexdigest()
             best_meta = {
-                "hash": best_hash,
+                "hash": md5_hash,
+                "shape_str": candidate_string,
                 "transform_idx": idx,
                 "shift_x": min_x,
                 "shift_y": min_y
