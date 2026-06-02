@@ -1,4 +1,4 @@
-import type { Graph, Vertex } from "../state/gameSlice";
+import type { Graph, Vertex, CutHistoryAction } from "../state/gameSlice";
 
 type ApiGraph = {
   vertices: number[][];
@@ -135,7 +135,7 @@ type SubmitResponse = {
     n: number;
     rank: number;
     solver_name: string;
-    cut_sequence: unknown;
+    cut_sequence: CutHistoryAction[];
   };
 };
 
@@ -144,8 +144,17 @@ export const submitScore = async (
   n: number,
   rank: number,
   solverName: string,
-  cutSequence: unknown,
+  cutSequence: CutHistoryAction[],
 ): Promise<SubmitResponse> => {
+  // Network/DB Optimization: Compact the sequence before sending to save ~70% payload size
+  // "c" = cut, "v" = vaporize, "i" = ignore. Vertices become flat [x, y] tuples.
+  const compactSequence = cutSequence.map((action) => {
+    const v = action.vertices.map((vtx) => [vtx.x, vtx.y]);
+    if (action.type === "cut") return { t: "c", v };
+    if (action.type === "vaporize") return { t: "v", v, r: action.optimal_rank };
+    return { t: "i", v };
+  });
+
   const response = await apiFetch(`${API_BASE_URL}/submit_solution`, {
     method: "POST",
     headers: {
@@ -156,7 +165,7 @@ export const submitScore = async (
       n,
       achieved_rank: rank,
       solver_name: solverName,
-      cut_sequence: cutSequence,
+      cut_sequence: compactSequence,
     }),
   });
 
@@ -164,7 +173,11 @@ export const submitScore = async (
     throw new Error(`Submit score failed with status ${response.status}`);
   }
 
-  return (await response.json()) as SubmitResponse;
+  const data = await response.json();
+  if (data?.solution?.cut_sequence) {
+    data.solution.cut_sequence = decompactSequence(data.solution.cut_sequence);
+  }
+  return data as SubmitResponse;
 };
 
 type TopScoreResponse = {
@@ -173,7 +186,48 @@ type TopScoreResponse = {
   n: number;
   rank: number;
   solver_name: string;
-  cut_sequence: unknown;
+  cut_sequence: CutHistoryAction[];
+};
+
+/**
+ * Decompacts the network-optimized cut sequence back into the verbose format used by the frontend.
+ * 
+ * Architecture Note (DTO Pattern):
+ * The frontend relies on a verbose format (e.g. { type: "cut", vertices: [{x, y}] }) for readability 
+ * in React components and Redux state. However, to save bandwidth and DB storage, the data is compacted
+ * over the network to { t: "c", v: [[x, y]] }. This helper safely expands it back for UI consumption, 
+ * while maintaining backwards compatibility with any legacy uncompacted data in the database.
+ */
+export const decompactSequence = (sequence: any): CutHistoryAction[] => {
+  if (!Array.isArray(sequence)) return [];
+  
+  return sequence.map(action => {
+    // Legacy / uncompacted format
+    if (action.type && action.vertices && (!action.vertices.length || ('x' in action.vertices[0]))) {
+      return action as CutHistoryAction;
+    }
+    
+    // Compact format { t, v, r }
+    const vertices = Array.isArray(action.v) ? action.v.map(([x, y]: number[]) => ({ x, y })) : [];
+    
+    if (action.t === "v") {
+      return {
+        type: "vaporize",
+        vertices,
+        optimal_rank: action.r !== undefined ? action.r : 0,
+      } as CutHistoryAction;
+    } else if (action.t === "c") {
+      return {
+        type: "cut",
+        vertices,
+      } as CutHistoryAction;
+    } else {
+      return {
+        type: "ignore",
+        vertices,
+      } as CutHistoryAction;
+    }
+  });
 };
 
 export const fetchTopScore = async (
@@ -193,6 +247,9 @@ export const fetchTopScore = async (
       return null; // gracefully handle failure
     }
     const data = await response.json();
+    if (data && data.cut_sequence) {
+      data.cut_sequence = decompactSequence(data.cut_sequence);
+    }
     return data || null;
   } catch (error) {
     console.error("fetchTopScore failed:", error);

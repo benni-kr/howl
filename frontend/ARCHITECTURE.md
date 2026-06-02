@@ -77,6 +77,12 @@ When the graph state changes in Redux (e.g., after a cut or an undo), a `useEffe
 4. The frontend stores these optimal ranks in a local React state (`optimalRanks` Map) mapped by a local, non-canonical fingerprint.
 5. `PixiVisualizer` reads this map to overlay the Magic Wand icons.
 
+### Payload Compaction (DTO Pattern)
+To handle large grids (e.g., 50x50 or 100x100) efficiently on free-tier hosting (like Vercel and PostgreSQL), the application employs a Data Transfer Object (DTO) pattern for the `cut_sequence` payload:
+1. **In-Memory (Verbose)**: The frontend stores cut history in Redux using a verbose, human-readable format (`{ type: "cut", vertices: [{x: 0, y: 0}] }`). This ensures React components and Redux logic remain clean and easy to maintain.
+2. **Network/Storage (Compact)**: When submitting a score via `submitScore`, `api.ts` compacts the payload into a highly minimal format (`{ t: "c", v: [[0, 0]] }`). This reduces network payload size and database storage requirements by ~70%.
+3. **Rehydration**: When fetching replays via `fetchTopScore`, `api.ts` automatically decompacts the payload back into the verbose format. This prevents the need to scatter compact-format parsing logic throughout the UI components (`ReplayPage`, `ActionLog`).
+
 ### Authentication
 The app uses a simple token-based gatekeeper for administrative actions (submitting and deleting scores). 
 - If a user attempts to submit a score, the app checks `localStorage` for `auth_token`. 

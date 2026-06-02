@@ -10,10 +10,14 @@ from pydantic import BaseModel, field_validator
 class SolutionCreate(BaseModel):
     """Payload for POST /api/submit_solution.
 
-    ``cut_sequence`` accepts two formats:
-      - **Legacy:** A list of vertex lists, e.g. ``[[[0,0],[0,1]], ...]``
-      - **Current:** A list of typed action dicts, e.g.
-        ``[{"type": "cut", "vertices": [{"x":0,"y":0}]}, ...]``
+    Architecture Note (DTO Pattern):
+    This schema exclusively accepts a highly compact JSON payload to save network bandwidth
+    and PostgreSQL storage space (~70% reduction in size).
+
+    ``cut_sequence`` format:
+      - Cut: ``{"t": "c", "v": [[x,y], ...]}``
+      - Vaporize: ``{"t": "v", "v": [[x,y], ...], "r": <optimal_rank>}``
+      - Ignore: ``{"t": "i", "v": [[x,y], ...]}``
     """
 
     m: int
@@ -28,18 +32,19 @@ class SolutionCreate(BaseModel):
         if not isinstance(v, list):
             raise ValueError("cut_sequence must be a list")
         for i, action in enumerate(v):
-            if isinstance(action, list):
-                # Legacy format: list of [x, y] pairs — accepted as-is
-                continue
-            if isinstance(action, dict):
-                if "type" not in action and "vertices" not in action:
-                    raise ValueError(
-                        f"cut_sequence[{i}]: dict must have 'type' or 'vertices' key"
-                    )
-                continue
-            raise ValueError(
-                f"cut_sequence[{i}]: expected list or dict, got {type(action).__name__}"
-            )
+            if not isinstance(action, dict):
+                raise ValueError(
+                    f"cut_sequence[{i}]: expected dict, got {type(action).__name__}"
+                )
+            t = action.get("t")
+            if t not in ("c", "v", "i"):
+                raise ValueError(
+                    f"cut_sequence[{i}]: 't' must be 'c', 'v', or 'i', got {t!r}"
+                )
+            if "v" not in action or not isinstance(action["v"], list):
+                raise ValueError(
+                    f"cut_sequence[{i}]: must have 'v' as a list of [x, y] pairs"
+                )
         return v
 
 

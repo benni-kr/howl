@@ -135,6 +135,7 @@ const GamePage: React.FC = () => {
     if (isGameWon && activeGraph === null && recentCutGraphs.length === 0 && bankedGraphs.length === 0) {
       if (gridM && gridN && solverName && !hasSubmittedScoreRef.current) {
         hasSubmittedScoreRef.current = true;
+
         submitScore(gridM, gridN, maxRank, solverName, cutsApplied).catch(err => {
           console.error("Failed to submit score:", err);
           hasSubmittedScoreRef.current = false;
