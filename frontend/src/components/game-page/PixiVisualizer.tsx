@@ -106,7 +106,7 @@ class PixiEngine {
   particles: Particle[];
   dyingGraphics: Set<PIXI.Graphics>;
 
-  onNodePointerDown?: (vertex: Vertex, graphIndex: number) => void;
+  onNodePointerDown?: (vertex: Vertex, graphIndex: number, shiftKey: boolean) => void;
   onNodePointerEnter?: (vertex: Vertex, graphIndex: number) => void;
   onPointerUp?: () => void;
   onGraphClick?: (graphIndex: number) => void;
@@ -260,7 +260,7 @@ class PixiEngine {
     bankedGraphs: Graph[],
     palette: Palette,
     optimalRanks: Map<string, { best_rank: number, is_optimal: boolean, discovered_by?: string | null, hash: string }>,
-    onNodePointerDown?: (vertex: Vertex, graphIndex: number) => void,
+    onNodePointerDown?: (vertex: Vertex, graphIndex: number, shiftKey: boolean) => void,
     onNodePointerEnter?: (vertex: Vertex, graphIndex: number) => void,
     onPointerUp?: () => void,
     onGraphClick?: (graphIndex: number) => void,
@@ -524,7 +524,7 @@ class PixiEngine {
               return;
             }
             if (!this.splitView) {
-              this.onNodePointerDown?.(vertex, graphIndex);
+              this.onNodePointerDown?.(vertex, graphIndex, e.shiftKey);
             } else {
               this.onGraphClick?.(graphIndex);
             }
@@ -558,7 +558,7 @@ class PixiEngine {
               return;
             }
             if (!this.splitView) {
-              this.onNodePointerDown?.(vertex, graphIndex);
+              this.onNodePointerDown?.(vertex, graphIndex, e.shiftKey);
             } else {
               this.onGraphClick?.(graphIndex);
             }
@@ -730,20 +730,74 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
 
     const isDraggingRef = useRef(false);
     const dragTargetStateRef = useRef(true);
+    const lastClickedVertexRef = useRef<Vertex | null>(null);
 
-    const onNodePointerDown = useCallback((vertex: Vertex, graphIndex: number) => {
+    const onNodePointerDown = useCallback((vertex: Vertex, graphIndex: number, shiftKey: boolean) => {
       if (graphIndex !== 0) return;
       isDraggingRef.current = true;
+
       setPendingCutSet((prev) => {
-        const isSelected = prev.some((item) => isSameVertex(item, vertex));
-        dragTargetStateRef.current = !isSelected;
-        if (isSelected) {
-          return prev.filter((item) => !isSameVertex(item, vertex));
+        let newSet = [...prev];
+
+        if (shiftKey && lastClickedVertexRef.current) {
+          // Bresenham's line algorithm
+          const x0 = lastClickedVertexRef.current.x;
+          const y0 = lastClickedVertexRef.current.y;
+          const x1 = vertex.x;
+          const y1 = vertex.y;
+          
+          const dx = Math.abs(x1 - x0);
+          const dy = Math.abs(y1 - y0);
+          const sx = x0 < x1 ? 1 : -1;
+          const sy = y0 < y1 ? 1 : -1;
+          let err = dx - dy;
+          
+          let cx = x0;
+          let cy = y0;
+          
+          const linePoints: Vertex[] = [];
+          while (true) {
+            linePoints.push({ x: cx, y: cy });
+            if (cx === x1 && cy === y1) break;
+            const e2 = 2 * err;
+            if (e2 > -dy) {
+              err -= dy;
+              cx += sx;
+            }
+            if (e2 < dx) {
+              err += dx;
+              cy += sy;
+            }
+          }
+
+          // Filter linePoints to those that exist in the active graph
+          const activeVertices = displayGraphs[0]?.vertices || [];
+          const validLinePoints = linePoints.filter((lp) => 
+            activeVertices.some((av) => isSameVertex(av, lp))
+          );
+
+          // Add all valid points to the selection
+          for (const lp of validLinePoints) {
+            if (!newSet.some((item) => isSameVertex(item, lp))) {
+              newSet.push(lp);
+            }
+          }
+          dragTargetStateRef.current = true; // Dragging from a line selection defaults to selecting
         } else {
-          return [...prev, vertex];
+          const isSelected = prev.some((item) => isSameVertex(item, vertex));
+          dragTargetStateRef.current = !isSelected;
+          if (isSelected) {
+            newSet = prev.filter((item) => !isSameVertex(item, vertex));
+          } else {
+            newSet.push(vertex);
+          }
         }
+
+        return newSet;
       });
-    }, []);
+
+      lastClickedVertexRef.current = vertex;
+    }, [displayGraphs]);
 
     const onNodePointerEnter = useCallback((vertex: Vertex, graphIndex: number) => {
       if (graphIndex !== 0 || !isDraggingRef.current) return;
