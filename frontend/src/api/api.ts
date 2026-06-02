@@ -170,6 +170,8 @@ export const submitScore = async (
   });
 
   if (!response.ok) {
+    const errorBody = await response.text();
+    console.error("FastAPI Validation Error:", errorBody);
     throw new Error(`Submit score failed with status ${response.status}`);
   }
 
