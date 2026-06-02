@@ -309,6 +309,13 @@ const GamePage: React.FC = () => {
             content="🧮 Tip: The Abacus means the score is mathematically perfect. Click it to securely vaporize the shape!"
           />
         )}
+        {pendingCutSet.length > 0 && !splitView && (
+          <OnboardingTooltip
+            tutorialKey="hasSeenShiftClick"
+            position="fixed-canvas"
+            content="📏 Tip: Hold Shift and click another tile to automatically select a straight line between them!"
+          />
+        )}
 
         {gridSize && gridSize.m > 0 && (
           <div
@@ -588,6 +595,7 @@ const GamePage: React.FC = () => {
           if (started) {
             setHasSolved(false); // Reset the won state for the new game
             setTopScore(null); // Clear top score until fetched
+            setResetToken((v) => v + 1); // Reset active selections
           } else if (isGameWon) {
             setHasSolved(true);
           }
