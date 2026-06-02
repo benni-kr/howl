@@ -208,18 +208,25 @@ export const decompactSequence = (sequence: any): CutHistoryAction[] => {
     }
     
     // Compact format { t, v, r }
-    let type: "cut" | "vaporize" | "ignore" = "ignore";
-    if (action.t === "c") type = "cut";
-    else if (action.t === "v") type = "vaporize";
+    const vertices = Array.isArray(action.v) ? action.v.map(([x, y]: number[]) => ({ x, y })) : [];
     
-    const parsedAction: CutHistoryAction = {
-      type,
-      vertices: Array.isArray(action.v) ? action.v.map(([x, y]: number[]) => ({ x, y })) : [],
-    };
-    if (action.r !== undefined) {
-      parsedAction.optimal_rank = action.r;
+    if (action.t === "v") {
+      return {
+        type: "vaporize",
+        vertices,
+        optimal_rank: action.r !== undefined ? action.r : 0,
+      } as CutHistoryAction;
+    } else if (action.t === "c") {
+      return {
+        type: "cut",
+        vertices,
+      } as CutHistoryAction;
+    } else {
+      return {
+        type: "ignore",
+        vertices,
+      } as CutHistoryAction;
     }
-    return parsedAction;
   });
 };
 
