@@ -83,6 +83,7 @@ class ShapeResult(BaseModel):
     """Result for a single subgraph lookup."""
     index: int
     hash: str
+    shape_str: Optional[str] = None
     found: bool
     best_rank: Optional[int] = None
     is_optimal: Optional[bool] = None
