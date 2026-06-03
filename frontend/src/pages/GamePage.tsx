@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "../state/store";
 import { store } from "../state/store";
@@ -158,6 +158,24 @@ const GamePage: React.FC = () => {
   const hasWand = cutsApplied.length > 0 && Array.from(optimalRanks.values()).some(opt => opt.best_rank !== null);
   const hasAbacus = cutsApplied.length > 0 && Array.from(optimalRanks.values()).some(opt => opt.is_optimal);
 
+  const hasSubgraphs = useMemo(() => {
+    if (cutsApplied.length === 0) return false;
+    const candidates: Graph[] = [];
+    if (activeGraph) candidates.push(activeGraph);
+    recentCutGraphs.forEach(g => candidates.push(g));
+    
+    for (let i = 0; i < candidates.length; i++) {
+      for (let j = 0; j < candidates.length; j++) {
+        if (i === j) continue;
+        if (candidates[i].vertices.length < candidates[j].vertices.length &&
+            isSubgraphOf(candidates[i].vertices, candidates[j].vertices)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, [activeGraph, recentCutGraphs, cutsApplied.length]);
+
   useEffect(() => {
     if (gridSize) {
       fetchTopScore(gridSize.m, gridSize.n).then((data) => {
@@ -309,6 +327,13 @@ const GamePage: React.FC = () => {
             tutorialKey="hasSeenAbacus" 
             position="fixed-canvas"
             content="🧮 Tip: The Abacus means the score is mathematically perfect. Click it to securely vaporize the shape!"
+          />
+        )}
+        {hasSubgraphs && (
+          <OnboardingTooltip
+            tutorialKey="hasSeenSubgraph"
+            position="fixed-canvas"
+            content="⊇ Tip: If a shape fits entirely inside another, you only need to solve the larger one. Click 'Delete Subgraphs' to trim it!"
           />
         )}
         {pendingCutSet.length > 0 && !splitView && (
@@ -492,13 +517,6 @@ const GamePage: React.FC = () => {
             return (
               (solvableTargets.length > 1 || duplicateTargets.length > 0 || subgraphTargets.length > 0) && !isExecuting && (
                 <div style={{ position: "absolute", bottom: "-12px", display: "flex", gap: "12px", justifyContent: "center", width: "100%", pointerEvents: "none" }}>
-                  {subgraphTargets.length > 0 && (
-                    <OnboardingTooltip
-                      tutorialKey="hasSeenSubgraph"
-                      position="fixed-canvas"
-                      content="⊇ Tip: If a shape fits entirely inside another, you only need to solve the larger one. Click 'Delete Subgraphs' to trim it!"
-                    />
-                  )}
                   {duplicateTargets.length > 0 && (
                     <button
                       className="btn primary"
