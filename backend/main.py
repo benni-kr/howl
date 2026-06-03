@@ -19,7 +19,7 @@ import traceback as _tb
 from datetime import datetime, timezone
 
 from database import Base, engine, get_db
-from graph_logic import GridGraph, generate_canonical_hash, replay_and_extract_subgraphs
+from graph_logic import GridGraph, generate_canonical_hash, generate_canonical_data, replay_and_extract_subgraphs
 from models import GridSolution, SubgraphDictionary
 from schemas import (
     CheckShapesRequest,
@@ -493,7 +493,9 @@ def check_shapes(payload: CheckShapesRequest, token: str = Depends(verify_token)
     results: list[ShapeResult] = []
 
     for subgraph in payload.subgraphs:
-        canonical_hash = generate_canonical_hash(subgraph.vertices)
+        canonical_data = generate_canonical_data(subgraph.vertices)
+        canonical_hash = canonical_data["hash"]
+        shape_str = canonical_data.get("shape_str")
 
         entry = (
             db.query(SubgraphDictionary).filter(SubgraphDictionary.hash == canonical_hash).first()
@@ -504,6 +506,7 @@ def check_shapes(payload: CheckShapesRequest, token: str = Depends(verify_token)
                 ShapeResult(
                     index=subgraph.index,
                     hash=canonical_hash,
+                    shape_str=shape_str,
                     found=True,
                     best_rank=entry.best_rank,
                     is_optimal=entry.is_optimal,
@@ -517,6 +520,7 @@ def check_shapes(payload: CheckShapesRequest, token: str = Depends(verify_token)
                 ShapeResult(
                     index=subgraph.index,
                     hash=canonical_hash,
+                    shape_str=shape_str,
                     found=False,
                 )
             )

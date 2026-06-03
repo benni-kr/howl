@@ -6,7 +6,7 @@ import { forkGame, GameState } from "../state/gameSlice";
 import PixiVisualizer from "../components/game-page/PixiVisualizer";
 import { RootState } from "../state/store";
 import { useReplayEngine } from "../hooks/useReplayEngine";
-import { checkShapes } from "../api/api";
+import { checkShapes, decompactSequence } from "../api/api";
 import { selectActivePalette } from "../state/settingsSlice";
 import { DynamicEliminationTree } from "../components/replay-page/DynamicEliminationTree";
 import { OnboardingTooltip } from "../components/ui/OnboardingTooltip";
@@ -173,10 +173,12 @@ export default function ReplayPage() {
       const results = await checkShapes([targetGraph]);
       const res = results[0];
       if (res && res.best_rank && Array.isArray((res as any).best_cut_sequence)) {
-        const seq = (res as any).best_cut_sequence;
+        const seq = decompactSequence((res as any).best_cut_sequence);
         
-        // Parse the canonical hash to reconstruct the exact shape the sequence was built for
-        const canonicalVertices = res.hash.split('|').map(pair => {
+        // Parse the canonical shape string to reconstruct the exact shape the sequence was built for
+        // (We use res.shape_str instead of res.hash since the hash is now MD5)
+        const canonicalStr = (res as any).shape_str || "";
+        const canonicalVertices: { x: number; y: number }[] = canonicalStr.split('|').filter(Boolean).map((pair: string) => {
           const [x, y] = pair.split(',');
           return { x: parseInt(x, 10), y: parseInt(y, 10) };
         });
