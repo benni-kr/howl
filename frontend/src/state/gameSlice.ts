@@ -32,7 +32,8 @@ export const getLocalGraphFingerprint = (graph: Graph) => {
 export type CutHistoryAction =
   | { type: "cut"; vertices: Vertex[] }
   | { type: "vaporize"; vertices: Vertex[]; optimal_rank: number }
-  | { type: "ignore"; vertices: Vertex[] };
+  | { type: "ignore"; vertices: Vertex[] }
+  | { type: "subgraph"; vertices: Vertex[] };
 
 export interface GameHistoryEntry {
   activeGraph: Graph | null;
@@ -388,8 +389,8 @@ const gameSlice = createSlice({
      * - Removes the target graph from its location.
      * - Records an `ignore` action in `cutsApplied` so the backend knows to skip it.
      */
-    ignoreGraph(state, action: PayloadAction<{ location: 'active' | 'banked' | 'recent', index?: number }>) {
-      const { location, index } = action.payload;
+    ignoreGraph(state, action: PayloadAction<{ location: 'active' | 'banked' | 'recent', index?: number, actionType?: 'ignore' | 'subgraph' }>) {
+      const { location, index, actionType = 'ignore' } = action.payload;
       
       pushHistory(state);
 
@@ -408,7 +409,7 @@ const gameSlice = createSlice({
 
       if (targetGraph) {
         state.cutsApplied.push({
-          type: "ignore",
+          type: actionType,
           vertices: [...targetGraph.vertices]
         });
       }
@@ -476,8 +477,8 @@ const gameSlice = createSlice({
         }
       }
     },
-    ignoreMultipleGraphs(state, action: PayloadAction<{ targets: { location: 'active' | 'banked' | 'recent', index?: number }[] }>) {
-      const { targets } = action.payload;
+    ignoreMultipleGraphs(state, action: PayloadAction<{ targets: { location: 'active' | 'banked' | 'recent', index?: number }[], actionType?: 'ignore' | 'subgraph' }>) {
+      const { targets, actionType = 'ignore' } = action.payload;
       if (targets.length === 0) return;
 
       pushHistory(state);
@@ -503,7 +504,7 @@ const gameSlice = createSlice({
 
         if (targetGraph) {
           state.cutsApplied.push({
-            type: "ignore",
+            type: actionType,
             vertices: [...targetGraph.vertices]
           });
         }

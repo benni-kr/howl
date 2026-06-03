@@ -38,6 +38,9 @@ const DocsPage: React.FC = () => {
           <li>
             <strong>Delete Duplicates:</strong> If a cut creates identical subgraphs, you only need to solve one of them! Click the "Delete Duplicates" button to automatically trim the redundant shapes from the game tree.
           </li>
+          <li>
+            <strong>Delete Subgraphs:</strong> If one shape fits entirely inside another (under rotation or reflection), you only need to solve the larger one. Click "Delete Subgraphs" to automatically trim the smaller shape.
+          </li>
         </ul>
       </div>
 

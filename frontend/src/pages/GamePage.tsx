@@ -9,6 +9,7 @@ import PixiVisualizer, {
 import VictoryModal from "../components/game-page/VictoryModal";
 import { fetchTopScore, submitScore } from "../api/api";
 import { executeCutLocal } from "../utils/graphUtils";
+import { isSubgraphOf } from "../utils/subgraphUtils";
 import { useShapeCache } from "../hooks/useShapeCache";
 import {
   applyCutResult,
@@ -455,11 +456,49 @@ const GamePage: React.FC = () => {
               }
             });
 
+            // 4. Subgraph detection: check if any active/recent graph fits inside another
+            const subgraphTargets: { location: 'active' | 'recent', index?: number }[] = [];
+            if (cutsApplied.length > 0) {
+              // Collect all candidate graphs with their location info
+              const candidates: { graph: typeof activeGraph, location: 'active' | 'recent', index?: number }[] = [];
+              if (activeGraph) candidates.push({ graph: activeGraph, location: 'active' });
+              recentCutGraphs.forEach((g, i) => candidates.push({ graph: g, location: 'recent', index: i }));
+
+              // Skip graphs already marked as duplicates
+              const duplicateKeys = new Set(duplicateTargets.map(d => `${d.location}:${d.index ?? 'active'}`));
+
+              for (let i = 0; i < candidates.length; i++) {
+                const small = candidates[i];
+                const smallKey = `${small.location}:${small.index ?? 'active'}`;
+                if (duplicateKeys.has(smallKey)) continue; // Already a duplicate, skip
+
+                for (let j = 0; j < candidates.length; j++) {
+                  if (i === j) continue;
+                  const large = candidates[j];
+                  const largeKey = `${large.location}:${large.index ?? 'active'}`;
+                  if (duplicateKeys.has(largeKey)) continue;
+
+                  if (small.graph!.vertices.length < large.graph!.vertices.length &&
+                      isSubgraphOf(small.graph!.vertices, large.graph!.vertices)) {
+                    subgraphTargets.push({ location: small.location, index: small.index });
+                    break; // This small graph is a subgraph of at least one larger graph
+                  }
+                }
+              }
+            }
+
             const icon = allStrictlyOptimal ? '🔬' : '🪄';
 
             return (
-              (solvableTargets.length > 1 || duplicateTargets.length > 0) && !isExecuting && (
+              (solvableTargets.length > 1 || duplicateTargets.length > 0 || subgraphTargets.length > 0) && !isExecuting && (
                 <div style={{ position: "absolute", bottom: "-12px", display: "flex", gap: "12px", justifyContent: "center", width: "100%", pointerEvents: "none" }}>
+                  {subgraphTargets.length > 0 && (
+                    <OnboardingTooltip
+                      tutorialKey="hasSeenSubgraph"
+                      position="fixed-canvas"
+                      content="⊇ Tip: If a shape fits entirely inside another, you only need to solve the larger one. Click 'Delete Subgraphs' to trim it!"
+                    />
+                  )}
                   {duplicateTargets.length > 0 && (
                     <button
                       className="btn primary"
@@ -489,6 +528,37 @@ const GamePage: React.FC = () => {
                       }}
                     >
                       🪞 Delete Duplicates
+                    </button>
+                  )}
+                  {subgraphTargets.length > 0 && (
+                    <button
+                      className="btn primary"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "8px 16px",
+                        borderRadius: "20px",
+                        background: rankColorHex,
+                        color: "#1e293b",
+                        fontWeight: "bold",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                        border: "none",
+                        pointerEvents: "auto",
+                      }}
+                      onClick={() => {
+                        dispatch(ignoreMultipleGraphs({ targets: subgraphTargets, actionType: 'subgraph' }));
+                        const stateAfter = store.getState().game;
+                        if (stateAfter.recentCutGraphs.length > 0) {
+                          setSplitView(true);
+                          setSelectedGraphIndex(null);
+                        } else {
+                          setSplitView(false);
+                        }
+                        setResetToken((v) => v + 1);
+                      }}
+                    >
+                      ⊇ Delete Subgraphs
                     </button>
                   )}
                   {solvableTargets.length > 1 && (
