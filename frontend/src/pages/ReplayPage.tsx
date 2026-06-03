@@ -178,7 +178,7 @@ export default function ReplayPage() {
         // Parse the canonical shape string to reconstruct the exact shape the sequence was built for
         // (We use res.shape_str instead of res.hash since the hash is now MD5)
         const canonicalStr = (res as any).shape_str || "";
-        const canonicalVertices = canonicalStr.split('|').filter(Boolean).map((pair: string) => {
+        const canonicalVertices: { x: number; y: number }[] = canonicalStr.split('|').filter(Boolean).map((pair: string) => {
           const [x, y] = pair.split(',');
           return { x: parseInt(x, 10), y: parseInt(y, 10) };
         });
