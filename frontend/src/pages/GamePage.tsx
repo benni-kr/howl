@@ -489,13 +489,13 @@ const GamePage: React.FC = () => {
               if (activeGraph) candidates.push({ graph: activeGraph, location: 'active' });
               recentCutGraphs.forEach((g, i) => candidates.push({ graph: g, location: 'recent', index: i }));
 
-              // Skip graphs already marked as duplicates
+              // Skip graphs already marked as duplicates when checking as 'large'
               const duplicateKeys = new Set(duplicateTargets.map(d => `${d.location}:${d.index ?? 'active'}`));
 
               for (let i = 0; i < candidates.length; i++) {
                 const small = candidates[i];
-                const smallKey = `${small.location}:${small.index ?? 'active'}`;
-                if (duplicateKeys.has(smallKey)) continue; // Already a duplicate, skip
+                // We do NOT skip `small` if it's a duplicate, because we want it to be detected
+                // as a subgraph so we can batch delete it alongside its identical copies!
 
                 for (let j = 0; j < candidates.length; j++) {
                   if (i === j) continue;
