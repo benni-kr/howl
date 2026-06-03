@@ -25,7 +25,7 @@ import {
   getLocalGraphFingerprint,
 } from "../state/gameSlice";
 
-import type { Vertex } from "../state/gameSlice";
+import type { Vertex, Graph } from "../state/gameSlice";
 import { selectActivePalette } from "../state/settingsSlice";
 import NewGameModal from "../components/game-page/NewGameModal";
 import { useAlias } from "../hooks/useAlias";
