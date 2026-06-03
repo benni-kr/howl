@@ -512,7 +512,7 @@ const GamePage: React.FC = () => {
               }
             }
 
-            const icon = allStrictlyOptimal ? '🔬' : '🪄';
+            const icon = allStrictlyOptimal ? '🧮' : '🪄';
 
             return (
               (solvableTargets.length > 1 || duplicateTargets.length > 0 || subgraphTargets.length > 0) && !isExecuting && (
