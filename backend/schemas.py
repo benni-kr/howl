@@ -18,6 +18,7 @@ class SolutionCreate(BaseModel):
       - Cut: ``{"t": "c", "v": [[x,y], ...]}``
       - Vaporize: ``{"t": "v", "v": [[x,y], ...], "r": <optimal_rank>}``
       - Ignore: ``{"t": "i", "v": [[x,y], ...]}``
+      - Subgraph: ``{"t": "s", "v": [[x,y], ...]}``
     """
 
     m: int
@@ -37,9 +38,9 @@ class SolutionCreate(BaseModel):
                     f"cut_sequence[{i}]: expected dict, got {type(action).__name__}"
                 )
             t = action.get("t")
-            if t not in ("c", "v", "i"):
+            if t not in ("c", "v", "i", "s"):
                 raise ValueError(
-                    f"cut_sequence[{i}]: 't' must be 'c', 'v', or 'i', got {t!r}"
+                    f"cut_sequence[{i}]: 't' must be 'c', 'v', 'i', or 's', got {t!r}"
                 )
             if "v" not in action or not isinstance(action["v"], list):
                 raise ValueError(

@@ -147,11 +147,12 @@ export const submitScore = async (
   cutSequence: CutHistoryAction[],
 ): Promise<SubmitResponse> => {
   // Network/DB Optimization: Compact the sequence before sending to save ~70% payload size
-  // "c" = cut, "v" = vaporize, "i" = ignore. Vertices become flat [x, y] tuples.
+  // "c" = cut, "v" = vaporize, "i" = ignore, "s" = subgraph. Vertices become flat [x, y] tuples.
   const compactSequence = cutSequence.map((action) => {
     const v = action.vertices.map((vtx) => [vtx.x, vtx.y]);
     if (action.type === "cut") return { t: "c", v };
     if (action.type === "vaporize") return { t: "v", v, r: action.optimal_rank };
+    if (action.type === "subgraph") return { t: "s", v };
     return { t: "i", v };
   });
 
@@ -221,6 +222,11 @@ export const decompactSequence = (sequence: any): CutHistoryAction[] => {
     } else if (action.t === "c") {
       return {
         type: "cut",
+        vertices,
+      } as CutHistoryAction;
+    } else if (action.t === "s") {
+      return {
+        type: "subgraph",
         vertices,
       } as CutHistoryAction;
     } else {

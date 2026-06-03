@@ -62,6 +62,24 @@ const TreeNode: React.FC<{ node: EliminationNode }> = ({ node }) => {
         }}>
           🪞
         </div>
+      ) : node.action.type === 'subgraph' ? (
+        <div style={{
+          padding: '4px 12px',
+          borderRadius: '20px',
+          background: '#1e1b4b', // Deep purple
+          color: '#fbbf24', // Gold text
+          fontSize: '0.9rem',
+          fontWeight: 'bold',
+          zIndex: 2,
+          boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          whiteSpace: 'nowrap',
+          width: 'max-content'
+        }}>
+          ⊇
+        </div>
       ) : (
         <div style={{
           padding: '4px 12px',

@@ -63,7 +63,11 @@ const ActionLog: React.FC<{ sequence: any[], currentStep: number, activeColor: s
             <div style={{ fontSize: '0.9em', color: idx === currentStep ? 'rgba(0,0,0,0.7)' : 'var(--text-muted)', marginTop: '4px' }}>
               {action.type === 'vaporize'
                 ? `Optimal Rank: ${action.optimal_rank}`
-                : (action.type === 'ignore' ? `Duplicate shape trimmed` : `Vertices: ${action.vertices.length}`)}
+                : action.type === 'ignore'
+                  ? `Duplicate shape trimmed`
+                  : action.type === 'subgraph'
+                    ? `Subgraph shape trimmed`
+                    : `Vertices: ${action.vertices.length}`}
             </div>
           </div>
         ))}

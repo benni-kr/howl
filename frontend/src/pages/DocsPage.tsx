@@ -29,16 +29,26 @@ const DocsPage: React.FC = () => {
           <li>
             <strong>The Score (Rank):</strong> Every block you cut adds to your Rank. Your final score is the highest accumulated sequence of cuts any single remaining piece inherited. <em>A lower rank is better!</em>
           </li>
-          <li>
-            <strong>The Magic Wand:</strong> See a shape the community has already solved? Click it with the Magic Wand to instantly "vaporize" it using the best score the community has ever found.
-          </li>
-          <li>
-            <strong>The Abacus:</strong> Sometimes, the backend knows a shape's score is mathematically perfect. The Abacus vaporizes the shape knowing it can never be improved.
-          </li>
-          <li>
-            <strong>Delete Duplicates:</strong> If a cut creates identical subgraphs, you only need to solve one of them! Click the "Delete Duplicates" button to automatically trim the redundant shapes from the game tree.
-          </li>
         </ul>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '16px', marginTop: '24px' }}>
+          <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-subtle)', display: 'flex', gap: '16px', alignItems: 'center' }}>
+            <div style={{ fontSize: '1.8rem', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', background: 'var(--bg-inset)', borderRadius: '8px' }}>🪄</div>
+            <div style={{ fontSize: '0.95rem', lineHeight: '1.5' }}>See a shape the community has already solved? Click it to instantly "vaporize" it using the best score the community has ever found.</div>
+          </div>
+          <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-subtle)', display: 'flex', gap: '16px', alignItems: 'center' }}>
+            <div style={{ fontSize: '1.8rem', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', background: 'var(--bg-inset)', borderRadius: '8px' }}>🧮</div>
+            <div style={{ fontSize: '0.95rem', lineHeight: '1.5' }}>Sometimes, the backend knows a shape's score is mathematically perfect. This vaporizes the shape knowing it can never be improved.</div>
+          </div>
+          <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-subtle)', display: 'flex', gap: '16px', alignItems: 'center' }}>
+            <div style={{ fontSize: '1.8rem', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', background: 'var(--bg-inset)', borderRadius: '8px' }}>🪞</div>
+            <div style={{ fontSize: '0.95rem', lineHeight: '1.5' }}>If a cut creates identical subgraphs, you only need to solve one of them!</div>
+          </div>
+          <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-subtle)', display: 'flex', gap: '16px', alignItems: 'center' }}>
+            <div style={{ fontSize: '1.8rem', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', background: 'var(--bg-inset)', borderRadius: '8px' }}>⊇</div>
+            <div style={{ fontSize: '0.95rem', lineHeight: '1.5' }}>If one shape fits entirely inside another (under rotation or reflection), you only need to solve the larger one.</div>
+          </div>
+        </div>
       </div>
 
       <div style={{ marginBottom: '40px' }}>
