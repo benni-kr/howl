@@ -118,8 +118,8 @@ const LeaderboardPage: React.FC = () => {
   return (
     <div className="page-content">
       {/* Header */}
-      <div className="page-header" style={{ paddingBottom: '16px' }}>
-        <div className="page-header-controls" style={{ flexWrap: 'wrap', gap: '16px', width: '100%', justifyContent: 'space-between' }}>
+      <div className="page-header">
+        <div className="page-header-controls" style={{ flexWrap: 'wrap', gap: '8px', width: '100%', justifyContent: 'space-between' }}>
           {/* Main tab toggles */}
           <div className="btn-group" style={{ flexWrap: 'wrap', gap: '4px' }}>
             <button
@@ -301,7 +301,7 @@ const LeaderboardPage: React.FC = () => {
               )
             ) : (
               /* ─── Top Solvers View ─── */
-              <div style={{ padding: '24px 32px', height: '100%', overflowY: 'auto' }}>
+              <div style={{ padding: '16px', height: '100%', overflowY: 'auto' }}>
                 {loading && topSolvers.length === 0 ? (
                   <div style={{ display: 'grid', gap: '12px' }}>
                     {[...Array(8)].map((_, i) => (

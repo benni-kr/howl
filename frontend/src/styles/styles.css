@@ -618,6 +618,21 @@ body {
     justify-content: flex-start;
     min-height: 0;
   }
+
+  /* Leaderboard page mobile fixes */
+  .page-header {
+    padding: 12px 12px 12px;
+    gap: 8px;
+  }
+
+  .page-header-controls {
+    gap: 8px;
+  }
+
+  .page-content {
+    height: calc(100dvh - 56px); /* topnav height on mobile */
+    overflow: hidden;
+  }
 }
 
 /* Hide topnav logo on desktop when on game route */

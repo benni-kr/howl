@@ -262,15 +262,15 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
         {/* ── Column Headers ── */}
         <thead>
           <tr>
-            {/* Corner cell: sticky to both axes */}
+            {/* Corner cell: sticky top only, scrolls horizontally with table */}
             <th
               style={{
                 ...thStyle,
                 position: 'sticky',
                 top: 0,
-                left: 0,
                 zIndex: 30,
                 boxShadow: '2px 2px 6px rgba(0,0,0,0.35)',
+                visibility: hiddenCols > 0 ? 'hidden' : 'visible',
               }}
             >
               <div style={{ position: 'absolute', top: 2, right: 4, fontSize: '10px', color: 'rgba(255,255,255,0.7)', lineHeight: 1 }}>m</div>
