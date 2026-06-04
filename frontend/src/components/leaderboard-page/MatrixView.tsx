@@ -65,6 +65,13 @@ const MAX = 100;     // max grid dimension
 const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, customFormula = '' }) => {
   const { alias } = useAlias();
   const tooltipRef = React.useRef<HTMLDivElement>(null);
+  const [hiddenCols, setHiddenCols] = React.useState(0);
+
+  const handleScroll = React.useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const scrollTop = e.currentTarget.scrollTop;
+    const row = Math.floor(scrollTop / (CELL + GAP));
+    setHiddenCols(Math.max(0, row - 1));
+  }, []);
 
   const handleMouseEnter = React.useCallback((e: React.MouseEvent, m: number, n: number, cellRender: any) => {
     if (tooltipRef.current && cellRender) {
@@ -237,11 +244,13 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
 
   return (
     <div
+      onScroll={handleScroll}
       style={{
         width: '100%',
         height: '100%',
         overflow: 'auto',
         background: 'var(--bg-inset)',
+        WebkitOverflowScrolling: 'touch',
       }}
     >
       <table
@@ -279,6 +288,7 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
                   top: 0,
                   zIndex: 10,
                   boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
+                  visibility: m <= hiddenCols ? 'hidden' : 'visible',
                 }}
               >
                 {m}
@@ -291,35 +301,21 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
         <tbody>
           {nIndices.map(n => (
             <tr key={`row-${n}`}>
-              {[0, ...mIndices].map(m => {
-                // Empty blank space to the left of the diagonal headers
-                if (m < n - 1) {
-                  return (
-                    <td
-                      key={`empty-${m}-${n}`}
-                      style={{
-                        width: CELL,
-                        height: CELL,
-                        minWidth: CELL,
-                        padding: 0,
-                        border: 'none',
-                        position: 'relative',
-                        zIndex: 20,
-                      }}
-                    >
-                      <div style={{
-                        position: 'absolute',
-                        top: -GAP,
-                        left: -GAP,
-                        right: -GAP,
-                        bottom: -GAP,
-                        background: 'var(--bg-inset)'
-                      }} />
-                    </td>
-                  );
-                }
+              {/* Single empty padding cell for the whole left space for massive performance boost */}
+              {n > 1 && (
+                <td
+                  key={`empty-span-${n}`}
+                  colSpan={n - 1}
+                  style={{
+                    padding: 0,
+                    border: 'none',
+                  }}
+                />
+              )}
 
-                // Diagonal Row Header: sticky left and z-indexed to cover top headers on scroll
+              {/* Map only the remaining columns: m >= n - 1 */}
+              {[0, ...mIndices].filter(m => m >= n - 1).map(m => {
+                // Diagonal Row Header: sticky left to naturally pile up when scrolling right
                 if (m === n - 1) {
                   return (
                     <th
@@ -332,15 +328,6 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
                         boxShadow: '2px 0 4px rgba(0,0,0,0.25)',
                       }}
                     >
-                      <div style={{
-                        position: 'absolute',
-                        top: -GAP,
-                        left: -GAP,
-                        right: -GAP,
-                        bottom: -GAP,
-                        background: 'var(--bg-inset)',
-                        zIndex: -1
-                      }} />
                       {n}
                     </th>
                   );
