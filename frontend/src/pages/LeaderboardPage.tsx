@@ -302,19 +302,43 @@ const LeaderboardPage: React.FC = () => {
                 <div className="muted">Loading Solvers...</div>
               ) : topSolvers.length > 0 ? (
                 <div style={{ display: 'grid', gap: '12px' }}>
-                  {topSolvers.map((solver, idx) => (
-                    <div key={solver.solver_name} style={{ display: 'flex', alignItems: 'center', padding: '16px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '12px' }}>
-                      <div style={{ fontSize: '1.5rem', fontWeight: 700, width: '48px', color: idx < 3 ? 'var(--tile-selected)' : 'var(--text-muted)' }}>
-                        #{idx + 1}
+                  {topSolvers.map((solver, idx) => {
+                    const isFirst = idx === 0;
+                    const isSecond = idx === 1;
+                    const isThird = idx === 2;
+                    
+                    let borderStyle = '1px solid var(--border-subtle)';
+                    let boxShadow = 'none';
+                    if (isFirst) {
+                      borderStyle = '1px solid #facc15'; // yellow-400
+                      boxShadow = '0 0 15px rgba(250, 204, 21, 0.4)';
+                    } else if (isSecond) {
+                      borderStyle = '1px solid #94a3b8'; // slate-400
+                      boxShadow = '0 0 10px rgba(148, 163, 184, 0.3)';
+                    } else if (isThird) {
+                      borderStyle = '1px solid #b45309'; // amber-700 / bronze
+                      boxShadow = '0 0 10px rgba(180, 83, 9, 0.3)';
+                    }
+
+                    return (
+                      <div key={solver.solver_name} style={{ display: 'flex', alignItems: 'center', padding: '16px', background: 'var(--bg-card)', border: borderStyle, boxShadow: boxShadow, borderRadius: '12px' }}>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 700, width: '48px', color: isFirst ? '#facc15' : isSecond ? '#94a3b8' : isThird ? '#b45309' : 'var(--text-muted)' }}>
+                          #{idx + 1}
+                        </div>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                          <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                            {solver.solver_name}
+                          </div>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                            Total Grids Solved: {solver.total_grids}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 700, textAlign: 'right' }}>
+                          {solver.first_places} <span style={{ fontSize: '0.85rem', fontWeight: 400, color: 'var(--text-muted)' }}>First Places</span>
+                        </div>
                       </div>
-                      <div style={{ flex: 1, fontSize: '1.1rem', fontWeight: 600 }}>
-                        {solver.solver_name}
-                      </div>
-                      <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>
-                        {solver.first_places} <span style={{ fontSize: '0.85rem', fontWeight: 400, color: 'var(--text-muted)' }}>First Places</span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="muted">No solvers found.</div>

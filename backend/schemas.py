@@ -108,6 +108,7 @@ class MatrixCellResponse(BaseModel):
 class TopSolverResponse(BaseModel):
     solver_name: str
     first_places: int
+    total_grids: int
 
 class GridLeaderboardEntry(BaseModel):
     rank_position: int
