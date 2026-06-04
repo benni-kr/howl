@@ -7,7 +7,7 @@ export type MatrixMode = 'min_rank' | 'top_solver' | 'perfection_gap' | 'density
 
 interface MatrixViewProps {
   data: MatrixCellData[];
-  onCellClick: (m: number, n: number) => void;
+  onCellClick: (m: number, n: number, hasData: boolean) => void;
   mode: MatrixMode;
   customFormula?: string;
 }
@@ -354,7 +354,7 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
                   <td
                     key={`cell-${m}-${n}`}
                     onClick={() => {
-                      if (cellRender) onCellClick(m, n);
+                      onCellClick(m, n, !!cellRender);
                     }}
                     onMouseEnter={(e) => {
                       if (cellRender && cellData) {

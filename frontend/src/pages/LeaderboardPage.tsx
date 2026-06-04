@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import MatrixView, { MatrixMode } from '../components/leaderboard-page/MatrixView';
+import { useDispatch } from 'react-redux';
+import { initializeGame } from '../state/gameSlice';
 import {
   fetchMatrixLeaderboard,
   fetchTopSolvers,
@@ -27,6 +29,7 @@ const MODE_LABELS: Record<MatrixMode, string> = {
 
 const LeaderboardPage: React.FC = () => {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const { m: mParam, n: nParam } = useParams<{ m: string; n: string }>();
   const [searchParams] = useSearchParams();
 
@@ -54,6 +57,7 @@ const LeaderboardPage: React.FC = () => {
   const [topSolvers, setTopSolvers] = useState<TopSolverData[]>([]);
   const [gridData, setGridData] = useState<GridLeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [playPopup, setPlayPopup] = useState<{m: number, n: number} | null>(null);
 
   // ── Data fetching based on URL ────────────────────────────────────
   useEffect(() => {
@@ -97,9 +101,13 @@ const LeaderboardPage: React.FC = () => {
     navigate(`/leaderboard?view=solvers${next ? '&square=true' : ''}`);
   }, [navigate, squareOnly]);
 
-  const handleCellClick = useCallback((m: number, n: number) => {
+  const handleCellClick = useCallback((m: number, n: number, hasData: boolean) => {
     // Preserve current mode in query params for back-nav context
-    navigate(`/leaderboard/${m}/${n}?view=matrix&mode=${matrixMode}`);
+    if (hasData) {
+      navigate(`/leaderboard/${m}/${n}?view=matrix&mode=${matrixMode}`);
+    } else {
+      setPlayPopup({ m, n });
+    }
   }, [navigate, matrixMode]);
 
   const handleBack = useCallback(() => {
@@ -366,9 +374,21 @@ const LeaderboardPage: React.FC = () => {
               <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                   <h3 style={{ margin: 0 }}>Grid {drillM} &times; {drillN} Leaderboard</h3>
-                  <button className="btn ghost" onClick={handleBack} style={{ width: '40px', height: '40px', padding: 0, fontSize: '1.2rem', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Close">
-                    ✕
-                  </button>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <button 
+                      className="btn primary" 
+                      style={{ padding: '6px 16px', fontSize: '0.9rem', borderRadius: '20px', fontWeight: 600 }}
+                      onClick={() => {
+                        dispatch(initializeGame({ m: drillM, n: drillN }));
+                        navigate('/');
+                      }}
+                    >
+                      Play Now
+                    </button>
+                    <button className="btn ghost" onClick={handleBack} style={{ width: '40px', height: '40px', padding: 0, fontSize: '1.2rem', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Close">
+                      ✕
+                    </button>
+                  </div>
                 </div>
 
                 <div style={{ flex: 1, overflowY: 'auto' }} className="custom-scrollbar">
@@ -446,6 +466,26 @@ const LeaderboardPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {playPopup && (
+        <div className="modal-overlay" onClick={() => setPlayPopup(null)} style={{ zIndex: 1000 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ padding: '24px', maxWidth: '320px', textAlign: 'center' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '8px', fontSize: '1.5rem' }}>Grid {playPopup.m} &times; {playPopup.n}</h3>
+            <p className="muted" style={{ margin: '0 0 24px 0', lineHeight: 1.5 }}>
+              No one has solved this grid yet. Do you want to play it and be the first?
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button className="btn secondary" style={{ flex: 1 }} onClick={() => setPlayPopup(null)}>Cancel</button>
+              <button className="btn primary" style={{ flex: 1 }} onClick={() => {
+                dispatch(initializeGame({ m: playPopup.m, n: playPopup.n }));
+                navigate('/');
+              }}>
+                Play Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
