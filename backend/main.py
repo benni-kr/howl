@@ -449,8 +449,23 @@ def get_top_solvers(token: str = Depends(verify_token), square_only: bool = Fals
     for solver_name in matrix_map.values():
         counts[solver_name] = counts.get(solver_name, 0) + 1
 
+    # Fetch total grids solved per user
+    solver_total_grids = db.query(
+        GridSolution.solver_name,
+        func.count(GridSolution.id).label("total_grids")
+    ).group_by(GridSolution.solver_name).all()
+    
+    total_grids_map = {row.solver_name: row.total_grids for row in solver_total_grids}
+
     sorted_solvers = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-    return [{"solver_name": s[0], "first_places": s[1]} for s in sorted_solvers]
+    return [
+        {
+            "solver_name": s[0], 
+            "first_places": s[1],
+            "total_grids": total_grids_map.get(s[0], 0)
+        } 
+        for s in sorted_solvers
+    ]
 
 
 @app.get("/api/leaderboard/grid/{m}/{n}")

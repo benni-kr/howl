@@ -284,6 +284,7 @@ export const fetchMatrixLeaderboard = async (): Promise<MatrixCellData[]> => {
 export type TopSolverData = {
   solver_name: string;
   first_places: number;
+  total_grids: number;
 };
 
 export const fetchTopSolvers = async (

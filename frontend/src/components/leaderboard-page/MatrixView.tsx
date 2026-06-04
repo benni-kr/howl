@@ -7,7 +7,7 @@ export type MatrixMode = 'min_rank' | 'top_solver' | 'perfection_gap' | 'density
 
 interface MatrixViewProps {
   data: MatrixCellData[];
-  onCellClick: (m: number, n: number) => void;
+  onCellClick: (m: number, n: number, hasData: boolean) => void;
   mode: MatrixMode;
   customFormula?: string;
 }
@@ -64,6 +64,44 @@ const MAX = 100;     // max grid dimension
 
 const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, customFormula = '' }) => {
   const { alias } = useAlias();
+  const tooltipRef = React.useRef<HTMLDivElement>(null);
+
+  const handleMouseEnter = React.useCallback((e: React.MouseEvent, m: number, n: number, cellRender: any) => {
+    if (tooltipRef.current && cellRender) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const tooltip = tooltipRef.current;
+      tooltip.style.display = 'flex';
+      tooltip.style.left = `${rect.left + rect.width / 2}px`;
+      tooltip.style.top = `${rect.top - 10}px`;
+      
+      const titleEl = tooltip.querySelector('.tt-title') as HTMLDivElement;
+      const rankEl = tooltip.querySelector('.tt-rank') as HTMLElement;
+      const lbEl = tooltip.querySelector('.tt-lb') as HTMLElement;
+      const solverEl = tooltip.querySelector('.tt-solver') as HTMLElement;
+      const metricWrapEl = tooltip.querySelector('.tt-metric-wrap') as HTMLDivElement;
+      const metricEl = tooltip.querySelector('.tt-metric') as HTMLElement;
+      
+      if (titleEl) titleEl.innerText = `Grid: ${m} × ${n}`;
+      if (rankEl) rankEl.innerText = cellRender.minRank.toString();
+      if (lbEl) lbEl.innerText = cellRender.lowerBound.toString();
+      if (solverEl) solverEl.innerText = cellRender.solver;
+      
+      if (metricWrapEl && metricEl) {
+        if (cellRender.metricValue !== null) {
+          metricWrapEl.style.display = 'block';
+          metricEl.innerText = typeof cellRender.metricValue === 'number' ? cellRender.metricValue.toFixed(3) : cellRender.metricValue;
+        } else {
+          metricWrapEl.style.display = 'none';
+        }
+      }
+    }
+  }, []);
+
+  const handleMouseLeave = React.useCallback(() => {
+    if (tooltipRef.current) {
+      tooltipRef.current.style.display = 'none';
+    }
+  }, []);
 
   const dataMap = useMemo(() => {
     const map = new Map<string, MatrixCellData>();
@@ -97,6 +135,18 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
 
     if (mode === 'min_rank') {
       content = cellData.min_rank;
+      
+      let goodness = 0;
+      if (cellData.min_rank === 1) goodness = 1.0;
+      else if (cellData.min_rank <= 5) goodness = 0.8;
+      else if (cellData.min_rank <= 15) goodness = 0.6;
+      else if (cellData.min_rank <= 30) goodness = 0.4;
+      else if (cellData.min_rank <= 100) goodness = 0.2;
+      else goodness = 0.05;
+
+      bgColor = `color-mix(in srgb, var(--tile-selected) ${Math.round(goodness * 100)}%, var(--bg-card))`;
+      color = '#ffffff';
+
       if (cellData.is_optimal) {
         border = '1px solid var(--tile-selected)';
       }
@@ -182,6 +232,7 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
     borderRadius: '8px',
     boxSizing: 'border-box',
     padding: 0,
+    border: '1px solid rgba(255,255,255,0.05)',
   };
 
   return (
@@ -209,10 +260,16 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
                 position: 'sticky',
                 top: 0,
                 left: 0,
-                zIndex: 20,
+                zIndex: 30,
                 boxShadow: '2px 2px 6px rgba(0,0,0,0.35)',
               }}
-            />
+            >
+              <div style={{ position: 'absolute', top: 2, right: 4, fontSize: '10px', color: 'rgba(255,255,255,0.7)', lineHeight: 1 }}>m</div>
+              <div style={{ position: 'absolute', bottom: 2, left: 4, fontSize: '10px', color: 'rgba(255,255,255,0.7)', lineHeight: 1 }}>n</div>
+              <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                <line x1="0" y1="0" x2="100%" y2="100%" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+              </svg>
+            </th>
             {mIndices.map(m => (
               <th
                 key={`col-${m}`}
@@ -230,50 +287,66 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
           </tr>
         </thead>
 
-        {/* ── Body: Row headers + ghost tracks + data cells ── */}
+        {/* ── Body: Row headers + empty cells + data cells ── */}
         <tbody>
           {nIndices.map(n => (
             <tr key={`row-${n}`}>
-              {/* Row header: sticky to left */}
-              <th
-                style={{
-                  ...thStyle,
-                  position: 'sticky',
-                  left: 0,
-                  zIndex: 10,
-                  boxShadow: '2px 0 4px rgba(0,0,0,0.25)',
-                }}
-              >
-                {n}
-              </th>
-
-              {mIndices.map(m => {
-                // Ghost track: faint line across the dead zone
-                if (m < n) {
+              {[0, ...mIndices].map(m => {
+                // Empty blank space to the left of the diagonal headers
+                if (m < n - 1) {
                   return (
                     <td
-                      key={`ghost-${m}-${n}`}
+                      key={`empty-${m}-${n}`}
                       style={{
                         width: CELL,
                         height: CELL,
                         minWidth: CELL,
                         padding: 0,
-                        verticalAlign: 'middle',
+                        border: 'none',
+                        position: 'relative',
+                        zIndex: 20,
                       }}
                     >
-                      <div
-                        style={{
-                          width: '100%',
-                          height: '2px', // Make slightly thicker
-                          background: 'var(--border-subtle)',
-                          opacity: 0.6, // Increase opacity for better visibility
-                        }}
-                      />
+                      <div style={{
+                        position: 'absolute',
+                        top: -GAP,
+                        left: -GAP,
+                        right: -GAP,
+                        bottom: -GAP,
+                        background: 'var(--bg-inset)'
+                      }} />
                     </td>
                   );
                 }
 
-                // Data cell
+                // Diagonal Row Header: sticky left and z-indexed to cover top headers on scroll
+                if (m === n - 1) {
+                  return (
+                    <th
+                      key={`header-${n}`}
+                      style={{
+                        ...thStyle,
+                        position: 'sticky',
+                        left: 0,
+                        zIndex: 25,
+                        boxShadow: '2px 0 4px rgba(0,0,0,0.25)',
+                      }}
+                    >
+                      <div style={{
+                        position: 'absolute',
+                        top: -GAP,
+                        left: -GAP,
+                        right: -GAP,
+                        bottom: -GAP,
+                        background: 'var(--bg-inset)',
+                        zIndex: -1
+                      }} />
+                      {n}
+                    </th>
+                  );
+                }
+
+                // Data cell (m >= n)
                 const cellRender = getCellContent(m, n);
                 const cellData = dataMap.get(`${m}-${n}`);
 
@@ -281,33 +354,61 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
                   <td
                     key={`cell-${m}-${n}`}
                     onClick={() => {
-                      if (cellRender) onCellClick(m, n);
+                      onCellClick(m, n, !!cellRender);
                     }}
-                    title={
-                      cellRender && cellData
-                        ? `Grid: ${m}×${n}\nCommunity Rank: ${cellRender.minRank}\nLower Bound: ${cellRender.lowerBound}\nSolver: ${cellRender.solver}${cellRender.metricValue !== null ? `\nMetric Value: ${cellRender.metricValue}` : ''}`
-                        : undefined
-                    }
+                    onMouseEnter={(e) => {
+                      if (cellRender && cellData) {
+                        handleMouseEnter(e, m, n, {
+                          minRank: cellRender.minRank,
+                          solver: cellRender.solver,
+                          lowerBound: cellRender.lowerBound,
+                          metricValue: cellRender.metricValue
+                        });
+                      }
+                    }}
+                    onMouseLeave={handleMouseLeave}
                     style={{
                       width: CELL,
                       height: CELL,
                       minWidth: CELL,
                       padding: 0,
-                      background: cellRender ? cellRender.bgColor : 'rgba(0,0,0,0.05)',
-                      border: cellRender ? cellRender.border : '1px dashed var(--border-subtle)',
-                      borderRadius: '4px',
-                      textAlign: 'center',
                       verticalAlign: 'middle',
-                      fontSize: `${CELL * 0.3}px`,
-                      fontWeight: 600,
-                      color: cellRender ? cellRender.color : 'transparent',
-                      opacity: cellRender ? cellRender.opacity : 0.5,
-                      boxSizing: 'border-box',
                       cursor: cellRender ? 'pointer' : 'default',
-                      transition: 'background 0.2s, opacity 0.2s',
                     }}
+                    className={cellRender ? 'hover-row' : ''}
                   >
-                    {cellRender ? cellRender.content : null}
+                    {cellRender ? (
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          background: cellRender.bgColor,
+                          color: cellRender.color,
+                          border: cellRender.border,
+                          opacity: cellRender.opacity,
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: `${CELL * 0.35}px`,
+                          boxSizing: 'border-box',
+                          boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.1), 0 2px 4px rgba(0,0,0,0.1)',
+                          transition: 'background 0.2s, opacity 0.2s, transform 0.1s',
+                        }}
+                      >
+                        {cellRender.content}
+                      </div>
+                    ) : (
+                      <div style={{
+                        width: '100%',
+                        height: '100%',
+                        background: 'rgba(255,255,255,0.02)',
+                        border: '1px dashed var(--border-subtle)',
+                        borderRadius: '4px',
+                        boxSizing: 'border-box'
+                      }} />
+                    )}
                   </td>
                 );
               })}
@@ -315,6 +416,63 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
           ))}
         </tbody>
       </table>
+
+      {/* Custom Tooltip */}
+      <div
+        ref={tooltipRef}
+        style={{
+          position: 'fixed',
+          display: 'none',
+          left: 0,
+          top: 0,
+          transform: 'translate(-50%, -100%)',
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: '8px',
+          padding: '12px',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
+          zIndex: 9999,
+          pointerEvents: 'none',
+          flexDirection: 'column',
+          gap: '4px',
+          fontSize: '12px',
+          color: 'var(--text-main)',
+          minWidth: '160px',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+        }}
+      >
+        <div className="tt-title" style={{ fontWeight: 'bold', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '4px', marginBottom: '4px' }}>
+          Grid: - × -
+        </div>
+        <div><span style={{ color: 'var(--text-muted)' }}>Community Rank:</span> <strong className="tt-rank" style={{ color: 'var(--text-main)' }}>-</strong></div>
+        <div><span style={{ color: 'var(--text-muted)' }}>Lower Bound:</span> <strong className="tt-lb" style={{ color: 'var(--text-main)' }}>-</strong></div>
+        <div><span style={{ color: 'var(--text-muted)' }}>Top Solver:</span> <strong className="tt-solver" style={{ color: 'var(--text-main)' }}>-</strong></div>
+        <div className="tt-metric-wrap"><span style={{ color: 'var(--text-muted)' }}>Metric:</span> <strong className="tt-metric" style={{ color: 'var(--text-main)' }}>-</strong></div>
+        
+        <div style={{
+          position: 'absolute',
+          bottom: '-6px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 0,
+          height: 0,
+          borderLeft: '6px solid transparent',
+          borderRight: '6px solid transparent',
+          borderTop: '6px solid var(--border-subtle)'
+        }} />
+        <div style={{
+          position: 'absolute',
+          bottom: '-5px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 0,
+          height: 0,
+          borderLeft: '6px solid transparent',
+          borderRight: '6px solid transparent',
+          borderTop: '6px solid var(--bg-card)'
+        }} />
+      </div>
     </div>
   );
 };
