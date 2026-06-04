@@ -269,7 +269,13 @@ const LeaderboardPage: React.FC = () => {
             {activeTab === 'matrix' ? (
               /* ─── Matrix View ─── */
               loading && matrixData.length === 0 ? (
-                <div style={{ padding: '24px 32px' }} className="muted">Loading Matrix...</div>
+                <div style={{ padding: '24px 32px' }}>
+                  <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap', maxWidth: '800px' }}>
+                    {[...Array(200)].map((_, i) => (
+                      <div key={i} className="skeleton" style={{ width: '38px', height: '38px', borderRadius: '4px' }} />
+                    ))}
+                  </div>
+                </div>
               ) : (
                 <div style={{ width: '100%', height: '100%' }}>
                   <OnboardingTooltip
@@ -289,7 +295,18 @@ const LeaderboardPage: React.FC = () => {
               /* ─── Top Solvers View ─── */
               <div style={{ padding: '24px 32px', height: '100%', overflowY: 'auto' }}>
                 {loading && topSolvers.length === 0 ? (
-                  <div className="muted">Loading Solvers...</div>
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    {[...Array(8)].map((_, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '16px', background: 'var(--bg-inset)', border: '1px solid var(--border-subtle)', borderRadius: '12px' }}>
+                        <div className="skeleton" style={{ width: '32px', height: '32px', borderRadius: '8px', marginRight: '20px' }} />
+                        <div style={{ flex: 1 }}>
+                          <div className="skeleton" style={{ width: '150px', height: '20px', marginBottom: '8px' }} />
+                          <div className="skeleton" style={{ width: '100px', height: '14px' }} />
+                        </div>
+                        <div className="skeleton" style={{ width: '60px', height: '24px', borderRadius: '16px' }} />
+                      </div>
+                    ))}
+                  </div>
                 ) : topSolvers.length > 0 ? (
                   <div style={{ display: 'grid', gap: '12px' }}>
                     {topSolvers.map((solver, idx) => {
@@ -362,7 +379,30 @@ const LeaderboardPage: React.FC = () => {
                   />
 
                   {loading ? (
-                    <div className="muted">Loading...</div>
+                    <div style={{ width: '100%', overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                        <thead>
+                            <tr style={{ borderBottom: '2px solid var(--border-subtle)' }}>
+                              <th style={{ padding: '12px' }}>Rank</th>
+                              <th style={{ padding: '12px' }}>Solver</th>
+                              <th style={{ padding: '12px' }}>Score</th>
+                              <th style={{ padding: '12px' }}>Date</th>
+                              <th style={{ padding: '12px' }}></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                          {[...Array(5)].map((_, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                              <td style={{ padding: '12px' }}><div className="skeleton" style={{ height: '20px', width: '40px' }} /></td>
+                              <td style={{ padding: '12px' }}><div className="skeleton" style={{ height: '20px', width: '100px' }} /></td>
+                              <td style={{ padding: '12px' }}><div className="skeleton" style={{ height: '20px', width: '60px' }} /></td>
+                              <td style={{ padding: '12px' }}><div className="skeleton" style={{ height: '20px', width: '120px' }} /></td>
+                              <td style={{ padding: '12px' }}><div className="skeleton" style={{ height: '20px', width: '24px', float: 'right' }} /></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   ) : gridData.length > 0 ? (
                     <div style={{ width: '100%', overflowX: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
