@@ -56,7 +56,7 @@ const LeaderboardPage: React.FC = () => {
   const [showDescriptions, setShowDescriptions] = useState(false);
   const [topSolvers, setTopSolvers] = useState<TopSolverData[]>([]);
   const [gridData, setGridData] = useState<GridLeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [playPopup, setPlayPopup] = useState<{m: number, n: number} | null>(null);
 
   // ── Data fetching based on URL ────────────────────────────────────
@@ -71,7 +71,6 @@ const LeaderboardPage: React.FC = () => {
   }, [isDrillDown, drillM, drillN]);
 
   useEffect(() => {
-    if (isDrillDown) return; // don't fetch when drilling down
     if (activeTab === 'matrix') {
       setLoading(true);
       fetchMatrixLeaderboard().then(data => {
@@ -85,7 +84,7 @@ const LeaderboardPage: React.FC = () => {
         setLoading(false);
       });
     }
-  }, [activeTab, squareOnly, isDrillDown]);
+  }, [activeTab, squareOnly]);
 
   // ── Navigation helpers ────────────────────────────────────────────
   const setView = useCallback((view: ViewTab) => {
@@ -118,8 +117,8 @@ const LeaderboardPage: React.FC = () => {
   return (
     <div className="page-content">
       {/* Header */}
-      <div className="page-header" style={{ paddingBottom: '16px' }}>
-        <div className="page-header-controls" style={{ flexWrap: 'wrap', gap: '16px', width: '100%', justifyContent: 'space-between' }}>
+      <div className="page-header">
+        <div className="page-header-controls" style={{ flexWrap: 'wrap', gap: '8px', width: '100%', justifyContent: 'space-between' }}>
           {/* Main tab toggles */}
           <div className="btn-group" style={{ flexWrap: 'wrap', gap: '4px' }}>
             <button
@@ -277,10 +276,23 @@ const LeaderboardPage: React.FC = () => {
             {activeTab === 'matrix' ? (
               /* ─── Matrix View ─── */
               loading && matrixData.length === 0 ? (
-                <div style={{ padding: '24px 32px' }}>
-                  <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap', maxWidth: '800px' }}>
-                    {[...Array(200)].map((_, i) => (
-                      <div key={i} className="skeleton" style={{ width: '38px', height: '38px', borderRadius: '4px' }} />
+                <div style={{ padding: '16px', overflow: 'hidden', height: '100%' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {[...Array(60)].map((_, r) => (
+                      <div key={r} style={{ display: 'flex', gap: '2px', paddingLeft: `${r * 40}px` }}>
+                        {[...Array(60 - r)].map((_, c) => (
+                          <div 
+                            key={c} 
+                            className="skeleton" 
+                            style={{ 
+                              minWidth: '38px', 
+                              height: '38px', 
+                              borderRadius: '4px',
+                              animationDelay: `${(r * 2 + c) * 0.03}s`
+                            }} 
+                          />
+                        ))}
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -301,7 +313,7 @@ const LeaderboardPage: React.FC = () => {
               )
             ) : (
               /* ─── Top Solvers View ─── */
-              <div style={{ padding: '24px 32px', height: '100%', overflowY: 'auto' }}>
+              <div style={{ padding: '16px', height: '100%', overflowY: 'auto' }}>
                 {loading && topSolvers.length === 0 ? (
                   <div style={{ display: 'grid', gap: '12px' }}>
                     {[...Array(8)].map((_, i) => (
