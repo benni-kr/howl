@@ -111,7 +111,7 @@ const LeaderboardPage: React.FC = () => {
     <div className="page-content">
       {/* Header */}
       <div className="page-header" style={{ paddingBottom: '16px' }}>
-        <div className="page-header-controls" style={{ flexWrap: 'wrap', gap: '8px', width: '100%' }}>
+        <div className="page-header-controls" style={{ flexWrap: 'wrap', gap: '16px', width: '100%', justifyContent: 'space-between' }}>
           {/* Main tab toggles */}
           <div className="btn-group" style={{ flexWrap: 'wrap', gap: '4px' }}>
             <button
@@ -128,93 +128,138 @@ const LeaderboardPage: React.FC = () => {
             </button>
           </div>
 
-          {/* Matrix mode toggles */}
-          {activeTab === 'matrix' && !isDrillDown && (
-            <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '16px', alignItems: 'center' }}>
-              <div className="btn-group" style={{ flexWrap: 'wrap', gap: '4px' }}>
-                {VALID_MODES.map(m => (
-                  <button
-                    key={m}
-                    className={`btn ${matrixMode === m ? 'primary' : 'secondary'}`}
-                    onClick={() => setMode(m)}
-                  >
-                    {MODE_LABELS[m]}
-                  </button>
-                ))}
+          {/* Secondary Controls (Right Aligned) */}
+          {!isDrillDown && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 auto', justifyContent: 'flex-end' }}>
+              <div style={{ 
+                position: 'relative', 
+                display: 'flex', 
+                alignItems: 'center', 
+                background: 'var(--bg-inset)', 
+                border: '1px solid var(--border-subtle)', 
+                borderRadius: '8px', 
+                padding: '0 12px',
+                height: '36px',
+                width: '100%',
+                maxWidth: '220px'
+              }}>
+                {activeTab === 'matrix' ? (
+                  <>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-subtle)', marginRight: '8px', whiteSpace: 'nowrap' }}>Metric:</div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {MODE_LABELS[matrixMode]}
+                    </div>
+                    <select
+                      id="metric-select"
+                      value={matrixMode}
+                      onChange={(e) => setMode(e.target.value as any)}
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        width: '100%',
+                        height: '100%',
+                        opacity: 0,
+                        cursor: 'pointer',
+                        appearance: 'none',
+                      }}
+                    >
+                      {VALID_MODES.map(m => (
+                        <option key={m} value={m}>{MODE_LABELS[m]}</option>
+                      ))}
+                    </select>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-subtle)', marginRight: '8px', whiteSpace: 'nowrap' }}>Filter:</div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {squareOnly ? 'Square Only' : 'All Grids'}
+                    </div>
+                    <select
+                      id="grid-select"
+                      value={squareOnly ? 'square' : 'all'}
+                      onChange={(e) => {
+                        const isSquare = e.target.value === 'square';
+                        if (isSquare !== squareOnly) toggleSquare();
+                      }}
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        width: '100%',
+                        height: '100%',
+                        opacity: 0,
+                        cursor: 'pointer',
+                        appearance: 'none',
+                      }}
+                    >
+                      <option value="all">All Grids</option>
+                      <option value="square">Square Only</option>
+                    </select>
+                  </>
+                )}
+                <div style={{ pointerEvents: 'none', marginLeft: '8px', fontSize: '10px', color: 'var(--text-subtle)' }}>
+                  ▼
+                </div>
+              </div>
+              
+              {activeTab === 'matrix' && (
                 <button 
                   className={`btn ${showDescriptions ? 'primary' : 'secondary'}`}
-                  style={{ width: '32px', padding: 0, fontWeight: 'bold' }}
+                  style={{ width: '36px', height: '36px', padding: 0, fontWeight: 'bold', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                   onClick={() => setShowDescriptions(!showDescriptions)}
                   title="Toggle metric descriptions"
                 >
                   ?
                 </button>
-              </div>
-              {matrixMode === 'custom_formula' && (
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <label style={{ fontSize: '14px', color: 'var(--text-subtle)' }}>Formula:</label>
-                  <input 
-                    type="text" 
-                    value={customFormula} 
-                    onChange={e => setCustomFormula(e.target.value)} 
-                    style={{ 
-                      flex: 1, 
-                      width: '250px', 
-                      background: 'var(--bg-inset)', 
-                      border: '1px solid var(--border-subtle)', 
-                      color: 'var(--text-main)', 
-                      padding: '4px 8px', 
-                      borderRadius: '4px',
-                      fontFamily: 'monospace'
-                    }} 
-                  />
-                </div>
               )}
             </div>
           )}
-
-          {/* Metric Descriptions */}
-          {activeTab === 'matrix' && !isDrillDown && showDescriptions && (
-            <div style={{ 
-              marginTop: '8px', 
-              padding: '12px', 
-              background: 'var(--bg-inset)', 
-              borderRadius: '8px', 
-              border: '1px solid var(--border-subtle)',
-              fontSize: '13px',
-              color: 'var(--text-subtle)',
-              lineHeight: '1.5'
-            }}>
-              <strong>Metrics Explained:</strong>
-              <ul style={{ margin: '4px 0 0 20px', padding: 0 }}>
-                <li><strong>Min Rank:</strong> The lowest rank achieved by the community for the given m × n grid.</li>
-                <li><strong>Top Solver:</strong> The alias of the player who holds the optimal rank.</li>
-                <li><strong>Perfection Gap:</strong> <code>Min Rank - Lower Bound</code>. A lower bound is calculated based on known theoretical limits. 0 means optimal.</li>
-                <li><strong>Lin. Density:</strong> <code>Min Rank / max(m, n)</code>. Measures how sparse or dense the solution is relative to the largest dimension.</li>
-                <li><strong>Log. Density:</strong> <code>Min Rank / (min(m, n) + log2(max(m, n) + 1))</code>. An adjusted density scaling logarithmically with grid size.</li>
-                <li><strong>Custom:</strong> Enter a valid Math.js expression using: <code>m</code>, <code>n</code>, <code>min_edge</code>, <code>max_edge</code>, and <code>rank</code>. Example: <code>rank - m - n</code>.</li>
-              </ul>
-            </div>
-          )}
-
-          {/* Square-only toggle (replaces checkbox) */}
-          {activeTab === 'solvers' && !isDrillDown && (
-            <div className="btn-group" style={{ flexWrap: 'wrap', gap: '4px' }}>
-              <button
-                className={`btn ${!squareOnly ? 'primary' : 'secondary'}`}
-                onClick={() => !squareOnly || toggleSquare()}
-              >
-                All Grids
-              </button>
-              <button
-                className={`btn ${squareOnly ? 'primary' : 'secondary'}`}
-                onClick={() => squareOnly || toggleSquare()}
-              >
-                Square Only
-              </button>
-            </div>
-          )}
         </div>
+
+        {/* Custom formula input */}
+        {activeTab === 'matrix' && !isDrillDown && matrixMode === 'custom_formula' && (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '12px' }}>
+            <label style={{ fontSize: '14px', color: 'var(--text-subtle)' }}>Formula:</label>
+            <input 
+              type="text" 
+              value={customFormula} 
+              onChange={e => setCustomFormula(e.target.value)} 
+              style={{ 
+                flex: 1, 
+                width: '250px', 
+                background: 'var(--bg-inset)', 
+                border: '1px solid var(--border-subtle)', 
+                color: 'var(--text-main)', 
+                padding: '4px 8px', 
+                borderRadius: '4px',
+                fontFamily: 'monospace'
+              }} 
+            />
+          </div>
+        )}
+
+        {/* Metric Descriptions */}
+        {activeTab === 'matrix' && !isDrillDown && showDescriptions && (
+          <div style={{ 
+            marginTop: '12px', 
+            padding: '12px', 
+            background: 'var(--bg-inset)', 
+            borderRadius: '8px', 
+            border: '1px solid var(--border-subtle)',
+            fontSize: '13px',
+            color: 'var(--text-subtle)',
+            lineHeight: '1.5'
+          }}>
+            <strong>Metrics Explained:</strong>
+            <ul style={{ margin: '4px 0 0 20px', padding: 0 }}>
+              <li><strong>Min Rank:</strong> The lowest rank achieved by the community for the given m × n grid.</li>
+              <li><strong>Top Solver:</strong> The alias of the player who holds the optimal rank.</li>
+              <li><strong>Perfection Gap:</strong> <code>Min Rank - Lower Bound</code>. A lower bound is calculated based on known theoretical limits. 0 means optimal.</li>
+              <li><strong>Lin. Density:</strong> <code>Min Rank / max(m, n)</code>. Measures how sparse or dense the solution is relative to the largest dimension.</li>
+              <li><strong>Log. Density:</strong> <code>Min Rank / (min(m, n) + log2(max(m, n) + 1))</code>. An adjusted density scaling logarithmically with grid size.</li>
+              <li><strong>Custom:</strong> Enter a valid Math.js expression using: <code>m</code>, <code>n</code>, <code>min_edge</code>, <code>max_edge</code>, and <code>rank</code>. Example: <code>rank - m - n</code>.</li>
+            </ul>
+          </div>
+        )}
       </div>
 
       {/* Body */}
