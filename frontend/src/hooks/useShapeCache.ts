@@ -40,6 +40,9 @@ export const useShapeCache = () => {
 
     return finalResults;
   }, []);
+  const clearCache = useCallback(() => {
+    cacheRef.current.clear();
+  }, []);
 
-  return { checkShapesCached };
+  return { checkShapesCached, clearCache };
 };

@@ -91,7 +91,7 @@ const GamePage: React.FC = () => {
 
   const [optimalRanks, setOptimalRanks] = useState<Map<string, { best_rank: number, is_optimal: boolean, discovered_by?: string | null, hash: string }>>(new Map());
 
-  const { checkShapesCached } = useShapeCache();
+  const { checkShapesCached, clearCache } = useShapeCache();
 
   // Poll for optimal ranks when graphs change
   useEffect(() => {
@@ -137,7 +137,10 @@ const GamePage: React.FC = () => {
       if (gridM && gridN && solverName && !hasSubmittedScoreRef.current) {
         hasSubmittedScoreRef.current = true;
 
-        submitScore(gridM, gridN, maxRank, solverName, cutsApplied).catch(err => {
+        submitScore(gridM, gridN, maxRank, solverName, cutsApplied).then(() => {
+          // Clear shape cache after successful submission so newly discovered optimal ranks are fetched
+          clearCache();
+        }).catch(err => {
           console.error("Failed to submit score:", err);
           hasSubmittedScoreRef.current = false;
         });

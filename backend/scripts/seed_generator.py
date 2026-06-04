@@ -67,21 +67,21 @@ def get_optimal_coloring(G):
 
 
 def coloring_to_cut_sequence(colored_nodes):
-    """Converts a list of colored nodes into a valid cut sequence."""
+    """Converts a list of colored nodes into a valid cut sequence (compact format)."""
     if not colored_nodes: return []
     max_rank = max(node["rank"] for node in colored_nodes)
 
     cut_sequence = []
     for current_rank in range(max_rank, 1, -1):
         vertices_to_cut = [
-            {"x": node["x"], "y": node["y"]}
+            [node["x"], node["y"]]
             for node in colored_nodes
             if node["rank"] == current_rank
         ]
         if vertices_to_cut:
             cut_sequence.append({
-                "type": "cut",
-                "vertices": vertices_to_cut
+                "t": "c",
+                "v": vertices_to_cut
             })
 
     return cut_sequence
@@ -115,10 +115,10 @@ def export_to_sqlite(G, canonical_data, rank):
     canonical_cut_seq = []
     for cut in cut_seq:
         new_vertices = []
-        for v in cut["vertices"]:
-            tx, ty = transform(v["x"], v["y"])
-            new_vertices.append({"x": tx - dx, "y": ty - dy})
-        canonical_cut_seq.append({"type": "cut", "vertices": new_vertices})
+        for v in cut["v"]:
+            tx, ty = transform(v[0], v[1])
+            new_vertices.append([tx - dx, ty - dy])
+        canonical_cut_seq.append({"t": "c", "v": new_vertices})
 
     cut_seq_json = json.dumps(canonical_cut_seq)
 
