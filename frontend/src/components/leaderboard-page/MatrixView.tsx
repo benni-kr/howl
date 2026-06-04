@@ -223,9 +223,7 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
     height: CELL,
     minWidth: CELL,
     maxWidth: CELL,
-    background: 'color-mix(in srgb, var(--tile-primary) 85%, transparent)',
-    backdropFilter: 'blur(8px)',
-    WebkitBackdropFilter: 'blur(8px)',
+    background: 'var(--tile-primary)',
     color: '#ffffff',
     fontWeight: 800,
     fontSize: `${CELL * 0.3}px`,
@@ -262,7 +260,7 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
                 position: 'sticky',
                 top: 0,
                 left: 0,
-                zIndex: 20,
+                zIndex: 30,
                 boxShadow: '2px 2px 6px rgba(0,0,0,0.35)',
               }}
             >
@@ -289,50 +287,66 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
           </tr>
         </thead>
 
-        {/* ── Body: Row headers + ghost tracks + data cells ── */}
+        {/* ── Body: Row headers + empty cells + data cells ── */}
         <tbody>
           {nIndices.map(n => (
             <tr key={`row-${n}`}>
-              {/* Row header: sticky to left */}
-              <th
-                style={{
-                  ...thStyle,
-                  position: 'sticky',
-                  left: 0,
-                  zIndex: 10,
-                  boxShadow: '2px 0 4px rgba(0,0,0,0.25)',
-                }}
-              >
-                {n}
-              </th>
-
-              {mIndices.map(m => {
-                // Ghost track: faint line across the dead zone
-                if (m < n) {
+              {[0, ...mIndices].map(m => {
+                // Empty blank space to the left of the diagonal headers
+                if (m < n - 1) {
                   return (
                     <td
-                      key={`ghost-${m}-${n}`}
+                      key={`empty-${m}-${n}`}
                       style={{
                         width: CELL,
                         height: CELL,
                         minWidth: CELL,
                         padding: 0,
-                        verticalAlign: 'middle',
+                        border: 'none',
+                        position: 'relative',
+                        zIndex: 20,
                       }}
                     >
-                      <div
-                        style={{
-                          width: '100%',
-                          height: '2px', // Make slightly thicker
-                          background: 'var(--border-subtle)',
-                          opacity: 0.6, // Increase opacity for better visibility
-                        }}
-                      />
+                      <div style={{
+                        position: 'absolute',
+                        top: -GAP,
+                        left: -GAP,
+                        right: -GAP,
+                        bottom: -GAP,
+                        background: 'var(--bg-inset)'
+                      }} />
                     </td>
                   );
                 }
 
-                // Data cell
+                // Diagonal Row Header: sticky left and z-indexed to cover top headers on scroll
+                if (m === n - 1) {
+                  return (
+                    <th
+                      key={`header-${n}`}
+                      style={{
+                        ...thStyle,
+                        position: 'sticky',
+                        left: 0,
+                        zIndex: 25,
+                        boxShadow: '2px 0 4px rgba(0,0,0,0.25)',
+                      }}
+                    >
+                      <div style={{
+                        position: 'absolute',
+                        top: -GAP,
+                        left: -GAP,
+                        right: -GAP,
+                        bottom: -GAP,
+                        background: 'var(--bg-inset)',
+                        zIndex: -1
+                      }} />
+                      {n}
+                    </th>
+                  );
+                }
+
+                // Data cell (m >= n)
                 const cellRender = getCellContent(m, n);
                 const cellData = dataMap.get(`${m}-${n}`);
 
@@ -358,23 +372,43 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
                       height: CELL,
                       minWidth: CELL,
                       padding: 0,
-                      background: cellRender ? cellRender.bgColor : 'rgba(0,0,0,0.05)',
-                      border: cellRender ? cellRender.border : '1px dashed var(--border-subtle)',
-                      borderRadius: '4px',
-                      textAlign: 'center',
                       verticalAlign: 'middle',
-                      fontSize: `${CELL * 0.3}px`,
-                      fontWeight: 600,
-                      color: cellRender ? cellRender.color : 'transparent',
-                      opacity: cellRender ? cellRender.opacity : 0.5,
-                      boxSizing: 'border-box',
                       cursor: cellRender ? 'pointer' : 'default',
-                      transition: 'background 0.2s, opacity 0.2s, transform 0.1s',
-                      boxShadow: cellRender ? 'inset 0 1px 1px rgba(255,255,255,0.1), 0 2px 4px rgba(0,0,0,0.1)' : 'none',
                     }}
                     className={cellRender ? 'hover-row' : ''}
                   >
-                    {cellRender ? cellRender.content : null}
+                    {cellRender ? (
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          background: cellRender.bgColor,
+                          color: cellRender.color,
+                          border: cellRender.border,
+                          opacity: cellRender.opacity,
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: `${CELL * 0.35}px`,
+                          boxSizing: 'border-box',
+                          boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.1), 0 2px 4px rgba(0,0,0,0.1)',
+                          transition: 'background 0.2s, opacity 0.2s, transform 0.1s',
+                        }}
+                      >
+                        {cellRender.content}
+                      </div>
+                    ) : (
+                      <div style={{
+                        width: '100%',
+                        height: '100%',
+                        background: 'rgba(255,255,255,0.02)',
+                        border: '1px dashed var(--border-subtle)',
+                        borderRadius: '4px',
+                        boxSizing: 'border-box'
+                      }} />
+                    )}
                   </td>
                 );
               })}
