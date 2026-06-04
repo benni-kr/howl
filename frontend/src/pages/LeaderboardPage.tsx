@@ -71,7 +71,6 @@ const LeaderboardPage: React.FC = () => {
   }, [isDrillDown, drillM, drillN]);
 
   useEffect(() => {
-    if (isDrillDown) return; // don't fetch when drilling down
     if (activeTab === 'matrix') {
       setLoading(true);
       fetchMatrixLeaderboard().then(data => {
@@ -85,7 +84,7 @@ const LeaderboardPage: React.FC = () => {
         setLoading(false);
       });
     }
-  }, [activeTab, squareOnly, isDrillDown]);
+  }, [activeTab, squareOnly]);
 
   // ── Navigation helpers ────────────────────────────────────────────
   const setView = useCallback((view: ViewTab) => {
