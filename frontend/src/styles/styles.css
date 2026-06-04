@@ -779,3 +779,33 @@ body {
   }
 }
 
+/* Drill-Down Drawer */
+.drawer-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: min(450px, 100%);
+  background: color-mix(in srgb, var(--bg-card) 90%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-left: 1px solid var(--border-subtle);
+  border-top-left-radius: 24px;
+  transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.4s ease;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  will-change: transform;
+}
+
+@media (max-width: 768px) {
+  .drawer-overlay {
+    width: 100%;
+    border-top-left-radius: 0;
+    border-left: none;
+    background: var(--bg-card); /* solid background on mobile */
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+

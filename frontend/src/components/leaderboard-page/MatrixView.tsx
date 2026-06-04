@@ -64,16 +64,44 @@ const MAX = 100;     // max grid dimension
 
 const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, customFormula = '' }) => {
   const { alias } = useAlias();
-  const [tooltipData, setTooltipData] = React.useState<{
-    x: number;
-    y: number;
-    m: number;
-    n: number;
-    rank: number;
-    solver: string;
-    lowerBound: number;
-    metricValue: number | string | null;
-  } | null>(null);
+  const tooltipRef = React.useRef<HTMLDivElement>(null);
+
+  const handleMouseEnter = React.useCallback((e: React.MouseEvent, m: number, n: number, cellRender: any) => {
+    if (tooltipRef.current && cellRender) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const tooltip = tooltipRef.current;
+      tooltip.style.display = 'flex';
+      tooltip.style.left = `${rect.left + rect.width / 2}px`;
+      tooltip.style.top = `${rect.top - 10}px`;
+      
+      const titleEl = tooltip.querySelector('.tt-title') as HTMLDivElement;
+      const rankEl = tooltip.querySelector('.tt-rank') as HTMLElement;
+      const lbEl = tooltip.querySelector('.tt-lb') as HTMLElement;
+      const solverEl = tooltip.querySelector('.tt-solver') as HTMLElement;
+      const metricWrapEl = tooltip.querySelector('.tt-metric-wrap') as HTMLDivElement;
+      const metricEl = tooltip.querySelector('.tt-metric') as HTMLElement;
+      
+      if (titleEl) titleEl.innerText = `Grid: ${m} × ${n}`;
+      if (rankEl) rankEl.innerText = cellRender.minRank.toString();
+      if (lbEl) lbEl.innerText = cellRender.lowerBound.toString();
+      if (solverEl) solverEl.innerText = cellRender.solver;
+      
+      if (metricWrapEl && metricEl) {
+        if (cellRender.metricValue !== null) {
+          metricWrapEl.style.display = 'block';
+          metricEl.innerText = typeof cellRender.metricValue === 'number' ? cellRender.metricValue.toFixed(3) : cellRender.metricValue;
+        } else {
+          metricWrapEl.style.display = 'none';
+        }
+      }
+    }
+  }, []);
+
+  const handleMouseLeave = React.useCallback(() => {
+    if (tooltipRef.current) {
+      tooltipRef.current.style.display = 'none';
+    }
+  }, []);
 
   const dataMap = useMemo(() => {
     const map = new Map<string, MatrixCellData>();
@@ -316,19 +344,15 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
                     }}
                     onMouseEnter={(e) => {
                       if (cellRender && cellData) {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setTooltipData({
-                          x: rect.left + rect.width / 2,
-                          y: rect.top,
-                          m, n,
-                          rank: cellRender.minRank,
+                        handleMouseEnter(e, m, n, {
+                          minRank: cellRender.minRank,
                           solver: cellRender.solver,
                           lowerBound: cellRender.lowerBound,
                           metricValue: cellRender.metricValue
                         });
                       }
                     }}
-                    onMouseLeave={() => setTooltipData(null)}
+                    onMouseLeave={handleMouseLeave}
                     style={{
                       width: CELL,
                       height: CELL,
@@ -360,64 +384,61 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
       </table>
 
       {/* Custom Tooltip */}
-      {tooltipData && (
-        <div
-          style={{
-            position: 'fixed',
-            left: tooltipData.x,
-            top: tooltipData.y - 10,
-            transform: 'translate(-50%, -100%)',
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: '8px',
-            padding: '12px',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
-            zIndex: 9999,
-            pointerEvents: 'none',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px',
-            fontSize: '12px',
-            color: 'var(--text-main)',
-            minWidth: '160px',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-          }}
-        >
-          <div style={{ fontWeight: 'bold', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '4px', marginBottom: '4px' }}>
-            Grid: {tooltipData.m} × {tooltipData.n}
-          </div>
-          <div><span style={{ color: 'var(--text-muted)' }}>Community Rank:</span> <strong style={{ color: 'var(--text-main)' }}>{tooltipData.rank}</strong></div>
-          <div><span style={{ color: 'var(--text-muted)' }}>Lower Bound:</span> <strong style={{ color: 'var(--text-main)' }}>{tooltipData.lowerBound}</strong></div>
-          <div><span style={{ color: 'var(--text-muted)' }}>Top Solver:</span> <strong style={{ color: 'var(--text-main)' }}>{tooltipData.solver}</strong></div>
-          {tooltipData.metricValue !== null && (
-            <div><span style={{ color: 'var(--text-muted)' }}>Metric:</span> <strong style={{ color: 'var(--text-main)' }}>{typeof tooltipData.metricValue === 'number' ? tooltipData.metricValue.toFixed(3) : tooltipData.metricValue}</strong></div>
-          )}
-          
-          <div style={{
-            position: 'absolute',
-            bottom: '-6px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: 0,
-            height: 0,
-            borderLeft: '6px solid transparent',
-            borderRight: '6px solid transparent',
-            borderTop: '6px solid var(--border-subtle)'
-          }} />
-          <div style={{
-            position: 'absolute',
-            bottom: '-5px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: 0,
-            height: 0,
-            borderLeft: '6px solid transparent',
-            borderRight: '6px solid transparent',
-            borderTop: '6px solid var(--bg-card)'
-          }} />
+      <div
+        ref={tooltipRef}
+        style={{
+          position: 'fixed',
+          display: 'none',
+          left: 0,
+          top: 0,
+          transform: 'translate(-50%, -100%)',
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: '8px',
+          padding: '12px',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
+          zIndex: 9999,
+          pointerEvents: 'none',
+          flexDirection: 'column',
+          gap: '4px',
+          fontSize: '12px',
+          color: 'var(--text-main)',
+          minWidth: '160px',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+        }}
+      >
+        <div className="tt-title" style={{ fontWeight: 'bold', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '4px', marginBottom: '4px' }}>
+          Grid: - × -
         </div>
-      )}
+        <div><span style={{ color: 'var(--text-muted)' }}>Community Rank:</span> <strong className="tt-rank" style={{ color: 'var(--text-main)' }}>-</strong></div>
+        <div><span style={{ color: 'var(--text-muted)' }}>Lower Bound:</span> <strong className="tt-lb" style={{ color: 'var(--text-main)' }}>-</strong></div>
+        <div><span style={{ color: 'var(--text-muted)' }}>Top Solver:</span> <strong className="tt-solver" style={{ color: 'var(--text-main)' }}>-</strong></div>
+        <div className="tt-metric-wrap"><span style={{ color: 'var(--text-muted)' }}>Metric:</span> <strong className="tt-metric" style={{ color: 'var(--text-main)' }}>-</strong></div>
+        
+        <div style={{
+          position: 'absolute',
+          bottom: '-6px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 0,
+          height: 0,
+          borderLeft: '6px solid transparent',
+          borderRight: '6px solid transparent',
+          borderTop: '6px solid var(--border-subtle)'
+        }} />
+        <div style={{
+          position: 'absolute',
+          bottom: '-5px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 0,
+          height: 0,
+          borderLeft: '6px solid transparent',
+          borderRight: '6px solid transparent',
+          borderTop: '6px solid var(--bg-card)'
+        }} />
+      </div>
     </div>
   );
 };

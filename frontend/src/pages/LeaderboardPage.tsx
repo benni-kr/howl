@@ -115,13 +115,13 @@ const LeaderboardPage: React.FC = () => {
           {/* Main tab toggles */}
           <div className="btn-group" style={{ flexWrap: 'wrap', gap: '4px' }}>
             <button
-              className={`btn ${activeTab === 'matrix' || isDrillDown ? 'primary' : 'secondary'}`}
+              className={`btn ${activeTab === 'matrix' ? 'primary' : 'secondary'}`}
               onClick={() => setView('matrix')}
             >
               The Matrix
             </button>
             <button
-              className={`btn ${activeTab === 'solvers' && !isDrillDown ? 'primary' : 'secondary'}`}
+              className={`btn ${activeTab === 'solvers' ? 'primary' : 'secondary'}`}
               onClick={() => setView('solvers')}
             >
               Top Solvers
@@ -129,8 +129,7 @@ const LeaderboardPage: React.FC = () => {
           </div>
 
           {/* Secondary Controls (Right Aligned) */}
-          {!isDrillDown && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 auto', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 auto', justifyContent: 'flex-end' }}>
               <div style={{ 
                 position: 'relative', 
                 display: 'flex', 
@@ -212,11 +211,10 @@ const LeaderboardPage: React.FC = () => {
                 </button>
               )}
             </div>
-          )}
-        </div>
+          </div>
 
         {/* Custom formula input */}
-        {activeTab === 'matrix' && !isDrillDown && matrixMode === 'custom_formula' && (
+        {activeTab === 'matrix' && matrixMode === 'custom_formula' && (
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '12px' }}>
             <label style={{ fontSize: '14px', color: 'var(--text-subtle)' }}>Formula:</label>
             <input 
@@ -238,7 +236,7 @@ const LeaderboardPage: React.FC = () => {
         )}
 
         {/* Metric Descriptions */}
-        {activeTab === 'matrix' && !isDrillDown && showDescriptions && (
+        {activeTab === 'matrix' && showDescriptions && (
           <div style={{ 
             marginTop: '12px', 
             padding: '12px', 
@@ -264,132 +262,148 @@ const LeaderboardPage: React.FC = () => {
 
       {/* Body */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', minWidth: 0, minHeight: 0 }}>
-        <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
-          {isDrillDown && drillM && drillN ? (
-            /* ─── Drill-Down View ─── */
-            <div style={{ padding: '24px 32px', height: '100%', overflowY: 'auto' }}>
-              <button className="btn secondary" onClick={handleBack} style={{ marginBottom: '16px' }}>
-                &larr; Back to Matrix
-              </button>
-              <h3 style={{ margin: '0 0 16px 0' }}>Grid {drillM} &times; {drillN} Leaderboard</h3>
-
-              <OnboardingTooltip
-                tutorialKey="hasSeenRunClick"
-                position="fixed-canvas"
-                content="⏪ Tip: Click on any run to watch a step-by-step replay of how this score was achieved!"
-              />
-
-              {loading ? (
-                <div className="muted">Loading...</div>
-              ) : gridData.length > 0 ? (
-                <div style={{ width: '100%', overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                    <thead>
-                        <tr style={{ borderBottom: '2px solid var(--border-subtle)' }}>
-                          <th style={{ padding: '12px' }}>Rank</th>
-                          <th style={{ padding: '12px' }}>Solver</th>
-                          <th style={{ padding: '12px' }}>Achieved Rank</th>
-                          <th style={{ padding: '12px' }}>Date</th>
-                          <th style={{ padding: '12px' }}></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {gridData.map((entry, idx) => (
-                          <tr 
-                            key={idx} 
-                            style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}
-                            onClick={() => navigate(`/replay/${drillM}/${drillN}/${entry.solver_name}`)}
-                            className="hover-row"
-                          >
-                            <td style={{ padding: '12px' }}>#{entry.rank_position}</td>
-                            <td style={{ padding: '12px', fontWeight: 600 }}>{entry.solver_name}</td>
-                            <td style={{ padding: '12px' }}>{entry.achieved_rank}</td>
-                            <td style={{ padding: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{new Date(entry.created_at).toLocaleString()}</td>
-                            <td style={{ padding: '12px', textAlign: 'right' }}>
-                              <div className="row-action-icon">
-                                ▶
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                  </table>
-                </div>
+        <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+          
+          {/* Main Content Layer */}
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column' }}>
+            {activeTab === 'matrix' ? (
+              /* ─── Matrix View ─── */
+              loading && matrixData.length === 0 ? (
+                <div style={{ padding: '24px 32px' }} className="muted">Loading Matrix...</div>
               ) : (
-                <div className="muted">No records found for this grid yet.</div>
-              )}
-            </div>
-
-          ) : activeTab === 'matrix' ? (
-            /* ─── Matrix View ─── */
-            loading && matrixData.length === 0 ? (
-              <div style={{ padding: '24px 32px' }} className="muted">Loading Matrix...</div>
+                <div style={{ width: '100%', height: '100%' }}>
+                  <OnboardingTooltip
+                    tutorialKey="hasSeenMatrixTileClick"
+                    position="fixed-canvas"
+                    content="👆 Tip: Click on any populated tile to view the detailed leaderboard for that specific grid size!"
+                  />
+                  <MatrixView 
+                    data={matrixData} 
+                    onCellClick={handleCellClick} 
+                    mode={matrixMode} 
+                    customFormula={customFormula}
+                  />
+                </div>
+              )
             ) : (
-              <div style={{ width: '100%', height: '100%' }}>
-                <OnboardingTooltip
-                  tutorialKey="hasSeenMatrixTileClick"
-                  position="fixed-canvas"
-                  content="👆 Tip: Click on any populated tile to view the detailed leaderboard for that specific grid size!"
-                />
-                <MatrixView 
-                  data={matrixData} 
-                  onCellClick={handleCellClick} 
-                  mode={matrixMode} 
-                  customFormula={customFormula}
-                />
+              /* ─── Top Solvers View ─── */
+              <div style={{ padding: '24px 32px', height: '100%', overflowY: 'auto' }}>
+                {loading && topSolvers.length === 0 ? (
+                  <div className="muted">Loading Solvers...</div>
+                ) : topSolvers.length > 0 ? (
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    {topSolvers.map((solver, idx) => {
+                      const isFirst = idx === 0;
+                      const isSecond = idx === 1;
+                      const isThird = idx === 2;
+                      
+                      let borderStyle = '1px solid var(--border-subtle)';
+                      let boxShadow = 'none';
+                      if (isFirst) {
+                        borderStyle = '1px solid #facc15'; // yellow-400
+                        boxShadow = '0 0 15px rgba(250, 204, 21, 0.4)';
+                      } else if (isSecond) {
+                        borderStyle = '1px solid #94a3b8'; // slate-400
+                        boxShadow = '0 0 10px rgba(148, 163, 184, 0.3)';
+                      } else if (isThird) {
+                        borderStyle = '1px solid #b45309'; // amber-700 / bronze
+                        boxShadow = '0 0 10px rgba(180, 83, 9, 0.3)';
+                      }
+
+                      return (
+                        <div key={solver.solver_name} style={{ display: 'flex', alignItems: 'center', padding: '16px', background: 'var(--bg-card)', border: borderStyle, boxShadow: boxShadow, borderRadius: '12px' }}>
+                          <div style={{ fontSize: '1.5rem', fontWeight: 700, width: '48px', color: isFirst ? '#facc15' : isSecond ? '#94a3b8' : isThird ? '#b45309' : 'var(--text-muted)' }}>
+                            #{idx + 1}
+                          </div>
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                              {solver.solver_name}
+                            </div>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                              Total Grids Solved: {solver.total_grids}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: '1.1rem', fontWeight: 700, textAlign: 'right' }}>
+                            {solver.first_places} <span style={{ fontSize: '0.85rem', fontWeight: 400, color: 'var(--text-muted)' }}>First Places</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="muted">No solvers found.</div>
+                )}
               </div>
-            )
+            )}
+          </div>
 
-          ) : (
-            /* ─── Top Solvers View ─── */
-            <div style={{ padding: '24px 32px', height: '100%', overflowY: 'auto' }}>
-              {loading && topSolvers.length === 0 ? (
-                <div className="muted">Loading Solvers...</div>
-              ) : topSolvers.length > 0 ? (
-                <div style={{ display: 'grid', gap: '12px' }}>
-                  {topSolvers.map((solver, idx) => {
-                    const isFirst = idx === 0;
-                    const isSecond = idx === 1;
-                    const isThird = idx === 2;
-                    
-                    let borderStyle = '1px solid var(--border-subtle)';
-                    let boxShadow = 'none';
-                    if (isFirst) {
-                      borderStyle = '1px solid #facc15'; // yellow-400
-                      boxShadow = '0 0 15px rgba(250, 204, 21, 0.4)';
-                    } else if (isSecond) {
-                      borderStyle = '1px solid #94a3b8'; // slate-400
-                      boxShadow = '0 0 10px rgba(148, 163, 184, 0.3)';
-                    } else if (isThird) {
-                      borderStyle = '1px solid #b45309'; // amber-700 / bronze
-                      boxShadow = '0 0 10px rgba(180, 83, 9, 0.3)';
-                    }
-
-                    return (
-                      <div key={solver.solver_name} style={{ display: 'flex', alignItems: 'center', padding: '16px', background: 'var(--bg-card)', border: borderStyle, boxShadow: boxShadow, borderRadius: '12px' }}>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 700, width: '48px', color: isFirst ? '#facc15' : isSecond ? '#94a3b8' : isThird ? '#b45309' : 'var(--text-muted)' }}>
-                          #{idx + 1}
-                        </div>
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                          <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
-                            {solver.solver_name}
-                          </div>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                            Total Grids Solved: {solver.total_grids}
-                          </div>
-                        </div>
-                        <div style={{ fontSize: '1.1rem', fontWeight: 700, textAlign: 'right' }}>
-                          {solver.first_places} <span style={{ fontSize: '0.85rem', fontWeight: 400, color: 'var(--text-muted)' }}>First Places</span>
-                        </div>
-                      </div>
-                    );
-                  })}
+          {/* Drill-Down Drawer Overlay */}
+          <div
+            className="drawer-overlay"
+            style={{
+              transform: isDrillDown ? 'translateX(0)' : 'translateX(100%)',
+              boxShadow: isDrillDown ? '-8px 0 32px rgba(0,0,0,0.5)' : 'none',
+            }}
+          >
+            {drillM && drillN && (
+              <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h3 style={{ margin: 0 }}>Grid {drillM} &times; {drillN} Leaderboard</h3>
+                  <button className="btn ghost" onClick={handleBack} style={{ width: '40px', height: '40px', padding: 0, fontSize: '1.2rem', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Close">
+                    ✕
+                  </button>
                 </div>
-              ) : (
-                <div className="muted">No solvers found.</div>
-              )}
-            </div>
-          )}
+
+                <div style={{ flex: 1, overflowY: 'auto' }} className="custom-scrollbar">
+                  <OnboardingTooltip
+                    tutorialKey="hasSeenRunClick"
+                    position="fixed-canvas"
+                    content="⏪ Tip: Click on any run to watch a step-by-step replay of how this score was achieved!"
+                  />
+
+                  {loading ? (
+                    <div className="muted">Loading...</div>
+                  ) : gridData.length > 0 ? (
+                    <div style={{ width: '100%', overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                        <thead>
+                            <tr style={{ borderBottom: '2px solid var(--border-subtle)' }}>
+                              <th style={{ padding: '12px' }}>Rank</th>
+                              <th style={{ padding: '12px' }}>Solver</th>
+                              <th style={{ padding: '12px' }}>Score</th>
+                              <th style={{ padding: '12px' }}>Date</th>
+                              <th style={{ padding: '12px' }}></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {gridData.map((entry, idx) => (
+                              <tr 
+                                key={idx} 
+                                style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}
+                                onClick={() => navigate(`/replay/${drillM}/${drillN}/${entry.solver_name}`)}
+                                className="hover-row"
+                              >
+                                <td style={{ padding: '12px' }}>#{entry.rank_position}</td>
+                                <td style={{ padding: '12px', fontWeight: 600 }}>{entry.solver_name}</td>
+                                <td style={{ padding: '12px' }}>{entry.achieved_rank}</td>
+                                <td style={{ padding: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(entry.created_at))}</td>
+                                <td style={{ padding: '12px', textAlign: 'right' }}>
+                                  <div className="row-action-icon">
+                                    ▶
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="muted">No records found for this grid yet.</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
