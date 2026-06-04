@@ -56,7 +56,7 @@ const LeaderboardPage: React.FC = () => {
   const [showDescriptions, setShowDescriptions] = useState(false);
   const [topSolvers, setTopSolvers] = useState<TopSolverData[]>([]);
   const [gridData, setGridData] = useState<GridLeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [playPopup, setPlayPopup] = useState<{m: number, n: number} | null>(null);
 
   // ── Data fetching based on URL ────────────────────────────────────
@@ -277,10 +277,23 @@ const LeaderboardPage: React.FC = () => {
             {activeTab === 'matrix' ? (
               /* ─── Matrix View ─── */
               loading && matrixData.length === 0 ? (
-                <div style={{ padding: '24px 32px' }}>
-                  <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap', maxWidth: '800px' }}>
-                    {[...Array(200)].map((_, i) => (
-                      <div key={i} className="skeleton" style={{ width: '38px', height: '38px', borderRadius: '4px' }} />
+                <div style={{ padding: '16px', overflow: 'hidden', height: '100%' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {[...Array(60)].map((_, r) => (
+                      <div key={r} style={{ display: 'flex', gap: '2px', paddingLeft: `${r * 40}px` }}>
+                        {[...Array(60 - r)].map((_, c) => (
+                          <div 
+                            key={c} 
+                            className="skeleton" 
+                            style={{ 
+                              minWidth: '38px', 
+                              height: '38px', 
+                              borderRadius: '4px',
+                              animationDelay: `${(r * 2 + c) * 0.03}s`
+                            }} 
+                          />
+                        ))}
+                      </div>
                     ))}
                   </div>
                 </div>

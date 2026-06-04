@@ -825,14 +825,13 @@ body {
 }
 
 /* Skeleton Loader */
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.98); }
+  50% { opacity: 1; transform: scale(1); background: var(--border-subtle); }
 }
 
 .skeleton {
-  background: linear-gradient(90deg, var(--bg-inset) 25%, var(--border-subtle) 50%, var(--bg-inset) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 2s infinite linear;
+  background: var(--bg-card);
+  animation: skeleton-pulse 1.5s infinite ease-in-out;
   border-radius: 4px;
 }

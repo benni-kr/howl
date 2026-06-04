@@ -249,7 +249,7 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
         width: '100%',
         height: '100%',
         overflow: 'auto',
-        background: 'var(--bg-inset)',
+        background: 'transparent',
         WebkitOverflowScrolling: 'touch',
       }}
     >
