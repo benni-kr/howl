@@ -210,6 +210,58 @@ def _to_tuples(vertices: list) -> list[tuple[int, int]]:
     return [(v[0], v[1]) for v in vertices]
 
 
+def _normalize_action(action: dict) -> dict | None:
+    """Convert a single action from any known format to compact format.
+
+    Handles:
+      - Compact:  {t: "c", v: [[x,y], ...]}              → pass-through
+      - Verbose:  {type: "cut", vertices: [{x, y}, ...]}  → compact
+    Returns None for unrecognizable actions.
+    """
+    if not action or not isinstance(action, dict):
+        return None
+
+    # Already compact format — has "t" key
+    if "t" in action:
+        return action
+
+    # Verbose format — has "type" key
+    action_type = action.get("type")
+    if not action_type:
+        return None
+
+    type_map = {"cut": "c", "vaporize": "v", "ignore": "i", "subgraph": "s"}
+    t = type_map.get(action_type)
+    if t is None:
+        return None
+
+    raw_verts = action.get("vertices", [])
+    # Vertices may be [{x, y}, ...] dicts or [[x, y], ...] tuples
+    v = []
+    for vert in raw_verts:
+        if isinstance(vert, dict):
+            v.append([vert["x"], vert["y"]])
+        else:
+            v.append([vert[0], vert[1]])
+
+    compact: dict = {"t": t, "v": v}
+    if t == "v" and "optimal_rank" in action:
+        compact["r"] = action["optimal_rank"]
+    elif t == "v" and "r" in action:
+        compact["r"] = action["r"]
+    return compact
+
+
+def _normalize_sequence(sequence: list) -> list:
+    """Normalize a full cut sequence to compact format."""
+    result = []
+    for action in sequence:
+        normalized = _normalize_action(action)
+        if normalized:
+            result.append(normalized)
+    return result
+
+
 def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dict[str, dict]:
     """
     Replay a chronological sequence of cuts to build a tree of subgraphs,
@@ -226,6 +278,11 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
     root = TreeNode(GridGraph(m, n, generate=True))
     active_nodes = [root]
 
+    # Normalize the sequence to compact format once, so all downstream
+    # logic (replay, extract_local_sequence, transform_sequence) only
+    # needs to handle one format.
+    flat_cut_sequence = _normalize_sequence(flat_cut_sequence)
+
     for action in flat_cut_sequence:
         if not action:
             continue
@@ -239,7 +296,7 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
         # ------------------------------------------------------------------
         # Handle VAPORIZE and IGNORE
         # ------------------------------------------------------------------
-        if action_type in ("v", "i"):
+        if action_type in ("v", "i", "s"):
             vap_tuples = _to_tuples(raw_vertices)
             if not vap_tuples:
                 continue
@@ -265,7 +322,7 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
                 active_nodes.remove(target_node)
                 if action_type == "v":
                     target_node.vaporized_rank = action.get("r", 999999)
-                elif action_type == "i":
+                else:  # "i" or "s"
                     target_node.ignored = True
             continue
 
