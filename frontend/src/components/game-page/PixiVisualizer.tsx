@@ -47,6 +47,7 @@ type PixiVisualizerProps = {
   readOnly?: boolean;
   onDeepDiveRequest?: (graphIndex: number) => void;
   overridePendingCutSet?: Vertex[];
+  vaporizeActionType?: 'vaporize' | 'ignore' | 'subgraph' | null;
 };
 
 const BASE_CELL_SIZE = 20;
@@ -210,8 +211,21 @@ class PixiEngine {
     this._edgesDirty = true;
   }
 
-  spawnExplosion(x: number, y: number, colors: number[]) {
-    for (let i = 0; i < 15; i++) {
+  spawnExplosion(x: number, y: number, colors: number[], readOnly: boolean = false) {
+    const maxParticles = 600;
+    let baseCount = readOnly ? 8 : 15;
+    
+    // Scale down particles per node dynamically based on how many nodes are exploding simultaneously
+    const dyingCount = this.dyingGraphics.size / 2;
+    if (dyingCount > 10) {
+      const divisor = dyingCount / 10;
+      baseCount = Math.max(1, Math.floor(baseCount / divisor));
+    }
+
+    const spawnCount = Math.min(baseCount, maxParticles - this.particles.length);
+    if (spawnCount <= 0) return;
+
+    for (let i = 0; i < spawnCount; i++) {
       const color = colors[Math.floor(Math.random() * colors.length)];
       const size = 2 + Math.random() * 3;
       const speed = 2 + Math.random() * 3;
@@ -221,7 +235,11 @@ class PixiEngine {
     }
   }
 
-  drawNode(node: { vertex: Vertex; graphics: PIXI.Graphics; glowGraphics: PIXI.Graphics; isPendingCut: boolean; color: number }, isSelected: boolean = false) {
+  drawNode(
+    node: { vertex: Vertex; graphics: PIXI.Graphics; glowGraphics: PIXI.Graphics; isPendingCut: boolean; color: number }, 
+    isSelected: boolean = false, 
+    vaporizeActionType: 'vaporize' | 'ignore' | 'subgraph' | null = null
+  ) {
     node.graphics.clear();
     node.glowGraphics.clear();
 
@@ -230,7 +248,11 @@ class PixiEngine {
     let color = 0x000000;
     if (this.palette) {
       if (node.isPendingCut) {
-        color = this.palette.select;
+        if (vaporizeActionType) {
+          color = isLightTile ? this.palette.tileA : this.palette.tileB;
+        } else {
+          color = this.palette.select;
+        }
       } else {
         color = isLightTile ? this.palette.tileA : this.palette.tileB;
       }
@@ -242,14 +264,22 @@ class PixiEngine {
     node.graphics
       .roundRect(-size / 2, -size / 2, size, size, 4)
       .fill({ color: node.color, alpha: 1.0 })
-      .stroke({ width: 1, color: node.isPendingCut && this.palette ? this.palette.selectBorder : (this.palette?.border ?? 0x1f2937), alignment: 0 });
+      .stroke({ width: 1, color: node.isPendingCut && this.palette && !vaporizeActionType ? this.palette.selectBorder : (this.palette?.border ?? 0x1f2937), alignment: 0 });
 
     if (this.palette) {
       if (node.isPendingCut) {
-        const padding = 2;
-        node.glowGraphics
-          .roundRect(-this.cellSize / 2 - padding, -this.cellSize / 2 - padding, this.cellSize + padding * 2, this.cellSize + padding * 2, 6)
-          .fill({ color: this.palette.selectGlow, alpha: 0.6 });
+        if (vaporizeActionType) {
+          const padding = 6;
+          const glowColor = vaporizeActionType === 'vaporize' ? this.palette.select : this.palette.highlight;
+          node.glowGraphics
+            .roundRect(-this.cellSize / 2 - padding, -this.cellSize / 2 - padding, this.cellSize + padding * 2, this.cellSize + padding * 2, 8)
+            .fill({ color: glowColor, alpha: 0.95 });
+        } else {
+          const padding = 2;
+          node.glowGraphics
+            .roundRect(-this.cellSize / 2 - padding, -this.cellSize / 2 - padding, this.cellSize + padding * 2, this.cellSize + padding * 2, 6)
+            .fill({ color: this.palette.selectGlow, alpha: 0.6 });
+        }
       } else if (isSelected) {
         const padding = 4;
         node.glowGraphics
@@ -278,7 +308,8 @@ class PixiEngine {
     isExecuting: boolean = false,
     hasCutsApplied: boolean = false,
     readOnly: boolean = false,
-    onDeepDiveRequest?: (graphIndex: number) => void
+    onDeepDiveRequest?: (graphIndex: number) => void,
+    vaporizeActionType: 'vaporize' | 'ignore' | 'subgraph' | null = null
   ) {
     this.palette = palette;
     this.splitView = splitView;
@@ -596,7 +627,7 @@ class PixiEngine {
         }
 
         node.isPendingCut = isPendingCut;
-        this.drawNode(node, isSelected);
+        this.drawNode(node, isSelected, vaporizeActionType);
       });
 
     });
@@ -644,7 +675,7 @@ class PixiEngine {
             onUpdate: () => this.markEdgesDirty(),
             onComplete: () => {
               const shardColors = this.palette ? [this.palette.select, this.palette.selectBorder] : [node.color, 0xdcfce7];
-              this.spawnExplosion(node.graphics.x, node.graphics.y, shardColors);
+              this.spawnExplosion(node.graphics.x, node.graphics.y, shardColors, readOnly);
               this.nodeContainer.removeChild(node.graphics);
               this.glowContainer.removeChild(node.glowGraphics);
               gsap.killTweensOf(node.graphics);
@@ -669,7 +700,7 @@ class PixiEngine {
             onUpdate: () => this.markEdgesDirty(),
             onComplete: () => {
               const shardColors = this.palette ? [this.palette.tileA, this.palette.tileB] : [0x10b981, 0x34d399, 0xfcd34d];
-              this.spawnExplosion(node.graphics.x, node.graphics.y, shardColors);
+              this.spawnExplosion(node.graphics.x, node.graphics.y, shardColors, readOnly);
               this.nodeContainer.removeChild(node.graphics);
               this.glowContainer.removeChild(node.glowGraphics);
               gsap.killTweensOf(node.graphics);
@@ -723,6 +754,7 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
       readOnly = false,
       onDeepDiveRequest,
       overridePendingCutSet,
+      vaporizeActionType = null,
     },
     ref
   ) => {
@@ -865,7 +897,8 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           isExecuting,
           hasCutsApplied,
           readOnly,
-          onDeepDiveRequest
+          onDeepDiveRequest,
+          vaporizeActionType
         );
       });
 
@@ -906,10 +939,11 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           isExecuting,
           hasCutsApplied,
           readOnly,
-          onDeepDiveRequest
+          onDeepDiveRequest,
+          vaporizeActionType
         );
       }
-    }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, onSelectGraph, onAutoSolve, onIgnoreDuplicate, onNodePointerDown, onNodePointerEnter, onPointerUp, isExecuting, hasCutsApplied, readOnly, onDeepDiveRequest]);
+    }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, vaporizeActionType, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, onSelectGraph, onAutoSolve, onIgnoreDuplicate, onNodePointerDown, onNodePointerEnter, onPointerUp, isExecuting, hasCutsApplied, readOnly, onDeepDiveRequest]);
 
     useEffect(() => {
       onPendingCutSetChange?.(pendingCutSet);
