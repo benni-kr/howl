@@ -210,8 +210,21 @@ class PixiEngine {
     this._edgesDirty = true;
   }
 
-  spawnExplosion(x: number, y: number, colors: number[]) {
-    for (let i = 0; i < 15; i++) {
+  spawnExplosion(x: number, y: number, colors: number[], readOnly: boolean = false) {
+    const maxParticles = 600;
+    let baseCount = readOnly ? 8 : 15;
+    
+    // Scale down particles per node dynamically based on how many nodes are exploding simultaneously
+    const dyingCount = this.dyingGraphics.size / 2;
+    if (dyingCount > 10) {
+      const divisor = dyingCount / 10;
+      baseCount = Math.max(1, Math.floor(baseCount / divisor));
+    }
+
+    const spawnCount = Math.min(baseCount, maxParticles - this.particles.length);
+    if (spawnCount <= 0) return;
+
+    for (let i = 0; i < spawnCount; i++) {
       const color = colors[Math.floor(Math.random() * colors.length)];
       const size = 2 + Math.random() * 3;
       const speed = 2 + Math.random() * 3;
@@ -644,7 +657,7 @@ class PixiEngine {
             onUpdate: () => this.markEdgesDirty(),
             onComplete: () => {
               const shardColors = this.palette ? [this.palette.select, this.palette.selectBorder] : [node.color, 0xdcfce7];
-              this.spawnExplosion(node.graphics.x, node.graphics.y, shardColors);
+              this.spawnExplosion(node.graphics.x, node.graphics.y, shardColors, readOnly);
               this.nodeContainer.removeChild(node.graphics);
               this.glowContainer.removeChild(node.glowGraphics);
               gsap.killTweensOf(node.graphics);
@@ -669,7 +682,7 @@ class PixiEngine {
             onUpdate: () => this.markEdgesDirty(),
             onComplete: () => {
               const shardColors = this.palette ? [this.palette.tileA, this.palette.tileB] : [0x10b981, 0x34d399, 0xfcd34d];
-              this.spawnExplosion(node.graphics.x, node.graphics.y, shardColors);
+              this.spawnExplosion(node.graphics.x, node.graphics.y, shardColors, readOnly);
               this.nodeContainer.removeChild(node.graphics);
               this.glowContainer.removeChild(node.glowGraphics);
               gsap.killTweensOf(node.graphics);

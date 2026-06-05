@@ -238,7 +238,7 @@ export default function ReplayPage() {
   if (error) return <div style={{ padding: '32px', color: 'red' }}>Error: {error}</div>;
 
   const pendingAction = engine.activeContext.sequence[engine.currentStep];
-  const overridePendingCutSet = pendingAction?.vertices || [];
+  const overridePendingCutSet = pendingAction?.type === 'cut' ? (pendingAction?.vertices || []) : [];
 
   return (
     <div className="replay-page-root">
