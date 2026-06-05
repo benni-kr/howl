@@ -625,58 +625,53 @@ const GamePage: React.FC = () => {
 
 
         <div className="action-bar" style={{ display: 'flex', flexDirection: 'row', gap: '12px', justifyContent: 'center', marginTop: '0px' }}>
-          {!splitView ? (
-            <>
-              <button
-                className="btn secondary"
-                disabled={history.length === 0 || isExecuting}
-                onClick={() => {
-                  dispatch(undoCut());
-                  setResetToken((v) => v + 1);
-                }}
-                title="Undo (Ctrl+Z)"
-              >
-                Undo
-              </button>
-              <button
-                className="btn secondary large"
-                disabled={pendingCutSet.length === 0 || (activeGraph && pendingCutSet.length === activeGraph.vertices.length) || isExecuting}
-                onClick={handleCut}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '8px',
-                  opacity: pendingCutSet.length > 0 ? 1 : 0.5,
-                  minWidth: '120px',
-                  justifyContent: 'center'
-                }}
-              >
-                Cut
-              </button>
-              <button
-                className="btn secondary"
-                disabled={futureHistory.length === 0 || isExecuting}
-                onClick={() => {
-                  dispatch(redoCut());
-                  setResetToken((v) => v + 1);
-                }}
-                title="Redo (Ctrl+Y)"
-              >
-                Redo
-              </button>
-            </>
-          ) : (() => {
+          <button
+            className="btn secondary"
+            disabled={history.length === 0 || isExecuting}
+            onClick={() => {
+              dispatch(undoCut());
+              setResetToken((v) => v + 1);
+            }}
+            title="Undo (Ctrl+Z)"
+          >
+            Undo
+          </button>
 
-            return (
-              <>
-                <button
-                  className="btn secondary large"
-                  disabled={selectedGraphIndex === null || isExecuting}
-                  onClick={handleConfirmSelection}
-                >
-                  Select
-                </button>
-              </>
-            );
-          })()}
+          {!splitView ? (
+            <button
+              className="btn secondary large"
+              disabled={pendingCutSet.length === 0 || (activeGraph && pendingCutSet.length === activeGraph.vertices.length) || isExecuting}
+              onClick={handleCut}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                opacity: pendingCutSet.length > 0 ? 1 : 0.5,
+                minWidth: '120px',
+                justifyContent: 'center'
+              }}
+            >
+              Cut
+            </button>
+          ) : (
+            <button
+              className="btn secondary large"
+              disabled={selectedGraphIndex === null || isExecuting}
+              onClick={handleConfirmSelection}
+            >
+              Select
+            </button>
+          )}
+
+          <button
+            className="btn secondary"
+            disabled={futureHistory.length === 0 || isExecuting}
+            onClick={() => {
+              dispatch(redoCut());
+              setResetToken((v) => v + 1);
+            }}
+            title="Redo (Ctrl+Y)"
+          >
+            Redo
+          </button>
         </div>
       </main>
 
