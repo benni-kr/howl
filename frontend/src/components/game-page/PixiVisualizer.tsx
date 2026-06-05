@@ -47,6 +47,7 @@ type PixiVisualizerProps = {
   readOnly?: boolean;
   onDeepDiveRequest?: (graphIndex: number) => void;
   overridePendingCutSet?: Vertex[];
+  vaporizeActionType?: 'vaporize' | 'ignore' | 'subgraph' | null;
 };
 
 const BASE_CELL_SIZE = 20;
@@ -237,7 +238,7 @@ class PixiEngine {
   drawNode(
     node: { vertex: Vertex; graphics: PIXI.Graphics; glowGraphics: PIXI.Graphics; isPendingCut: boolean; color: number }, 
     isSelected: boolean = false, 
-    isVaporizeAction: boolean = false
+    vaporizeActionType: 'vaporize' | 'ignore' | 'subgraph' | null = null
   ) {
     node.graphics.clear();
     node.glowGraphics.clear();
@@ -247,7 +248,7 @@ class PixiEngine {
     let color = 0x000000;
     if (this.palette) {
       if (node.isPendingCut) {
-        if (isVaporizeAction) {
+        if (vaporizeActionType) {
           color = isLightTile ? this.palette.tileA : this.palette.tileB;
         } else {
           color = this.palette.select;
@@ -263,15 +264,16 @@ class PixiEngine {
     node.graphics
       .roundRect(-size / 2, -size / 2, size, size, 4)
       .fill({ color: node.color, alpha: 1.0 })
-      .stroke({ width: 1, color: node.isPendingCut && this.palette && !isVaporizeAction ? this.palette.selectBorder : (this.palette?.border ?? 0x1f2937), alignment: 0 });
+      .stroke({ width: 1, color: node.isPendingCut && this.palette && !vaporizeActionType ? this.palette.selectBorder : (this.palette?.border ?? 0x1f2937), alignment: 0 });
 
     if (this.palette) {
       if (node.isPendingCut) {
-        if (isVaporizeAction) {
+        if (vaporizeActionType) {
           const padding = 6;
+          const glowColor = vaporizeActionType === 'vaporize' ? this.palette.select : this.palette.highlight;
           node.glowGraphics
             .roundRect(-this.cellSize / 2 - padding, -this.cellSize / 2 - padding, this.cellSize + padding * 2, this.cellSize + padding * 2, 8)
-            .fill({ color: this.palette.select, alpha: 0.95 });
+            .fill({ color: glowColor, alpha: 0.95 });
         } else {
           const padding = 2;
           node.glowGraphics
@@ -307,7 +309,7 @@ class PixiEngine {
     hasCutsApplied: boolean = false,
     readOnly: boolean = false,
     onDeepDiveRequest?: (graphIndex: number) => void,
-    isVaporizeAction: boolean = false
+    vaporizeActionType: 'vaporize' | 'ignore' | 'subgraph' | null = null
   ) {
     this.palette = palette;
     this.splitView = splitView;
@@ -625,7 +627,7 @@ class PixiEngine {
         }
 
         node.isPendingCut = isPendingCut;
-        this.drawNode(node, isSelected, isVaporizeAction);
+        this.drawNode(node, isSelected, vaporizeActionType);
       });
 
     });
@@ -752,7 +754,7 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
       readOnly = false,
       onDeepDiveRequest,
       overridePendingCutSet,
-      isVaporizeAction = false,
+      vaporizeActionType = null,
     },
     ref
   ) => {
@@ -896,7 +898,7 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           hasCutsApplied,
           readOnly,
           onDeepDiveRequest,
-          isVaporizeAction
+          vaporizeActionType
         );
       });
 
@@ -938,10 +940,10 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           hasCutsApplied,
           readOnly,
           onDeepDiveRequest,
-          isVaporizeAction
+          vaporizeActionType
         );
       }
-    }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, isVaporizeAction, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, onSelectGraph, onAutoSolve, onIgnoreDuplicate, onNodePointerDown, onNodePointerEnter, onPointerUp, isExecuting, hasCutsApplied, readOnly, onDeepDiveRequest]);
+    }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, vaporizeActionType, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, onSelectGraph, onAutoSolve, onIgnoreDuplicate, onNodePointerDown, onNodePointerEnter, onPointerUp, isExecuting, hasCutsApplied, readOnly, onDeepDiveRequest]);
 
     useEffect(() => {
       onPendingCutSetChange?.(pendingCutSet);

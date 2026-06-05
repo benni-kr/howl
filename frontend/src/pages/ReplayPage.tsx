@@ -239,7 +239,7 @@ export default function ReplayPage() {
 
   const pendingAction = engine.activeContext.sequence[engine.currentStep];
   const overridePendingCutSet = pendingAction?.vertices || [];
-  const isVaporizeAction = pendingAction?.type === 'vaporize' || pendingAction?.type === 'ignore' || pendingAction?.type === 'subgraph';
+  const vaporizeActionType = (pendingAction?.type === 'vaporize' || pendingAction?.type === 'ignore' || pendingAction?.type === 'subgraph') ? pendingAction.type : null;
 
   return (
     <div className="replay-page-root">
@@ -326,7 +326,7 @@ export default function ReplayPage() {
               readOnly={true}
               onDeepDiveRequest={handleDeepDiveRequest}
               overridePendingCutSet={overridePendingCutSet}
-              isVaporizeAction={isVaporizeAction}
+              vaporizeActionType={vaporizeActionType}
             />
             {pendingAction?.type === 'vaporize' && (
               <OnboardingTooltip
