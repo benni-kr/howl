@@ -238,7 +238,8 @@ export default function ReplayPage() {
   if (error) return <div style={{ padding: '32px', color: 'red' }}>Error: {error}</div>;
 
   const pendingAction = engine.activeContext.sequence[engine.currentStep];
-  const overridePendingCutSet = pendingAction?.type === 'cut' ? (pendingAction?.vertices || []) : [];
+  const overridePendingCutSet = pendingAction?.vertices || [];
+  const isVaporizeAction = pendingAction?.type === 'vaporize' || pendingAction?.type === 'ignore' || pendingAction?.type === 'subgraph';
 
   return (
     <div className="replay-page-root">
@@ -325,6 +326,7 @@ export default function ReplayPage() {
               readOnly={true}
               onDeepDiveRequest={handleDeepDiveRequest}
               overridePendingCutSet={overridePendingCutSet}
+              isVaporizeAction={isVaporizeAction}
             />
             {pendingAction?.type === 'vaporize' && (
               <OnboardingTooltip

@@ -234,7 +234,11 @@ class PixiEngine {
     }
   }
 
-  drawNode(node: { vertex: Vertex; graphics: PIXI.Graphics; glowGraphics: PIXI.Graphics; isPendingCut: boolean; color: number }, isSelected: boolean = false) {
+  drawNode(
+    node: { vertex: Vertex; graphics: PIXI.Graphics; glowGraphics: PIXI.Graphics; isPendingCut: boolean; color: number }, 
+    isSelected: boolean = false, 
+    isVaporizeAction: boolean = false
+  ) {
     node.graphics.clear();
     node.glowGraphics.clear();
 
@@ -243,7 +247,11 @@ class PixiEngine {
     let color = 0x000000;
     if (this.palette) {
       if (node.isPendingCut) {
-        color = this.palette.select;
+        if (isVaporizeAction) {
+          color = isLightTile ? this.palette.tileA : this.palette.tileB;
+        } else {
+          color = this.palette.select;
+        }
       } else {
         color = isLightTile ? this.palette.tileA : this.palette.tileB;
       }
@@ -255,14 +263,21 @@ class PixiEngine {
     node.graphics
       .roundRect(-size / 2, -size / 2, size, size, 4)
       .fill({ color: node.color, alpha: 1.0 })
-      .stroke({ width: 1, color: node.isPendingCut && this.palette ? this.palette.selectBorder : (this.palette?.border ?? 0x1f2937), alignment: 0 });
+      .stroke({ width: 1, color: node.isPendingCut && this.palette && !isVaporizeAction ? this.palette.selectBorder : (this.palette?.border ?? 0x1f2937), alignment: 0 });
 
     if (this.palette) {
       if (node.isPendingCut) {
-        const padding = 2;
-        node.glowGraphics
-          .roundRect(-this.cellSize / 2 - padding, -this.cellSize / 2 - padding, this.cellSize + padding * 2, this.cellSize + padding * 2, 6)
-          .fill({ color: this.palette.selectGlow, alpha: 0.6 });
+        if (isVaporizeAction) {
+          const padding = 6;
+          node.glowGraphics
+            .roundRect(-this.cellSize / 2 - padding, -this.cellSize / 2 - padding, this.cellSize + padding * 2, this.cellSize + padding * 2, 8)
+            .fill({ color: this.palette.select, alpha: 0.95 });
+        } else {
+          const padding = 2;
+          node.glowGraphics
+            .roundRect(-this.cellSize / 2 - padding, -this.cellSize / 2 - padding, this.cellSize + padding * 2, this.cellSize + padding * 2, 6)
+            .fill({ color: this.palette.selectGlow, alpha: 0.6 });
+        }
       } else if (isSelected) {
         const padding = 4;
         node.glowGraphics
@@ -291,7 +306,8 @@ class PixiEngine {
     isExecuting: boolean = false,
     hasCutsApplied: boolean = false,
     readOnly: boolean = false,
-    onDeepDiveRequest?: (graphIndex: number) => void
+    onDeepDiveRequest?: (graphIndex: number) => void,
+    isVaporizeAction: boolean = false
   ) {
     this.palette = palette;
     this.splitView = splitView;
@@ -609,7 +625,7 @@ class PixiEngine {
         }
 
         node.isPendingCut = isPendingCut;
-        this.drawNode(node, isSelected);
+        this.drawNode(node, isSelected, isVaporizeAction);
       });
 
     });
@@ -736,6 +752,7 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
       readOnly = false,
       onDeepDiveRequest,
       overridePendingCutSet,
+      isVaporizeAction = false,
     },
     ref
   ) => {
@@ -878,7 +895,8 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           isExecuting,
           hasCutsApplied,
           readOnly,
-          onDeepDiveRequest
+          onDeepDiveRequest,
+          isVaporizeAction
         );
       });
 
@@ -919,10 +937,11 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           isExecuting,
           hasCutsApplied,
           readOnly,
-          onDeepDiveRequest
+          onDeepDiveRequest,
+          isVaporizeAction
         );
       }
-    }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, onSelectGraph, onAutoSolve, onIgnoreDuplicate, onNodePointerDown, onNodePointerEnter, onPointerUp, isExecuting, hasCutsApplied, readOnly, onDeepDiveRequest]);
+    }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, isVaporizeAction, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, onSelectGraph, onAutoSolve, onIgnoreDuplicate, onNodePointerDown, onNodePointerEnter, onPointerUp, isExecuting, hasCutsApplied, readOnly, onDeepDiveRequest]);
 
     useEffect(() => {
       onPendingCutSetChange?.(pendingCutSet);
