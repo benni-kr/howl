@@ -16,7 +16,7 @@ import { OnboardingTooltip } from '../components/ui/OnboardingTooltip';
 // ─── Valid URL values ────────────────────────────────────────────────
 type ViewTab = 'matrix' | 'solvers';
 const VALID_VIEWS: ViewTab[] = ['matrix', 'solvers'];
-const VALID_MODES: MatrixMode[] = ['min_rank', 'top_solver', 'perfection_gap', 'density_linear', 'log_adjusted_density', 'custom_formula'];
+const VALID_MODES: MatrixMode[] = ['min_rank', 'top_solver', 'perfection_gap', 'density_linear', 'log_adjusted_density', 'improvability', 'custom_formula'];
 
 const MODE_LABELS: Record<MatrixMode, string> = {
   min_rank: 'Min Rank',
@@ -24,6 +24,7 @@ const MODE_LABELS: Record<MatrixMode, string> = {
   perfection_gap: 'Perfection Gap',
   density_linear: 'Lin. Density',
   log_adjusted_density: 'Log. Density',
+  improvability: 'Improvability',
   custom_formula: 'Custom',
 };
 
@@ -39,16 +40,32 @@ const LeaderboardPage: React.FC = () => {
   const drillN = isDrillDown ? parseInt(nParam, 10) : null;
 
   const rawView = searchParams.get('view');
-  const activeTab: ViewTab = VALID_VIEWS.includes(rawView as ViewTab)
+  const storedView = localStorage.getItem('howl_leaderboard_view') as ViewTab | null;
+  const activeTab: ViewTab = rawView && VALID_VIEWS.includes(rawView as ViewTab)
     ? (rawView as ViewTab)
-    : 'matrix';
+    : storedView && VALID_VIEWS.includes(storedView)
+      ? storedView
+      : 'matrix';
 
   const rawMode = searchParams.get('mode');
-  const matrixMode: MatrixMode = VALID_MODES.includes(rawMode as MatrixMode)
+  const storedMode = localStorage.getItem('howl_matrix_mode') as MatrixMode | null;
+  const matrixMode: MatrixMode = rawMode && VALID_MODES.includes(rawMode as MatrixMode)
     ? (rawMode as MatrixMode)
-    : 'min_rank';
+    : storedMode && VALID_MODES.includes(storedMode)
+      ? storedMode
+      : 'min_rank';
 
-  const squareOnly = searchParams.get('square') === 'true';
+  const squareOnlyRaw = searchParams.get('square');
+  const storedSquareOnly = localStorage.getItem('howl_square_only');
+  const squareOnly = squareOnlyRaw !== null 
+    ? squareOnlyRaw === 'true' 
+    : storedSquareOnly === 'true';
+
+  useEffect(() => {
+    localStorage.setItem('howl_leaderboard_view', activeTab);
+    localStorage.setItem('howl_matrix_mode', matrixMode);
+    localStorage.setItem('howl_square_only', String(squareOnly));
+  }, [activeTab, matrixMode, squareOnly]);
 
   // ── Data state (still local — it's server data, not UI state) ─────
   const [matrixData, setMatrixData] = useState<MatrixCellData[]>([]);
@@ -259,6 +276,7 @@ const LeaderboardPage: React.FC = () => {
               <li><strong>Min Rank:</strong> The lowest rank achieved by the community for the given m × n grid.</li>
               <li><strong>Top Solver:</strong> The alias of the player who holds the optimal rank.</li>
               <li><strong>Perfection Gap:</strong> <code>Min Rank - Lower Bound</code>. A lower bound is calculated based on known theoretical limits. 0 means optimal.</li>
+              <li><strong>Improvability:</strong> <code>min(rank - rank_above, rank - rank_left)</code>. Measures how much a cell's rank exceeds its smaller neighbors. A difference of 3+ strongly suggests the solution is suboptimal.</li>
               <li><strong>Lin. Density:</strong> <code>Min Rank / max(m, n)</code>. Measures how sparse or dense the solution is relative to the largest dimension.</li>
               <li><strong>Log. Density:</strong> <code>Min Rank / (min(m, n) + log2(max(m, n) + 1))</code>. An adjusted density scaling logarithmically with grid size.</li>
               <li><strong>Custom:</strong> Enter a valid Math.js expression using: <code>m</code>, <code>n</code>, <code>min_edge</code>, <code>max_edge</code>, and <code>rank</code>. Example: <code>rank - m - n</code>.</li>

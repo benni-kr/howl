@@ -3,7 +3,7 @@ import { MatrixCellData } from '../../api/api';
 import { useAlias } from '../../hooks/useAlias';
 import * as math from 'mathjs';
 
-export type MatrixMode = 'min_rank' | 'top_solver' | 'perfection_gap' | 'density_linear' | 'log_adjusted_density' | 'custom_formula';
+export type MatrixMode = 'min_rank' | 'top_solver' | 'perfection_gap' | 'density_linear' | 'log_adjusted_density' | 'improvability' | 'custom_formula';
 
 interface MatrixViewProps {
   data: MatrixCellData[];
@@ -162,6 +162,56 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
       if (alias && cellData.solver_name.trim().toLowerCase() === alias.trim().toLowerCase()) {
         bgColor = 'var(--tile-selected)';
         color = '#fff';
+      }
+    } else if (mode === 'improvability') {
+      const currentRank = cellData.min_rank;
+      
+      let diffAbove = Infinity;
+      if (n > 1) {
+        const aboveData = dataMap.get(`${m}-${n-1}`) || dataMap.get(`${n-1}-${m}`);
+        if (aboveData) diffAbove = currentRank - aboveData.min_rank;
+      }
+      
+      let diffLeft = Infinity;
+      if (m > 1) {
+        const leftData = dataMap.get(`${m-1}-${n}`) || dataMap.get(`${n}-${m-1}`);
+        if (leftData) diffLeft = currentRank - leftData.min_rank;
+      }
+
+      let targetDiff = -Infinity;
+      if (diffAbove !== Infinity && diffLeft !== Infinity) {
+        targetDiff = Math.min(diffAbove, diffLeft);
+      } else if (diffAbove !== Infinity) {
+        targetDiff = diffAbove;
+      } else if (diffLeft !== Infinity) {
+        targetDiff = diffLeft;
+      }
+
+      if (targetDiff !== -Infinity) {
+        content = targetDiff;
+        metricValue = targetDiff;
+        
+        if (targetDiff < 0) {
+          bgColor = '#14532d'; // dark green (green-900)
+          color = '#ffffff';
+        } else if (targetDiff === 0) {
+          bgColor = '#22c55e'; // green (green-500)
+          color = '#ffffff';
+        } else if (targetDiff === 1) {
+          bgColor = '#fef08a'; // yellow-200
+          color = '#854d0e';
+        } else if (targetDiff === 2) {
+          bgColor = '#f97316'; // orange-500
+          color = '#ffffff';
+        } else {
+          bgColor = '#ef4444'; // red-500
+          color = '#ffffff';
+        }
+      } else {
+        content = '/';
+        bgColor = '#4b5563'; // gray-600
+        border = '1px solid rgba(255,255,255,0.05)';
+        opacity = 0.6;
       }
     } else {
       let goodness = 0;
