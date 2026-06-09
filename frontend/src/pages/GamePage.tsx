@@ -167,13 +167,16 @@ const GamePage: React.FC = () => {
     }
   }, [isGameWon, hasSolved, isExecuting, isNewGameModalOpen]);
 
-  // Reset split view if there's only one piece (e.g. new game started)
+  // Sync split view and reset selection when graph counts or execution state changes
   useEffect(() => {
     if (recentCutGraphs.length === 0) {
       setSplitView(false);
       setSelectedGraphIndex(null);
+    } else if (!isExecuting) {
+      setSplitView(true);
+      setSelectedGraphIndex(null);
     }
-  }, [recentCutGraphs.length]);
+  }, [recentCutGraphs.length, isExecuting]);
 
   const handleCut = async () => {
     execCut(activeGraph, pendingCutSet, setPendingCutSet, setSplitView, setSelectedGraphIndex, setResetToken);
