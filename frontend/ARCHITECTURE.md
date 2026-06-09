@@ -115,6 +115,21 @@ To handle large grids (e.g., $100 \times 100$) efficiently over the network, the
 
 ---
 
+## UI Component Architecture
+
+### Decoupling React & WebGL
+- **`PixiEngine`**: A pure WebGL abstraction layer. It has no knowledge of React or Redux. It strictly handles canvas mounting, viewport scaling (`pixi-viewport`), and event dispatching (clicks/drags).
+- **`GridDrawer`**: A stateless rendering utility that takes normalized `GridGraph` arrays and draws the exact Pixi `Graphics` rectangles and edges based on the provided theme.
+- **`PixiVisualizer`**: The React bridge. It uses `useSelector` to pull Redux data and feeds it into `PixiEngine` and `GridDrawer`, acting as the only point of reconciliation between the virtual DOM and the WebGL context.
+
+### Decomposing GamePage
+The top-level `GamePage` layout was flattened by extracting heavy logic into sub-components:
+- **`useCutExecution`**: A custom React Hook that abstracts the complex `executeCutLocal` logic and dispatches the resulting board fragments into Redux.
+- **`RankPanel`**: A specialized component that calculates the current active score by examining `cutsApplied` and active children.
+- **`BatchActionBar`**: Isolates the "Magic Wand", "Subset Vaporize", and "Mirror Duplicate" UI controls into a floating overlay that only renders when the `checkShapes` API polling returns a match.
+
+---
+
 ## UI Layout & Responsiveness
 
 HOWL relies on **CSS Grid** to structure its application shell (`.app-shell`).
