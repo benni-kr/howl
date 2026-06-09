@@ -11,9 +11,9 @@ def get_db_connection():
     # If the file doesn't exist relative to alphawolf, try absolute or parent
     return sqlite3.connect(DB_PATH)
 
-def query_tablebase(fragments: list["GridGraph"]) -> dict:
+def query_tablebase(fragments: list) -> dict:
     """
-    Queries the SQLite tablebase for the given fragments.
+    Queries the SQLite tablebase for the given fragments (GridGraph objects or string hashes).
     Returns a dict mapping the fragment's canonical hash to its best known rank
     and whether it is proven optimal.
     """
@@ -23,9 +23,11 @@ def query_tablebase(fragments: list["GridGraph"]) -> dict:
 
     hashes = []
     for frag in fragments:
-        verts = [{"x": x, "y": y} for x, y in frag.vertices]
-        can_hash = generate_canonical_hash(verts)
-        hashes.append(can_hash)
+        if isinstance(frag, str):
+            hashes.append(frag)
+        else:
+            verts = [{"x": x, "y": y} for x, y in frag.vertices]
+            hashes.append(generate_canonical_hash(verts))
 
     conn = get_db_connection()
     cursor = conn.cursor()

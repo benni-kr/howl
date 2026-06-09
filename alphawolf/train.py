@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from models.net import AlphaWolfNet
 from envs.howl_env import HowlEnv
 from db.tablebase import query_tablebase, insert_or_update_rank4_induction
+from core_engine.hashing import generate_canonical_hash
 
 C_PUCT = 1.0
 
@@ -108,16 +109,35 @@ def mcts_search(root_state, net, env, num_simulations=100):
             obs = env._get_obs()
             node.state = obs
             
-            with torch.no_grad():
-                state_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-                p_logits, v = net(state_tensor)
-                p_probs = F.softmax(p_logits.flatten(), dim=0).numpy()
-                value = v.item() + env.cuts_made # Value is estimated remaining cuts + current cuts
+            # Canonicalize and query tablebase
+            active_coords = np.argwhere(obs == 1)
+            verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
+            can_hash = generate_canonical_hash(verts)
+            db_res_dict = query_tablebase([can_hash])
+            db_res = db_res_dict.get(can_hash)
+            
+            if db_res and (db_res['is_optimal'] or db_res['best_rank'] <= 3):
+                # Absolute Truth
+                value = db_res['best_rank'] + env.cuts_made
+                node.is_terminal = True
+                node.terminal_rank = value
+            else:
+                with torch.no_grad():
+                    state_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+                    p_logits, v = net(state_tensor)
+                    p_probs = F.softmax(p_logits.flatten(), dim=0).numpy()
+                    nn_val = v.item()
                 
-            node.is_expanded = True
-            valid_actions = np.where(obs.flatten() == 1)[0]
-            for a in valid_actions:
-                node.children[a] = MCTSNode(state=None, parent=node, prior=p_probs[a])
+                if db_res and not db_res['is_optimal']:
+                    # Heuristic Ceiling
+                    nn_val = min(nn_val, db_res['best_rank'])
+                    
+                value = nn_val + env.cuts_made
+                
+                node.is_expanded = True
+                valid_actions = np.where(obs.flatten() == 1)[0]
+                for a in valid_actions:
+                    node.children[a] = MCTSNode(state=None, parent=node, prior=p_probs[a])
                 
         # 3. Backpropagation
         for n in reversed(search_path):
@@ -125,6 +145,28 @@ def mcts_search(root_state, net, env, num_simulations=100):
             n.value_sum += value
 
     return root
+
+def get_symmetries(state, pi):
+    """
+    Returns the 8 D4 symmetries of the state and policy.
+    state: 2D numpy array (m x n)
+    pi: 1D numpy array of size m*n
+    """
+    m, n = state.shape
+    pi_2d = pi.reshape((m, n))
+    symmetries = []
+    
+    for i in range(4):
+        rot_state = np.rot90(state, k=i)
+        rot_pi = np.rot90(pi_2d, k=i)
+        symmetries.append((rot_state.copy(), rot_pi.flatten()))
+        
+        # Reflection
+        flip_state = np.fliplr(rot_state)
+        flip_pi = np.fliplr(rot_pi)
+        symmetries.append((flip_state.copy(), flip_pi.flatten()))
+        
+    return symmetries
 
 def self_play(net, m, n, num_games=10, num_simulations=50):
     env = HowlEnv(m, n)
@@ -163,7 +205,12 @@ def self_play(net, m, n, num_games=10, num_simulations=50):
                 final_rank = env.cuts_made
                 for state, policy, cuts_at_state in state_history:
                     intrinsic_rank = final_rank - cuts_at_state
-                    replay_buffer.append((state, policy, intrinsic_rank))
+                    
+                    # Data Augmentation: 8 D4 Symmetries
+                    syms = get_symmetries(state, policy)
+                    for s, p in syms:
+                        replay_buffer.append((s, p, intrinsic_rank))
+                        
                 print(f"Game {game+1} finished with Total Rank {final_rank}")
                 break
                 
