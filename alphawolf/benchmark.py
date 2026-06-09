@@ -55,7 +55,7 @@ def evaluate_model(model_path, gauntlet_boards, num_simulations=100):
                 env.graph.apply_cut_set([(x, y)])
                 
         # Run deterministic evaluation (add_exploration_noise=False)
-        traj, rank = play_episode(net, env, obs, num_simulations=num_simulations, add_exploration_noise=False)
+        traj, rank, _ = play_episode(net, env, obs, num_simulations=num_simulations, add_exploration_noise=False)
         
         cumulative_rank += rank
         

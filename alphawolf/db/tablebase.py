@@ -78,3 +78,84 @@ def insert_or_update_rank4_induction(shape_hash: str, rank: int, sequence: list)
         conn.commit()
     finally:
         conn.close()
+
+def upsert_subgraph(shape_hash: str, best_rank: int, best_cut_sequence: list, discovered_by="alphawolf"):
+    """
+    Inserts or updates a subgraph ranking discovery.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    import json
+    
+    is_optimal = bool(best_rank <= 4)
+    sequence_json = json.dumps(best_cut_sequence)
+    
+    try:
+        # Check if hash exists
+        cursor.execute("SELECT best_rank FROM subgraph_dictionary WHERE hash = ?", (shape_hash,))
+        row = cursor.fetchone()
+        
+        if row is None:
+            # Insert new
+            cursor.execute(
+                """
+                INSERT INTO subgraph_dictionary (hash, best_rank, is_optimal, best_cut_sequence, discovered_by, last_updated)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (shape_hash, best_rank, is_optimal, sequence_json, discovered_by)
+            )
+        else:
+            existing_rank = row[0]
+            if best_rank < existing_rank:
+                # Update better rank
+                cursor.execute(
+                    """
+                    UPDATE subgraph_dictionary 
+                    SET best_rank = ?, is_optimal = ?, best_cut_sequence = ?, discovered_by = ?, last_updated = CURRENT_TIMESTAMP
+                    WHERE hash = ?
+                    """,
+                    (best_rank, is_optimal, sequence_json, discovered_by, shape_hash)
+                )
+        conn.commit()
+    finally:
+        conn.close()
+
+def upsert_grid_solution(m: int, n: int, rank: int, cut_sequence: list, solver_name: str = "alphawolf"):
+    """
+    Inserts or updates a full grid solution in the leaderboard table.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    import json
+    
+    sequence_json = json.dumps(cut_sequence)
+    
+    try:
+        cursor.execute(
+            "SELECT rank FROM grid_solutions WHERE m = ? AND n = ? AND solver_name = ?", 
+            (m, n, solver_name)
+        )
+        row = cursor.fetchone()
+        
+        if row is None:
+            cursor.execute(
+                """
+                INSERT INTO grid_solutions (m, n, rank, solver_name, cut_sequence, created_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (m, n, rank, solver_name, sequence_json)
+            )
+        else:
+            existing_rank = row[0]
+            if rank < existing_rank:
+                cursor.execute(
+                    """
+                    UPDATE grid_solutions 
+                    SET rank = ?, cut_sequence = ?, created_at = CURRENT_TIMESTAMP
+                    WHERE m = ? AND n = ? AND solver_name = ?
+                    """,
+                    (rank, sequence_json, m, n, solver_name)
+                )
+        conn.commit()
+    finally:
+        conn.close()

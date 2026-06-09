@@ -1,5 +1,6 @@
 import math
 import os
+import collections
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -8,7 +9,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from models.net import AlphaWolfNet
 from envs.howl_env import HowlEnv
-from db.tablebase import query_tablebase, insert_or_update_rank4_induction
+from db.tablebase import query_tablebase, insert_or_update_rank4_induction, upsert_subgraph, upsert_grid_solution
 from core_engine.hashing import generate_canonical_hash
 from core_engine.graph_logic import GridGraph
 
@@ -203,6 +204,7 @@ def get_symmetries(state, pi):
 
 def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
     state_history = []
+    local_cuts_made = []
     
     while True:
         root = mcts_search(obs, net, env, num_simulations, add_exploration_noise)
@@ -210,7 +212,7 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
         action_visits = {a: child.visit_count for a, child in root.children.items()}
         total_visits = sum(action_visits.values())
         if total_visits == 0:
-            return [], env.cuts_made
+            return [], env.cuts_made, []
             
         pi = np.zeros(obs.size)
         for a, visits in action_visits.items():
@@ -222,11 +224,16 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
         probs = [action_visits[a] / total_visits for a in actions]
         action = np.random.choice(actions, p=probs)
         
+        # Hardcoding 10 since MAX_COLS is 10
+        local_cuts_made.append([int(action // 10), int(action % 10)])
+        
         obs, reward, terminated, _, info = env.step(action)
         
         if terminated:
             frag_ranks = []
             recursive_trajectories = []
+            recursive_cuts = []
+            recursive_discoveries = []
             
             if "fragments" in info and info["fragments"]:
                 for frag in info["fragments"]:
@@ -244,39 +251,62 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
                     
                     if db_res and (db_res['is_optimal'] or db_res['best_rank'] <= 3):
                         frag_ranks.append(db_res['best_rank'])
+                        frag_vertices = [[int(x), int(y)] for x, y in frag.vertices]
+                        recursive_cuts.append({"t": "v", "v": frag_vertices, "r": int(db_res['best_rank'])})
                     else:
-                        frag_traj, frag_rank = play_episode(net, frag_env, frag_obs, num_simulations, add_exploration_noise)
+                        frag_traj, frag_rank, frag_discoveries = play_episode(net, frag_env, frag_obs, num_simulations, add_exploration_noise)
                         frag_ranks.append(frag_rank)
                         recursive_trajectories.extend(frag_traj)
+                        recursive_cuts.extend(frag_discoveries[0][2] if frag_discoveries else [])
+                        recursive_discoveries.extend(frag_discoveries)
             
             max_frag_rank = max(frag_ranks) if frag_ranks else 0
             total_rank = env.cuts_made + max_frag_rank
             
+            local_sequence = [{"t": "c", "v": [[r, c]]} for r, c in local_cuts_made]
+            final_sequence = local_sequence + recursive_cuts
+            
             local_trajectory = []
-            for state, policy, cuts_at_state in state_history:
+            local_discoveries = []
+            for i, (state, policy, cuts_at_state) in enumerate(state_history):
                 intrinsic_rank = total_rank - cuts_at_state
+                local_discoveries.append((state.copy(), intrinsic_rank, final_sequence[i:]))
+                
                 syms = get_symmetries(state, policy)
                 for s, p in syms:
                     local_trajectory.append((s, p, intrinsic_rank))
                     
-            return local_trajectory + recursive_trajectories, total_rank
+            return local_trajectory + recursive_trajectories, total_rank, local_discoveries + recursive_discoveries
 
 def self_play(net, m, n, num_games=10, num_simulations=50):
     replay_buffer = []
     for game in range(num_games):
         env = HowlEnv(m, n)
         obs, _ = env.reset()
-        traj, final_rank = play_episode(net, env, obs, num_simulations)
+        traj, final_rank, discoveries = play_episode(net, env, obs, num_simulations)
         replay_buffer.extend(traj)
+        
+        # Upsert all intermediate board sequences discovered
+        for state, rank, seq in discoveries:
+            active_coords = np.argwhere(state == 1)
+            verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
+            can_hash = generate_canonical_hash(verts)
+            upsert_subgraph(can_hash, rank, seq)
+            
+        if discoveries:
+            final_sequence = discoveries[0][2]
+            upsert_grid_solution(m, n, final_rank, final_sequence)
+        
         print(f"Game {game+1} finished with True Total Rank {final_rank}")
     return replay_buffer
 
 def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
     net.train()
     
-    states = torch.tensor(np.array([item[0] for item in replay_buffer]), dtype=torch.float32).unsqueeze(1)
-    policies = torch.tensor(np.array([item[1] for item in replay_buffer]), dtype=torch.float32)
-    values = torch.tensor(np.array([item[2] for item in replay_buffer]), dtype=torch.float32).unsqueeze(1)
+    buffer_list = list(replay_buffer)
+    states = torch.tensor(np.array([item[0] for item in buffer_list]), dtype=torch.float32).unsqueeze(1)
+    policies = torch.tensor(np.array([item[1] for item in buffer_list]), dtype=torch.float32)
+    values = torch.tensor(np.array([item[2] for item in buffer_list]), dtype=torch.float32).unsqueeze(1)
     
     dataset = TensorDataset(states, policies, values)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
@@ -298,21 +328,25 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
             
         print(f"Epoch {epoch+1}/{epochs} | P_Loss: {total_p_loss/len(loader):.4f} | V_Loss: {total_v_loss/len(loader):.4f}")
 
-def alpha_zero_loop(m, n, num_generations=5, num_simulations=100):
+def alpha_zero_loop(m, n, num_generations=50, num_simulations=200):
     net = AlphaWolfNet(m, n)
     optimizer = optim.Adam(net.parameters(), lr=1e-3)
+    
+    replay_buffer = collections.deque(maxlen=30000)
     
     os.makedirs("models/checkpoints", exist_ok=True)
     print(f"Initialized AlphaWolf V1 [{m}x{n}] - Strict Single-Threaded Mode")
     print(f"MCTS Simulations per move: {num_simulations}")
+    print(f"Replay Buffer Capacity: {replay_buffer.maxlen} samples")
     
     for gen in range(1, num_generations + 1):
         print(f"\n--- Generation {gen} ---")
         print("Starting Self-Play Phase...")
-        buffer = self_play(net, m, n, num_games=5, num_simulations=num_simulations)
+        new_trajectories = self_play(net, m, n, num_games=15, num_simulations=num_simulations)
+        replay_buffer.extend(new_trajectories)
         
-        print(f"Training Phase ({len(buffer)} samples)...")
-        train_network(net, buffer, optimizer, epochs=5)
+        print(f"Training Phase ({len(replay_buffer)} samples in buffer)...")
+        train_network(net, replay_buffer, optimizer, epochs=5)
         
         ckpt_path = f"models/checkpoints/alphawolf_gen_{gen}.pt"
         torch.save(net.state_dict(), ckpt_path)
@@ -323,4 +357,4 @@ def alpha_zero_loop(m, n, num_generations=5, num_simulations=100):
         promote_model(ckpt_path)
 
 if __name__ == "__main__":
-    alpha_zero_loop(4, 4, num_generations=2, num_simulations=100)
+    alpha_zero_loop(5, 5, num_generations=50, num_simulations=200)

@@ -36,3 +36,5 @@ frontend/coverage/
 *.egg-info/
 __pycache__/
 
+# AlphaWolf Checkpoints
+alphawolf/models/checkpoints/alphawolf_gen_*.pt
