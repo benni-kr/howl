@@ -1,15 +1,18 @@
 # HOWL Backend Architecture
 
-> **Audience:** Future contributors and AI agents working on the HOWL codebase.
+> **Audience:** Future contributors and AI agents working on the HOWL backend codebase.
 
 ## Overview
 
-HOWL is a crowdsourcing game for vertex k-ranking on grid graphs. Players cut
-vertices from an m×n grid to decompose it into disconnected subgraphs. The
-goal is to find the *minimum* rank — the fewest total cuts needed to fully
-decompose the grid such that every resulting piece is a single vertex.
+The HOWL backend is a Fast/API Python server that powers the crowdsourced mathematics graph-theory game. It validates game state, computes theoretical lower bounds, processes cut sequence DTOs to extract vertex rankings, and manages the global SQLite data persistence.
 
-The backend has two persistence layers:
+The backend is modularized into clearly separated layers:
+- `main.py` / `routes/`: FastAPI endpoints and lifespan management.
+- `core/`: Agnostic, pure-python business logic (graph calculations, theoretical limits, hashing, security).
+- `services/`: Database interface services and session management.
+- `database.py` / `models.py` / `schemas.py`: SQLAlchemy setup, ORM classes, and Pydantic DTOs.
+
+The backend has two primary persistence tables:
 
 | Table               | Purpose                                             |
 |---------------------|-----------------------------------------------------|
@@ -20,44 +23,39 @@ The backend has two persistence layers:
 
 ## Data Flow
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────────────┐
 │                          FRONTEND (React)                           │
 │                                                                     │
-│  1. Player cuts vertices on the grid                                │
-│  2. Each cut is recorded in Redux: cutsApplied[]                    │
-│  3. After each cut, checkShapes() polls the SubgraphDictionary      │
-│     to see if any subgraph on the board has a known solution        │
-│  4. If a match exists, show "⚡ Auto-Solve" button                  │
-│  5. On victory, submit cutsApplied to POST /api/submit_solution     │
+│  1. Player makes cuts / batch actions (vaporizes) on the grid       │
+│  2. Cuts recorded in Redux: cutsApplied[]                           │
+│  3. After each cut, POST /api/game/check_shapes polls the backend   │
+│  4. If match exists, frontend displays Magic Wand/Abacus icons      │
+│  5. On victory, submit cutsApplied to POST /api/game/submit_solution│
 └──────────────────────────┬───────────────────────────────────────────┘
                            │
                            ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                      BACKEND (FastAPI + SQLite)                     │
 │                                                                     │
-│  POST /api/submit_solution                                          │
-│    1. Replay cut_sequence on a fresh m×n grid (replay engine)       │
-│    2. Build a tree of intermediate subgraphs                        │
-│    3. Calculate intrinsic rank for each subgraph (bottom-up)        │
-│    4. Upsert each (canonical_hash, rank) into subgraph_dictionary   │
-│    5. Upsert the GridSolution (best rank per solver per grid size)  │
-│                                                                     │
-│  POST /api/check_shapes                                             │
-│    For each subgraph: hash it → lookup in subgraph_dictionary       │
-│    Returns: { found, best_rank, is_optimal } per shape              │
+│  POST /api/game/submit_solution                                     │
+│    1. Parse Compact DTO and normalize coordinate format             │
+│    2. Replay cut_sequence on a fresh m×n grid (Replay Engine)       │
+│    3. Build an Elimination Tree of intermediate subgraphs           │
+│    4. Calculate intrinsic rank for each subgraph (bottom-up)        │
+│    5. Check mathematical perfection via theoretical lower bounds    │
+│    6. Upsert each (canonical_hash, rank) into subgraph_dictionary   │
+│    7. Upsert the GridSolution (if rank is globally optimal)         │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## The Replay Engine (`graph_logic.py`)
+## The Replay Engine (`core/graph_logic.py`)
 
 ### Purpose
 
-When a player wins, the frontend sends a flat log of actions (`cutsApplied`).
-The backend replays this log on a fresh m×n grid to reconstruct the *tree* of
-every intermediate subgraph. This tree is then scored bottom-up.
+When a player wins, the frontend sends a flat log of actions (`cutsApplied`). The backend replays this log on a fresh $m \times n$ grid to reconstruct the exact tree of intermediate subgraphs. This tree is then scored bottom-up.
 
 ### Input: `cut_sequence` (DTO Pattern)
 
@@ -66,13 +64,12 @@ To save bandwidth and storage, the frontend submits a highly compact JSON payloa
 ```python
 # Compact DTO Format (frontend sends this):
 [
-    {"t": "c", "v": [[0, 0], [0, 1]]},
-    {"t": "v", "v": [[2, 0]], "r": 1},
-    {"t": "i", "v": [[3, 3]]}
+    {"t": "c", "v": [[0, 0], [0, 1]]},          # t="c" -> "cut"
+    {"t": "v", "v": [[2, 0]], "r": 1},          # t="v" -> "vaporize"
+    {"t": "i", "v": [[3, 3]]}                   # t="i" -> "ignore/duplicate"
 ]
 ```
-
-The `_to_tuples()` helper normalizes the flat `[x, y]` coordinates into `list[tuple[int, int]]` for the replay engine.
+The internal engine normalizes the flat `[x, y]` coordinates into `list[tuple[int, int]]` for processing.
 
 ### Tree Construction
 
@@ -82,9 +79,9 @@ replay_and_extract_subgraphs(m, n, cut_sequence):
     active_nodes = [root]
 
     for each action in cut_sequence:
-        if action is "vaporize":
+        if action is "vaporize" or "ignore":
             find matching active node by canonical hash (fallback: vertex probe)
-            mark it with vaporized_rank
+            mark it with vaporized_rank (or solved)
             remove from active_nodes
 
         if action is "cut":
@@ -94,36 +91,30 @@ replay_and_extract_subgraphs(m, n, cut_sequence):
             create child TreeNodes, add to active_nodes
 ```
 
-### Target Matching
+### Subgraph Detection (Connected Components)
+When an action instructs the engine to "cut" vertices, the graph fragments. The engine uses a **Breadth-First Search (BFS)** algorithm (`_bfs_component` in `graph_logic.py`) traversing the 4-way grid adjacencies of the remaining un-cut vertices to identify all distinct connected components. Each component is then isolated, instantiated as a new `GridGraph`, and appended to the tree as a child node.
 
-- **Vaporize:** Match by canonical hash first (rotation/reflection invariant).
-  Falls back to a single-vertex probe for edge cases.
-- **Cut:** Match by checking that ALL cut vertices are a subset of the node's
-  vertex set (`cut_set.issubset(node.graph.vertices)`).
+### Target Matching & Batch Actions
+- **Cut (`c`)**: Match by checking that ALL cut vertices are a subset of the node's vertex set (`cut_set.issubset(node.graph.vertices)`).
+- **Vaporize (`v`)**: Match by canonical hash first (rotation/reflection invariant). Falls back to a single-vertex probe for edge cases. Short-circuits recursion and marks node with `optimal_rank`.
+- **Ignore / Vaporize Duplicate (`i`)**: Matches identically to Vaporize, but inherently asserts the node has a sibling or superset already handling the bounding limits. Marks node as "solved".
 
 ### Rank Calculation (Bottom-Up)
 
-```
+```python
 rank(leaf with 1 vertex)  = 1
 rank(vaporized node)      = vaporized_rank  (from SubgraphDictionary)
 rank(cut node)            = cut_size + max(rank(child) for child in children)
 rank(unsolved leaf)       = 999999  (sentinel — game wasn't completed)
 ```
 
-Only entries with `rank < 999999` and non-obliterated nodes are written to
-the `subgraph_dictionary`.
-
-**Obliterated node:** A node where `cut_size > 0` but `children` is empty —
-the cut removed ALL remaining vertices. These are valid (terrible) solutions
-but are excluded from the dictionary because they don't teach us anything
-useful about the shape.
+Only entries with `rank < 999999` and non-obliterated nodes are written to the `subgraph_dictionary`. (An obliterated node is one where the cut completely wiped out the entire graph without leaving fragments).
 
 ---
 
 ## Canonical Hash Algorithm
 
-Every subgraph shape is identified by a **canonical hash** that is invariant
-under translation, rotation (0°/90°/180°/270°), and reflection.
+Every subgraph shape is identified by a **canonical hash** that is invariant under translation, rotation ($0^\circ/90^\circ/180^\circ/270^\circ$), and reflection.
 
 ```python
 def generate_canonical_hash(vertices):
@@ -133,37 +124,35 @@ def generate_canonical_hash(vertices):
     # 4. Build string: "x,y|x,y|..."
     # 5. Return the lexicographically smallest string
 ```
-
-Example: A 2×2 square at any position/rotation always hashes to `"0,0|0,1|1,0|1,1"`.
+Example: A $2 \times 2$ square at any position always hashes to `"0,0|0,1|1,0|1,1"`.
 
 ### ⚠️ Frontend `getLocalGraphFingerprint` ≠ Canonical Hash
-
-The frontend has a helper `getLocalGraphFingerprint(graph)` that builds a
-position-dependent string from sorted vertices. This is **NOT** a canonical
-hash — it does not account for rotation or reflection. It is only used as a
-local `Map<string, number>` key within a single React render cycle to
-correlate `checkShapes` API results back to their source graphs.
+The frontend has a helper `getLocalGraphFingerprint(graph)` that builds a position-dependent string from sorted vertices. This is **NOT** a canonical hash — it does not account for rotation or reflection. It is only used as a local `Map<string, number>` key within a single React render cycle to correlate `checkShapes` API results back to their source graphs.
 
 ---
 
 ## The SubgraphDictionary Lifecycle
 
-1. **Population:** Every `submit_solution` call replays the game and upserts
-   subgraph ranks. This happens regardless of whether the solution is a new
-   record.
-
-2. **Lookup:** The frontend polls `POST /api/check_shapes` after every cut.
-   This endpoint computes the canonical hash of each on-screen subgraph and
-   looks it up in the dictionary.
-
+1. **Population:** Every `submit_solution` call replays the game and upserts subgraph ranks. This happens regardless of whether the solution is a new record.
+2. **Lookup:** The frontend polls `POST /api/game/check_shapes` after every cut. This endpoint computes the canonical hash of each on-screen subgraph and looks it up in the dictionary.
 3. **Auto-Solve (Magic Wand):** If a match is found, the frontend displays a Magic Wand icon directly over the subgraph on the PixiJS canvas. Clicking the subgraph dispatches `autoSolveGraph`, which:
    - Records a `vaporize` action in `cutsApplied`
    - Uses the dictionary's `best_rank` as `optimal_rank`
-   - The shape is "solved" and removed from the board without the player having to cut it
+   - The shape is "solved" and removed from the board
+4. **Score Computation:** When the vaporized game is submitted, the replay engine encounters the `vaporize` action and uses `optimal_rank` instead of recursing into children.
 
-4. **Score Computation:** When the vaporized game is submitted, the replay
-   engine encounters the `vaporize` action and uses `optimal_rank` instead of
-   recursing into children.
+---
+
+## Theoretical Math Bounds (`core/math_bounds.py`)
+
+HOWL computes theoretical lower bounds for standard rectangular grids.
+
+Assume $m \le n$:
+- **Paths ($m=1$):** $r(1,n) = \lfloor\log_2(n)\rfloor + 1$
+- **Ladders ($m=2$):** $r(2,n) = 2 + r(2, \lceil(n - 2) / 2\rceil)$
+- **Narrow / Large Grids:** Advanced piecewise boundary formulas.
+
+These theoretical bounds are used on the Leaderboard Matrix to calculate the "Perfection Gap"—the difference between the community's achieved minimum rank and mathematical reality.
 
 ---
 
@@ -189,29 +178,14 @@ correlate `checkShapes` API results back to their source graphs.
 |-----------|---------|------------------------------------------------|
 | hash      | TEXT    | Canonical hash (primary key)                   |
 | best_rank | INTEGER | Best known intrinsic rank for this shape        |
-| is_optimal| BOOLEAN | Reserved for future use (always false for now)  |
+| is_optimal| BOOLEAN | Theoretically optimal flag (reserved for future/leaderboard math) |
 
 ---
 
-## Authentication
+## Authentication & Security
 
-HOWL implements a lightweight, global gatekeeper mechanism to prevent unauthorized spam/writes to the database:
-- The backend relies on a single `.env` variable: `AUTH_SECRET`.
-- The `POST /api/auth/login` endpoint expects `{"username": "admin", "password": "<AUTH_SECRET>"}`.
-- If successful, the backend simply returns the `AUTH_SECRET` as a bearer token.
-- Write endpoints (`/api/submit_solution` and `/api/delete_solution`) require this token in the `Authorization: Bearer <token>` header. Read endpoints (like checking shapes or fetching leaderboards) are unauthenticated.
-
----
-
-## Known Limitations
-
-1. **Single-threaded SQLite:** The backend uses SQLite with
-   `check_same_thread=False`. Under high concurrency, `IntegrityError` is
-   caught and handled, but the database is not designed for heavy write loads.
-
-2. **Replay is synchronous:** Large grids with many cuts may take noticeable
-   time to replay. Consider backgrounding the replay for grids > 20×20.
-
-3. **`is_optimal` is always false:** The `SubgraphDictionary.is_optimal` flag
-   is reserved for a future feature where we can mathematically prove a rank
-   is optimal. Currently unused.
+HOWL implements a lightweight, global gatekeeper mechanism:
+- The backend uses `.env` variable: `AUTH_SECRET`.
+- `POST /api/auth/login` expects `{"username": "admin", "password": "<AUTH_SECRET>"}` and returns the token.
+- Write endpoints (`/api/game/submit_solution` and `DELETE /api/leaderboards/solutions/{solution_id}`) require `Authorization: Bearer <token>`.
+- Read endpoints are unauthenticated to allow crowdsourced fetching.
