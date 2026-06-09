@@ -1,7 +1,10 @@
 import math
+import os
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 
 from models.net import AlphaWolfNet
 from envs.howl_env import HowlEnv
@@ -146,7 +149,7 @@ def self_play(net, m, n, num_games=10, num_simulations=50):
             for a, visits in action_visits.items():
                 pi[a] = visits / total_visits
                 
-            state_history.append((obs.copy(), pi))
+            state_history.append((obs.copy(), pi, env.cuts_made))
             
             # Choose action (for self-play, typically sample proportional to visit counts)
             actions = list(action_visits.keys())
@@ -158,18 +161,68 @@ def self_play(net, m, n, num_games=10, num_simulations=50):
             
             if terminated:
                 final_rank = env.cuts_made
-                for state, policy in state_history:
-                    replay_buffer.append((state, policy, final_rank))
-                print(f"Game {game+1} finished with Rank {final_rank}")
+                for state, policy, cuts_at_state in state_history:
+                    intrinsic_rank = final_rank - cuts_at_state
+                    replay_buffer.append((state, policy, intrinsic_rank))
+                print(f"Game {game+1} finished with Total Rank {final_rank}")
                 break
                 
     return replay_buffer
 
-if __name__ == "__main__":
-    env = HowlEnv(4, 4)
-    net = AlphaWolfNet(4, 4)
-    print("MCTS initialized with Treedepth Minimization PUCT.")
+def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
+    net.train()
     
-    print("Starting 1 game of self-play...")
-    replay_buffer = self_play(net, 4, 4, num_games=1, num_simulations=50)
-    print(f"Replay buffer populated with {len(replay_buffer)} states.")
+    # Unpack buffer
+    states = torch.tensor(np.array([item[0] for item in replay_buffer]), dtype=torch.float32).unsqueeze(1)
+    policies = torch.tensor(np.array([item[1] for item in replay_buffer]), dtype=torch.float32)
+    values = torch.tensor(np.array([item[2] for item in replay_buffer]), dtype=torch.float32).unsqueeze(1)
+    
+    dataset = TensorDataset(states, policies, values)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    
+    for epoch in range(epochs):
+        total_p_loss = 0
+        total_v_loss = 0
+        
+        for batch_s, batch_p, batch_v in loader:
+            optimizer.zero_grad()
+            
+            p_logits, v_pred = net(batch_s)
+            
+            # Policy loss: Cross Entropy between logits and target distribution
+            p_loss = F.cross_entropy(p_logits.view(p_logits.size(0), -1), batch_p)
+            
+            # Value loss: Mean Squared Error (Intrinsic Rank prediction)
+            v_loss = F.mse_loss(v_pred, batch_v)
+            
+            loss = p_loss + v_loss
+            loss.backward()
+            optimizer.step()
+            
+            total_p_loss += p_loss.item()
+            total_v_loss += v_loss.item()
+            
+        print(f"Epoch {epoch+1}/{epochs} | P_Loss: {total_p_loss/len(loader):.4f} | V_Loss: {total_v_loss/len(loader):.4f}")
+
+def alpha_zero_loop(m, n, num_generations=5):
+    net = AlphaWolfNet(m, n)
+    optimizer = optim.Adam(net.parameters(), lr=1e-3)
+    
+    os.makedirs("models/checkpoints", exist_ok=True)
+    print(f"Initialized AlphaWolf V1 [{m}x{n}] - Strict Single-Threaded Mode")
+    
+    for gen in range(1, num_generations + 1):
+        print(f"\n--- Generation {gen} ---")
+        print("Starting Self-Play Phase...")
+        # Play games to generate data
+        buffer = self_play(net, m, n, num_games=5, num_simulations=50)
+        
+        print(f"Training Phase ({len(buffer)} samples)...")
+        train_network(net, buffer, optimizer, epochs=5)
+        
+        ckpt_path = f"models/checkpoints/alphawolf_gen_{gen}.pt"
+        torch.save(net.state_dict(), ckpt_path)
+        print(f"Saved Checkpoint: {ckpt_path}")
+
+if __name__ == "__main__":
+    alpha_zero_loop(4, 4, num_generations=2)
