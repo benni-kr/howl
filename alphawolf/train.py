@@ -80,7 +80,7 @@ def ucb_score(parent: MCTSNode, child: MCTSNode) -> float:
         q = child.q_value
     return q - prior_score
 
-def mcts_search(root_state, net, env, num_simulations=100):
+def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise=True):
     root = MCTSNode(root_state)
     
     net.eval()
@@ -93,8 +93,18 @@ def mcts_search(root_state, net, env, num_simulations=100):
         root.is_expanded = True
         
         valid_actions = np.where(root_state.flatten() == 1)[0]
-        for a in valid_actions:
-            root.children[a] = MCTSNode(state=None, parent=root, prior=p_probs[a])
+        
+        if add_exploration_noise and len(valid_actions) > 0:
+            epsilon = 0.25
+            alpha = max(10.0 / len(valid_actions), 0.1) # Safe fallback
+            noise = np.random.dirichlet([alpha] * len(valid_actions))
+        else:
+            epsilon = 0.0
+            noise = np.zeros(len(valid_actions))
+            
+        for idx, a in enumerate(valid_actions):
+            prior = (1 - epsilon) * p_probs[a] + epsilon * noise[idx]
+            root.children[a] = MCTSNode(state=None, parent=root, prior=prior)
 
     for _ in range(num_simulations):
         node = root
@@ -179,11 +189,11 @@ def get_symmetries(state, pi):
         
     return symmetries
 
-def play_episode(net, env, obs, num_simulations=50):
+def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
     state_history = []
     
     while True:
-        root = mcts_search(obs, net, env, num_simulations)
+        root = mcts_search(obs, net, env, num_simulations, add_exploration_noise)
         
         action_visits = {a: child.visit_count for a, child in root.children.items()}
         total_visits = sum(action_visits.values())
@@ -223,7 +233,7 @@ def play_episode(net, env, obs, num_simulations=50):
                     if db_res and (db_res['is_optimal'] or db_res['best_rank'] <= 3):
                         frag_ranks.append(db_res['best_rank'])
                     else:
-                        frag_traj, frag_rank = play_episode(net, frag_env, frag_obs, num_simulations)
+                        frag_traj, frag_rank = play_episode(net, frag_env, frag_obs, num_simulations, add_exploration_noise)
                         frag_ranks.append(frag_rank)
                         recursive_trajectories.extend(frag_traj)
             
