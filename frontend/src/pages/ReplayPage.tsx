@@ -151,7 +151,7 @@ export default function ReplayPage() {
     <div className="replay-page-root">
       {/* Header */}
       <div className="replay-header">
-        <div className="replay-header">
+        <div className="replay-header-top">
           <div>
             <h2 className="replay-title">Replay: {mNum} &times; {nNum}</h2>
             <div className="muted">Solver: <strong className="replay-title-highlight">{solverName}</strong> &bull; Rank: <strong>{rank}</strong></div>

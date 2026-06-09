@@ -16,6 +16,12 @@
   flex-shrink: 0;
 }
 
+.replay-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .replay-title {
   margin: 0 0 4px 0;
 }
@@ -29,7 +35,7 @@
   gap: 12px;
 }
 
-.replay-close-btn {
+.btn.replay-close-btn {
   width: 36px;
   height: 36px;
   padding: 0;
@@ -106,7 +112,7 @@
   margin: 0;
 }
 
-.replay-tree-expand-btn {
+.btn.replay-tree-expand-btn {
   padding: 4px 8px;
   display: flex;
   align-items: center;
@@ -133,7 +139,7 @@
   gap: 8px;
 }
 
-.replay-control-btn {
+.btn.replay-control-btn {
   width: 36px;
   height: 36px;
   padding: 0;
@@ -143,7 +149,7 @@
   border-radius: 8px;
 }
 
-.replay-play-btn {
+.btn.replay-play-btn {
   width: 56px;
   height: 36px;
   padding: 0;
@@ -206,4 +212,92 @@
   display: flex;
   min-width: min-content;
   padding: 16px;
+}
+
+.replay-container {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  transition: opacity 0.2s ease;
+}
+
+.replay-page-root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-main);
+  overflow: hidden;
+}
+
+.replay-canvas-pane {
+  flex: 2;
+  position: relative;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--bg-main);
+  overflow: hidden;
+}
+
+.replay-side-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-main);
+  min-width: 300px;
+  max-width: 35%;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.replay-toolbar {
+  padding: 16px 32px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+@media (max-width: 1024px) {
+  .replay-page-root {
+    position: static;
+    height: auto;
+    overflow: visible;
+    display: block;
+  }
+
+  .replay-container {
+    display: block;
+    overflow: visible;
+  }
+  
+  .replay-canvas-pane {
+    flex: none;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    min-height: 300px;
+    height: auto;
+    max-height: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .replay-side-pane {
+    max-width: 100%;
+    border-left: none;
+    flex: none;
+    display: block;
+    overflow: visible;
+  }
+
+  .replay-toolbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 100;
+  }
 }

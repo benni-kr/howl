@@ -217,7 +217,7 @@ body {
 }
 
 .btn.secondary {
-  background: var(--bg-sidebar);
+  background: var(--btn-secondary);
   color: var(--text-main);
 }
 
