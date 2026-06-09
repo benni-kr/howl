@@ -669,3 +669,15 @@ body {
     backdrop-filter: none;
   }
 }
+
+/* Theme Card in Settings */
+.theme-card {
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform: translateY(0);
+}
+
+.theme-card:not(.active):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: var(--hover-color, var(--text-subtle)) !important;
+}
