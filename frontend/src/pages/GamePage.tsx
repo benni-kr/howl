@@ -19,7 +19,7 @@ import {
   confirmGraphSelection,
   undoCut,
   redoCut,
-  autoSolveGraph,
+  autoSolveMultipleGraphs,
   getLocalGraphFingerprint,
 } from "../state/gameSlice";
 
@@ -309,11 +309,11 @@ const GamePage: React.FC = () => {
               if (!graph) return;
               const opt = optimalRanks.get(getLocalGraphFingerprint(graph));
               if (opt) {
-                dispatch(autoSolveGraph({
+                dispatch(autoSolveMultipleGraphs({ targets: [{
                   location: graphIndex === 0 ? "active" : "recent",
                   index: graphIndex === 0 ? undefined : graphIndex - 1,
                   optimalRank: opt.best_rank
-                }));
+                }]}));
                 // After vaporizing, check if multiple subgraphs remain — if so, enter split view
                 const stateAfterSolve = store.getState().game;
                 if (stateAfterSolve.recentCutGraphs.length > 0) {

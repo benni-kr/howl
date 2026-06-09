@@ -77,3 +77,28 @@ export const executeCutLocal = (activeGraph: Graph, cutSet: Vertex[]): Graph[] =
 
   return subgraphs;
 };
+
+export const buildGridGraph = (m: number, n: number): Graph => {
+  const vertices: Vertex[] = [];
+  const edges: Edge[] = [];
+
+  for (let x = 0; x < m; x += 1) {
+    for (let y = 0; y < n; y += 1) {
+      vertices.push({ x, y });
+    }
+  }
+
+  for (let x = 0; x < m; x += 1) {
+    for (let y = 0; y < n; y += 1) {
+      const current = { x, y };
+      if (x + 1 < m) {
+        edges.push({ from: current, to: { x: x + 1, y } });
+      }
+      if (y + 1 < n) {
+        edges.push({ from: current, to: { x, y: y + 1 } });
+      }
+    }
+  }
+
+  return { vertices, edges, baseRank: 0 };
+};
