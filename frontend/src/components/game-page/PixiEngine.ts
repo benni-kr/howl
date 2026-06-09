@@ -288,7 +288,13 @@ export class PixiEngine {
             fontFamily: "sans-serif",
             fontSize: 12,
             fontWeight: "bold",
-            fill: this.palette?.highlight ?? 0x10b981,
+            fill: "#ffffff",
+            dropShadow: {
+              alpha: 0.5,
+              blur: 2,
+              color: 0x000000,
+              distance: 1,
+            }
           }
         });
         text.x = 28 - text.width / 2;
@@ -308,7 +314,13 @@ export class PixiEngine {
               fontFamily: "sans-serif",
               fontSize: 9,
               fontStyle: "italic",
-              fill: this.palette?.highlight ?? 0x10b981,
+              fill: "#ffffff",
+              dropShadow: {
+                alpha: 0.5,
+                blur: 2,
+                color: 0x000000,
+                distance: 1,
+              }
             }
           });
           const tooltipPadX = 6;

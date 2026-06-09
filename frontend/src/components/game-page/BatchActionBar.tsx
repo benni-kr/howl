@@ -129,20 +129,8 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
     <div style={{ position: "absolute", bottom: "-12px", display: "flex", gap: "12px", justifyContent: "center", width: "100%", pointerEvents: "none" }}>
       {duplicateTargets.length > 0 && (
         <button
-          className="btn primary"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "8px 16px",
-            borderRadius: "20px",
-            background: rankColorHex,
-            color: "#1e293b",
-            fontWeight: "bold",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-            border: "none",
-            pointerEvents: "auto",
-          }}
+          className="dynamic-btn"
+          style={{ background: rankColorHex, color: "var(--bg-main)" }}
           onClick={() => {
             dispatch(ignoreMultipleGraphs({ targets: duplicateTargets }));
             const stateAfter = store.getState().game;
@@ -160,20 +148,8 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
       )}
       {subgraphTargets.length > 0 && (
         <button
-          className="btn primary"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "8px 16px",
-            borderRadius: "20px",
-            background: rankColorHex,
-            color: "#1e293b",
-            fontWeight: "bold",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-            border: "none",
-            pointerEvents: "auto",
-          }}
+          className="dynamic-btn"
+          style={{ background: rankColorHex, color: "var(--bg-main)" }}
           onClick={() => {
             dispatch(ignoreMultipleGraphs({ targets: subgraphTargets, actionType: 'subgraph' }));
             const stateAfter = store.getState().game;
@@ -191,20 +167,8 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
       )}
       {solvableTargets.length > 1 && (
         <button
-          className="btn primary"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "8px 16px",
-            borderRadius: "20px",
-            background: rankColorHex,
-            color: "#1e293b",
-            fontWeight: "bold",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-            border: "none",
-            pointerEvents: "auto",
-          }}
+          className="dynamic-btn"
+          style={{ background: rankColorHex, color: "var(--bg-main)" }}
           onClick={() => {
             dispatch(autoSolveMultipleGraphs({ targets: solvableTargets }));
             const stateAfterSolve = store.getState().game;

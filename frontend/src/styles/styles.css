@@ -621,3 +621,23 @@ body {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: var(--text-muted);
 }
+
+/* Premium overrides for standard buttons */
+.btn.secondary {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.btn.secondary:hover {
+  background: var(--btn-secondary-hover);
+  border-color: var(--text-muted);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+}
+
+.btn.secondary:active {
+  transform: translateY(0);
+}
