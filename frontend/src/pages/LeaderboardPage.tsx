@@ -16,7 +16,7 @@ import { OnboardingTooltip } from '../components/ui/OnboardingTooltip';
 // ─── Valid URL values ────────────────────────────────────────────────
 type ViewTab = 'matrix' | 'solvers';
 const VALID_VIEWS: ViewTab[] = ['matrix', 'solvers'];
-const VALID_MODES: MatrixMode[] = ['min_rank', 'top_solver', 'perfection_gap', 'density_linear', 'log_adjusted_density', 'improvability', 'custom_formula'];
+const VALID_MODES: MatrixMode[] = ['min_rank', 'top_solver', 'perfection_gap', 'density_linear', 'log_adjusted_density', 'rank_jump', 'custom_formula'];
 
 const MODE_LABELS: Record<MatrixMode, string> = {
   min_rank: 'Min Rank',
@@ -24,7 +24,7 @@ const MODE_LABELS: Record<MatrixMode, string> = {
   perfection_gap: 'Perfection Gap',
   density_linear: 'Lin. Density',
   log_adjusted_density: 'Log. Density',
-  improvability: 'Improvability',
+  rank_jump: 'Rank Jump',
   custom_formula: 'Custom',
 };
 
@@ -276,7 +276,7 @@ const LeaderboardPage: React.FC = () => {
               <li><strong>Min Rank:</strong> The lowest rank achieved by the community for the given m × n grid.</li>
               <li><strong>Top Solver:</strong> The alias of the player who holds the optimal rank.</li>
               <li><strong>Perfection Gap:</strong> <code>Min Rank - Lower Bound</code>. A lower bound is calculated based on known theoretical limits. 0 means optimal.</li>
-              <li><strong>Improvability:</strong> <code>min(rank - rank_above, rank - rank_left)</code>. Measures how much a cell's rank exceeds its smaller neighbors. A difference of 3+ strongly suggests the solution is suboptimal.</li>
+              <li><strong>Rank Jump:</strong> <code>min(rank - rank_above, rank - rank_left)</code>. Measures how much a cell's rank exceeds its smaller neighbors. A difference of 3+ strongly suggests the solution is suboptimal.</li>
               <li><strong>Lin. Density:</strong> <code>Min Rank / max(m, n)</code>. Measures how sparse or dense the solution is relative to the largest dimension.</li>
               <li><strong>Log. Density:</strong> <code>Min Rank / (min(m, n) + log2(max(m, n) + 1))</code>. An adjusted density scaling logarithmically with grid size.</li>
               <li><strong>Custom:</strong> Enter a valid Math.js expression using: <code>m</code>, <code>n</code>, <code>min_edge</code>, <code>max_edge</code>, and <code>rank</code>. Example: <code>rank - m - n</code>.</li>
