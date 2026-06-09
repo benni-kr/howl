@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: core_engine
+Version: 0.1.0
+Summary: Pure mathematical graph operations and D4 Canonical Hashing for HOWL
+Requires-Python: >=3.10

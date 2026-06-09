@@ -1,4 +1,4 @@
-from core.hashing import generate_canonical_data, generate_canonical_hash
+from core_engine.hashing import generate_canonical_data, generate_canonical_hash
 
 def test_generate_canonical_data_empty():
     res = generate_canonical_data([])

@@ -1,4 +1,4 @@
-from core.replay_engine import replay_and_extract_subgraphs, _normalize_action
+from core_engine.replay_engine import replay_and_extract_subgraphs, _normalize_action
 
 def test_normalize_action():
     # Compact
