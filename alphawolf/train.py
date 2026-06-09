@@ -328,7 +328,7 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
             
         print(f"Epoch {epoch+1}/{epochs} | P_Loss: {total_p_loss/len(loader):.4f} | V_Loss: {total_v_loss/len(loader):.4f}")
 
-def alpha_zero_loop(m, n, num_generations=50, num_simulations=200):
+def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simulations=200, unlocked_tiers=None):
     net = AlphaWolfNet(m, n)
     optimizer = optim.Adam(net.parameters(), lr=1e-3)
     
@@ -341,8 +341,23 @@ def alpha_zero_loop(m, n, num_generations=50, num_simulations=200):
     
     for gen in range(1, num_generations + 1):
         print(f"\n--- Generation {gen} ---")
-        print("Starting Self-Play Phase...")
-        new_trajectories = self_play(net, m, n, num_games=15, num_simulations=num_simulations)
+        print("Starting Mixed Curriculum Self-Play Phase...")
+        new_trajectories = []
+        import random
+        
+        # 70% current frontier
+        current_games = max(1, int(games_per_generation * 0.7))
+        mixed_games = games_per_generation - current_games
+        
+        print(f"Playing {current_games} games on current {m}x{n} frontier...")
+        new_trajectories.extend(self_play(net, m, n, num_games=current_games, num_simulations=num_simulations))
+        
+        if mixed_games > 0 and unlocked_tiers and len(unlocked_tiers) > 0:
+            print(f"Playing {mixed_games} historical games to prevent Catastrophic Forgetting...")
+            for _ in range(mixed_games):
+                hist_m, hist_n = random.choice(unlocked_tiers)
+                new_trajectories.extend(self_play(net, hist_m, hist_n, num_games=1, num_simulations=num_simulations))
+        
         replay_buffer.extend(new_trajectories)
         
         print(f"Training Phase ({len(replay_buffer)} samples in buffer)...")
@@ -357,4 +372,18 @@ def alpha_zero_loop(m, n, num_generations=50, num_simulations=200):
         promote_model(ckpt_path)
 
 if __name__ == "__main__":
-    alpha_zero_loop(5, 5, num_generations=50, num_simulations=200)
+    import json
+    import os
+    
+    config_path = os.path.join(os.path.dirname(__file__), "config.json")
+    with open(config_path, "r") as f:
+        config = json.load(f)
+        
+    m = config.get("current_m", 5)
+    n = config.get("current_n", 5)
+    num_generations = config.get("total_generations", 50)
+    games_per_gen = config.get("games_per_generation", 15)
+    simulations = config.get("mcts_simulations", 200)
+    unlocked_tiers = config.get("unlocked_tiers", [[m, n]])
+    
+    alpha_zero_loop(m, n, num_generations=num_generations, games_per_generation=games_per_gen, num_simulations=simulations, unlocked_tiers=unlocked_tiers)

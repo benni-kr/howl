@@ -11,23 +11,43 @@ from train import play_episode
 
 def create_gauntlet():
     """Returns a list of dicts defining the benchmark boards."""
-    return [
-        {"m": 4, "n": 4, "missing": []},
+    import json
+    import os
+    import random
+    
+    config_path = os.path.join(os.path.dirname(__file__), "config.json")
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+        unlocked_tiers = config.get("unlocked_tiers", [[4, 4], [5, 5], [6, 6]])
+        fractured_per_tier = config.get("gauntlet_fractured_per_tier", 2)
+        fracture_min = config.get("gauntlet_fracture_min", 0.1)
+        fracture_max = config.get("gauntlet_fracture_max", 0.2)
+    except Exception:
+        unlocked_tiers = [[4, 4], [5, 5], [6, 6]]
+        fractured_per_tier = 2
+        fracture_min = 0.1
+        fracture_max = 0.2
         
-        # Fully padded environments (supported up to 10x10)
-        {"m": 5, "n": 5, "missing": []},
-        {"m": 6, "n": 6, "missing": []},
+    gauntlet = []
+    
+    # We want reproducible randomness for the benchmark so it's a stable metric
+    rng = random.Random(42)
+    
+    for tier in unlocked_tiers:
+        m, n = tier
         
-        # Test 4x5 asymmetric layouts
-        {"m": 4, "n": 5, "missing": [(0, 0), (1, 1), (3, 4)]},
-        {"m": 4, "n": 5, "missing": [(1, 2), (2, 2)]},
-        {"m": 4, "n": 5, "missing": [(0, 4), (1, 3), (2, 2), (3, 1)]},
+        # 1. Clean perfect rectangle
+        gauntlet.append({"m": m, "n": n, "missing": []})
         
-        # Testing asymmetric topologies on the supported 4x4 grid size for now:
-        {"m": 4, "n": 4, "missing": [(0, 0), (1, 1), (3, 3)]},
-        {"m": 4, "n": 4, "missing": [(1, 2), (2, 2)]},
-        {"m": 4, "n": 4, "missing": [(0, 3), (1, 3), (2, 2), (3, 1)]}
-    ]
+        # 2. Asymmetric boards
+        for _ in range(fractured_per_tier):
+            num_missing = rng.randint(max(1, int(m*n * fracture_min)), max(2, int(m*n * fracture_max)))
+            all_coords = [(r, c) for r in range(m) for c in range(n)]
+            missing = rng.sample(all_coords, num_missing)
+            gauntlet.append({"m": m, "n": n, "missing": missing})
+            
+    return gauntlet
 
 def evaluate_model(model_path, gauntlet_boards, num_simulations=100):
     if not os.path.exists(model_path):
