@@ -5,7 +5,7 @@ import { RootState } from "./state/store";
 import { selectActivePalette } from "./state/settingsSlice";
 import rawWolfLogo from "./assets/wolf-logo.svg?raw";
 
-import Layout from "./components/Layout";
+import Layout from "./components/layout/Layout";
 import GamePage from "./pages/GamePage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import SettingsPage from "./pages/SettingsPage";

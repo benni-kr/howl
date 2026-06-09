@@ -7,7 +7,7 @@ import os
 # Add parent directory to sys.path so we can import backend modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from graph_logic import generate_canonical_data, get_transformations
+from core.graph_logic import generate_canonical_data, get_transformations
 
 ROBUST_CACHE = {}
 

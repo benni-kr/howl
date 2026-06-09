@@ -54,12 +54,10 @@ body {
     "sidebar topnav"
     "sidebar main";
   min-height: 100vh;
-  background: radial-gradient(
-    circle at top,
-    var(--bg-gradient-start) 0%,
-    var(--bg-gradient-mid) 45%,
-    var(--bg-gradient-end) 100%
-  );
+  background: radial-gradient(circle at top,
+      var(--bg-gradient-start) 0%,
+      var(--bg-gradient-mid) 45%,
+      var(--bg-gradient-end) 100%);
 }
 
 .app-shell.no-sidebar {
@@ -518,17 +516,21 @@ body {
   .top-nav-left .logo-text span {
     font-size: 1.5rem !important;
   }
+
   .top-nav-left svg {
     width: 24px;
     height: 24px;
   }
+
   .top-nav-right {
     gap: 8px !important;
   }
+
   .alias-pill {
     padding: 6px 10px;
     font-size: 0.85rem;
   }
+
   .icon-btn {
     width: 32px;
     height: 32px;
@@ -536,11 +538,12 @@ body {
   }
 
   .top-nav-left.desktop-hidden {
-    display: flex !important; /* Show logo in topnav on mobile */
+    display: flex !important;
+    /* Show logo in topnav on mobile */
   }
 
   /* Adjust game board area for mobile */
-    /* Leaderboard page mobile fixes */
+  /* Leaderboard page mobile fixes */
   .page-header {
     padding: 12px 12px 12px;
     gap: 8px;
@@ -551,7 +554,8 @@ body {
   }
 
   .page-content {
-    height: calc(100dvh - 56px); /* topnav height on mobile */
+    height: calc(100dvh - 56px);
+    /* topnav height on mobile */
     overflow: hidden;
   }
 }
@@ -566,6 +570,7 @@ body {
 .rank-panel {
   margin-top: -64px;
 }
+
 @media (max-width: 768px) {
   .rank-panel {
     margin-top: 0;
@@ -596,12 +601,12 @@ body {
   .hover-row:hover {
     background-color: var(--btn-primary-hover);
   }
-  
+
   .hover-row .row-action-icon {
     opacity: 0;
     transform: translateX(-8px);
   }
-  
+
   .hover-row:hover .row-action-icon {
     opacity: 1;
     transform: translateX(0);
@@ -609,17 +614,12 @@ body {
 }
 
 /* Replay Layout */
-@media (max-width: 1024px) {
-      
-    
-    }
+@media (max-width: 1024px) {}
 
-@media (max-width: 1024px) {
-    }
+@media (max-width: 1024px) {}
 
 /* Drill-Down Drawer */
-@media (max-width: 768px) {
-  }
+@media (max-width: 768px) {}
 
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -665,7 +665,8 @@ body {
     width: 100%;
     border-top-left-radius: 0;
     border-left: none;
-    background: var(--bg-card); /* solid background on mobile */
+    background: var(--bg-card);
+    /* solid background on mobile */
     backdrop-filter: none;
   }
 }

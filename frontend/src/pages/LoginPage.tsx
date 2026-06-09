@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { WolfLogo } from '../components/WolfLogo';
+import { WolfLogo } from '../components/ui/WolfLogo';
 import { login } from '../api/api';
 
 const LoginPage: React.FC = () => {

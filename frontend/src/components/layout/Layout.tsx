@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import TopNavBar from './TopNavBar';
-import AliasModal from './AliasModal';
-import { useAlias } from '../hooks/useAlias';
+import AliasModal from '../ui/AliasModal';
+import { useAlias } from '../../hooks/useAlias';
 
 const Layout: React.FC = () => {
   const { alias, setAlias, isLoaded } = useAlias();

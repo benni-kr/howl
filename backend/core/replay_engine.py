@@ -1,4 +1,4 @@
-from graph_logic import GridGraph
+from core.graph_logic import GridGraph
 from core.hashing import generate_canonical_data, get_transformations
 
 class TreeNode:
