@@ -140,8 +140,8 @@ export default function ReplayPage() {
     navigate("/");
   };
 
-  if (loading) return <div style={{ padding: '32px' }}>Loading replay...</div>;
-  if (error) return <div style={{ padding: '32px', color: 'red' }}>Error: {error}</div>;
+  if (loading) return <div className="replay-page-loading">Loading replay...</div>;
+  if (error) return <div className="replay-page-error">Error: {error}</div>;
 
   const pendingAction = engine.activeContext.sequence[engine.currentStep];
   const overridePendingCutSet = pendingAction?.vertices || [];
@@ -150,13 +150,13 @@ export default function ReplayPage() {
   return (
     <div className="replay-page-root">
       {/* Header */}
-      <div style={{ display: 'flex', flexDirection: 'column', padding: '16px 32px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-card)', flexShrink: 0 }}>
+      <div className="replay-header">
         <div className="replay-header">
           <div>
-            <h2 style={{ margin: '0 0 4px 0' }}>Replay: {mNum} &times; {nNum}</h2>
-            <div className="muted">Solver: <strong style={{ color: 'var(--text-main)' }}>{solverName}</strong> &bull; Rank: <strong>{rank}</strong></div>
+            <h2 className="replay-title">Replay: {mNum} &times; {nNum}</h2>
+            <div className="muted">Solver: <strong className="replay-title-highlight">{solverName}</strong> &bull; Rank: <strong>{rank}</strong></div>
           </div>
-          <div style={{ display: 'flex', gap: '12px' }}>
+          <div className="replay-header-row">
             {engine.stack.length === 1 && (
               <button 
                 className="btn primary" 
@@ -168,7 +168,7 @@ export default function ReplayPage() {
                 Fork Run
               </button>
             )}
-            <button className="btn secondary" onClick={() => navigate(-1)} style={{ width: '36px', height: '36px', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px' }} title="Close">
+            <button className="btn secondary replay-control-btn" onClick={() => navigate(-1)} title="Close">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -179,10 +179,10 @@ export default function ReplayPage() {
 
         {/* Breadcrumbs */}
         {engine.stack.length > 0 && (
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '16px', fontSize: '0.9em' }}>
+          <div className="replay-breadcrumbs">
             {engine.stack.map((ctx, idx) => (
               <React.Fragment key={ctx.id}>
-                {idx > 0 && <span style={{ color: 'var(--text-muted)' }}>/</span>}
+                {idx > 0 && <span className="replay-breadcrumb-separator">/</span>}
                 <span 
                   onClick={() => idx < engine.stack.length - 1 && engine.diveOut(idx)}
                   style={{ 
@@ -197,12 +197,12 @@ export default function ReplayPage() {
               </React.Fragment>
             ))}
             {isFetchingDive && (
-              <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', marginLeft: '8px' }}>
+              <span className="replay-timestamp">
                 Fetching...
               </span>
             )}
             {diveError && (
-              <div style={{ marginLeft: '16px', color: '#f87171', background: 'rgba(248,113,113,0.1)', padding: '4px 8px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="replay-is-optimal">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10"></circle>
                   <line x1="12" y1="8" x2="12" y2="12"></line>
@@ -219,7 +219,7 @@ export default function ReplayPage() {
       <div className="replay-container" style={{ opacity: isFetchingDive ? 0.6 : 1 }}>
         {/* Pane 1: Canvas */}
         <div ref={canvasContainerRef} className="replay-canvas-pane">
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+          <div className="replay-main-area">
             <PixiVisualizer
               width={width}
               height={height}
@@ -250,10 +250,10 @@ export default function ReplayPage() {
           <ActionLog sequence={engine.activeContext.sequence} currentStep={engine.currentStep} activeColor={activeColor} />
 
           {/* Pane 3: Elimination Tree (Dynamic) */}
-          <div className="custom-scrollbar" style={{ flex: 1, borderTop: '1px solid var(--border-subtle)', overflow: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-            <div style={{ position: 'sticky', top: 0, left: 0, background: 'var(--bg-main)', zIndex: 10, padding: '16px 16px 8px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0 }}>Elimination Tree</h3>
-              <button className="btn secondary" onClick={() => setIsTreeModalOpen(true)} title="Expand Tree" style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="replay-tree-sidebar custom-scrollbar">
+            <div className="replay-tree-header">
+              <h3 className="replay-tree-title">Elimination Tree</h3>
+              <button className="btn secondary replay-tree-expand-btn" onClick={() => setIsTreeModalOpen(true)} title="Expand Tree">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M15 3h6v6"></path>
                   <path d="M9 21H3v-6"></path>
@@ -262,8 +262,8 @@ export default function ReplayPage() {
                 </svg>
               </button>
             </div>
-            <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', minWidth: 'min-content' }}>
-              <div className="muted" style={{ fontSize: '0.9em', lineHeight: '1.5', marginBottom: '16px', position: 'sticky', left: '16px' }}>
+            <div className="replay-tree-content">
+              <div className="replay-tree-help muted">
                 Tree depth: <strong>{engine.boardState.maxRank}</strong>
               </div>
 
@@ -275,14 +275,14 @@ export default function ReplayPage() {
 
       {/* VCR Toolbar */}
       <div className="replay-toolbar">
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="btn secondary" onClick={() => engine.setStep(engine.currentStep - 1)} disabled={engine.currentStep === 0} style={{ width: '36px', height: '36px', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px' }} title="Previous Step">
+        <div className="replay-controls">
+          <button className="btn secondary replay-control-btn" onClick={() => engine.setStep(engine.currentStep - 1)} disabled={engine.currentStep === 0} title="Previous Step">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <polygon points="17 19 7 12 17 5 17 19"></polygon>
               <rect x="5" y="5" width="2" height="14"></rect>
             </svg>
           </button>
-          <button className="btn primary" onClick={engine.isPlaying ? engine.pause : engine.play} style={{ width: '56px', height: '36px', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px' }} title={engine.isPlaying ? "Pause" : "Play"}>
+          <button className="btn primary replay-play-btn" onClick={engine.isPlaying ? engine.pause : engine.play} title={engine.isPlaying ? "Pause" : "Play"}>
             {engine.isPlaying ? (
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="5" width="4" height="14"></rect>
@@ -294,7 +294,7 @@ export default function ReplayPage() {
               </svg>
             )}
           </button>
-          <button className="btn secondary" onClick={() => engine.setStep(engine.currentStep + 1)} disabled={engine.currentStep === engine.totalSteps} style={{ width: '36px', height: '36px', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px' }} title="Next Step">
+          <button className="btn secondary replay-control-btn" onClick={() => engine.setStep(engine.currentStep + 1)} disabled={engine.currentStep === engine.totalSteps} title="Next Step">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <polygon points="7 19 17 12 7 5 7 19"></polygon>
               <rect x="17" y="5" width="2" height="14"></rect>
@@ -302,8 +302,8 @@ export default function ReplayPage() {
           </button>
         </div>
 
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <span className="muted" style={{ fontFamily: 'monospace' }}>
+        <div className="replay-scrubber">
+          <span className="replay-step-counter muted">
             {String(engine.currentStep).padStart(2, '0')} / {String(engine.totalSteps).padStart(2, '0')}
           </span>
           <input
@@ -316,13 +316,12 @@ export default function ReplayPage() {
           />
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span className="muted" style={{ fontSize: '0.9em' }}>Speed:</span>
+        <div className="replay-speed-controls">
+          <span className="replay-speed-label muted">Speed:</span>
           <select
-            className="input"
+            className="input replay-speed-btn"
             value={engine.playbackSpeed}
             onChange={(e) => engine.setPlaybackSpeed(parseInt(e.target.value, 10))}
-            style={{ padding: '4px 8px' }}
           >
             <option value={2000}>0.5x</option>
             <option value={1000}>1.0x</option>
@@ -348,14 +347,14 @@ export default function ReplayPage() {
               background: 'var(--bg-main)' 
             }}
           >
-            <div style={{ position: 'sticky', top: 0, left: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', zIndex: 10, background: 'var(--bg-main)', paddingBottom: '16px', borderBottom: '1px solid var(--border-subtle)' }}>
+            <div className="replay-tree-modal-header">
               <div>
-                <h2 style={{ margin: 0 }}>Elimination Tree</h2>
-                <div className="muted" style={{ fontSize: '0.9em', marginTop: '8px' }}>Tree depth: <strong>{engine.boardState.maxRank}</strong></div>
+                <h2 className="replay-tree-title">Elimination Tree</h2>
+                <div className="replay-tree-modal-depth muted">Tree depth: <strong>{engine.boardState.maxRank}</strong></div>
               </div>
               <button className="btn secondary" onClick={() => setIsTreeModalOpen(false)}>Close</button>
             </div>
-            <div style={{ flex: 1, display: 'flex', minWidth: 'min-content', padding: '16px' }}>
+            <div className="replay-tree-modal-content">
               <DynamicEliminationTree rootNode={engine.boardState.treeRoot} />
             </div>
           </div>

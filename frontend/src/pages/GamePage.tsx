@@ -202,7 +202,7 @@ const GamePage: React.FC = () => {
         setSplitView={setSplitView}
       />
 
-      <main className="main-stage" style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <main className="main-stage">
 
         {/* Onboarding Tooltips */}
         {splitView && (
@@ -257,7 +257,7 @@ const GamePage: React.FC = () => {
 
         {/* Floating single-piece auto-solve button was removed in favor of Magic Wands inside Pixi */}
 
-        <div className="stage-shell" style={{ border: DEBUG_SPAWN_AREA ? '2px dashed red' : 'none', display: 'flex', justifyContent: 'center', position: 'relative' }}>
+        <div className="stage-shell" style={DEBUG_SPAWN_AREA ? { border: '2px dashed red' } : undefined}>
           <PixiVisualizer
             ref={gridRef}
             width={width}
@@ -313,7 +313,7 @@ const GamePage: React.FC = () => {
 
 
 
-        <div className="action-bar" style={{ display: 'flex', flexDirection: 'row', gap: '12px', justifyContent: 'center', marginTop: '0px' }}>
+        <div className="action-bar">
           <button
             className="btn secondary"
             disabled={history.length === 0 || isExecuting}

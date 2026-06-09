@@ -1,5 +1,6 @@
 .main-stage {
   grid-area: main;
+  position: relative;
   padding: 16px 32px 24px 32px;
   display: flex;
   flex-direction: column;
@@ -11,6 +12,9 @@
   padding: 12px;
   border-radius: 18px;
   background: transparent;
+  display: flex;
+  justify-content: center;
+  position: relative;
 }
 
 @media (max-width: 768px) {
@@ -49,4 +53,12 @@
 .dynamic-btn:active {
   transform: translateY(0) scale(0.98);
   filter: brightness(1);
+}
+
+.action-bar {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 0;
 }

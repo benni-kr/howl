@@ -1,0 +1,126 @@
+.docs-page {
+  padding: 40px 24px;
+  max-width: 1000px;
+  margin: 0 auto;
+  width: 100%;
+  line-height: 1.7;
+  color: var(--text-main);
+}
+
+.docs-header {
+  margin-bottom: 40px;
+  text-align: center;
+}
+
+.docs-title {
+  display: inline-block;
+  font-size: 2.5rem;
+  margin-bottom: 16px;
+  background: linear-gradient(to right, var(--tile-selected), var(--tile-primary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+}
+
+.docs-subtitle {
+  font-size: 1.2rem;
+  color: var(--text-muted);
+}
+
+.docs-section {
+  margin-bottom: 40px;
+}
+
+.docs-section-card {
+  background: var(--bg-card);
+  padding: 32px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 40px;
+}
+
+.docs-heading-2 {
+  margin-top: 0;
+  border-bottom: 2px solid var(--bg-inset);
+  padding-bottom: 12px;
+}
+
+.docs-list {
+  padding-left: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.docs-features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.docs-feature-card {
+  background: var(--bg-card);
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.docs-feature-icon {
+  font-size: 1.8rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: var(--bg-inset);
+  border-radius: 8px;
+}
+
+.docs-feature-text {
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.docs-caption {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  text-align: center;
+  font-style: italic;
+}
+
+.docs-math-code {
+  background: var(--bg-card);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.docs-math-code-block {
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.docs-references {
+  margin-top: 64px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 32px;
+}
+
+.docs-references-title {
+  color: var(--text-muted);
+}
+
+.docs-references-list {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-left: 20px;
+}

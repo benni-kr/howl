@@ -1,28 +1,29 @@
 import React from "react";
+import "./DocsPage.css";
 import { PathExample } from "../components/docs-page/PathExample";
 import { StepVisualizer } from "../components/docs-page/StepVisualizer";
 import { EliminationTreeExample } from "../components/docs-page/EliminationTree";
 
 const DocsPage: React.FC = () => {
   return (
-    <div style={{ padding: '40px 24px', maxWidth: '1000px', margin: '0 auto', width: '100%', lineHeight: '1.7', color: 'var(--text-main)' }}>
+    <div className="docs-page">
 
-      <div style={{ marginBottom: '40px', textAlign: 'center' }}>
-        <h1 style={{ display: 'inline-block', fontSize: '2.5rem', marginBottom: '16px', background: 'linear-gradient(to right, var(--tile-selected), var(--tile-primary))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', color: 'transparent' }}>
+      <div className="docs-header">
+        <h1 className="docs-title">
           Welcome to HOWL
         </h1>
-        <p style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}>
+        <p className="docs-subtitle">
           A crowdsourced scientific tool disguised as a spatial puzzle. By playing the game, you are actively helping researchers solve an open mathematical problem in graph theory.
         </p>
       </div>
 
-      <div style={{ background: 'var(--bg-card)', padding: '32px', borderRadius: '12px', border: '1px solid var(--border-subtle)', marginBottom: '40px' }}>
-        <h2 style={{ marginTop: 0, borderBottom: '2px solid var(--bg-inset)', paddingBottom: '12px' }}>How to Play (The Casual Guide)</h2>
+      <div className="docs-section-card">
+        <h2 className="docs-heading-2">How to Play (The Casual Guide)</h2>
         <p>
           You start with an <strong>m &times; n</strong> rectangular grid of blocks. Your goal is to cut the grid down until only isolated, single blocks remain.
         </p>
 
-        <ul style={{ paddingLeft: '24px', display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+        <ul className="docs-list">
           <li>
             <strong>The Cut:</strong> Select blocks to remove. This splits the board into disconnected pieces.
           </li>
@@ -31,34 +32,34 @@ const DocsPage: React.FC = () => {
           </li>
         </ul>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '16px', marginTop: '24px' }}>
-          <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-subtle)', display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <div style={{ fontSize: '1.8rem', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', background: 'var(--bg-inset)', borderRadius: '8px' }}>🪄</div>
-            <div style={{ fontSize: '0.95rem', lineHeight: '1.5' }}>See a shape the community has already solved? Click it to instantly "vaporize" it using the best score the community has ever found.</div>
+        <div className="docs-features-grid">
+          <div className="docs-feature-card">
+            <div className="docs-feature-icon">🪄</div>
+            <div className="docs-feature-text">See a shape the community has already solved? Click it to instantly "vaporize" it using the best score the community has ever found.</div>
           </div>
-          <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-subtle)', display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <div style={{ fontSize: '1.8rem', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', background: 'var(--bg-inset)', borderRadius: '8px' }}>🧮</div>
-            <div style={{ fontSize: '0.95rem', lineHeight: '1.5' }}>Sometimes, the backend knows a shape's score is mathematically perfect. This vaporizes the shape knowing it can never be improved.</div>
+          <div className="docs-feature-card">
+            <div className="docs-feature-icon">🧮</div>
+            <div className="docs-feature-text">Sometimes, the backend knows a shape's score is mathematically perfect. This vaporizes the shape knowing it can never be improved.</div>
           </div>
-          <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-subtle)', display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <div style={{ fontSize: '1.8rem', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', background: 'var(--bg-inset)', borderRadius: '8px' }}>🪞</div>
-            <div style={{ fontSize: '0.95rem', lineHeight: '1.5' }}>If a cut creates identical subgraphs, you only need to solve one of them!</div>
+          <div className="docs-feature-card">
+            <div className="docs-feature-icon">🪞</div>
+            <div className="docs-feature-text">If a cut creates identical subgraphs, you only need to solve one of them!</div>
           </div>
-          <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-subtle)', display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <div style={{ fontSize: '1.8rem', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', background: 'var(--bg-inset)', borderRadius: '8px' }}>⊇</div>
-            <div style={{ fontSize: '0.95rem', lineHeight: '1.5' }}>If one shape fits entirely inside another (under rotation or reflection), you only need to solve the larger one.</div>
+          <div className="docs-feature-card">
+            <div className="docs-feature-icon">⊇</div>
+            <div className="docs-feature-text">If one shape fits entirely inside another (under rotation or reflection), you only need to solve the larger one.</div>
           </div>
         </div>
       </div>
 
-      <div style={{ marginBottom: '40px' }}>
-        <h2 style={{ borderBottom: '2px solid var(--bg-inset)', paddingBottom: '12px' }}>The Math Behind the Magic</h2>
+      <div className="docs-section">
+        <h2 className="docs-heading-2">The Math Behind the Magic</h2>
         <p>
           While you are cutting shapes, the game engine is calculating <strong>Vertex k-Rankings</strong>. In graph theory, a k-ranking is a labeling of vertices using numbers from 1 to k, with a strict rule: <em>Any path connecting two vertices with the same number must pass through a vertex with a strictly greater number.</em>
         </p>
 
         <PathExample />
-        <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', textAlign: 'center', fontStyle: 'italic' }}>
+        <p className="docs-caption">
           Example: A valid ranking of a 1x5 path. Note how the two "1"s are separated by a "2", and the two "1"s on the edges are separated by a "3".
         </p>
 
@@ -78,8 +79,8 @@ const DocsPage: React.FC = () => {
         </p>
       </div>
 
-      <div style={{ marginBottom: '40px' }}>
-        <h2 style={{ borderBottom: '2px solid var(--bg-inset)', paddingBottom: '12px' }}>The Three Views (Treedepth)</h2>
+      <div className="docs-section">
+        <h2 className="docs-heading-2">The Three Views (Treedepth)</h2>
         <p>
           The math behind HOWL can be visualized in three distinct ways. The physical cuts you make are tracked by the <strong>Game Tree</strong>. If we collapse the identical cut nodes into a strict vertical hierarchy, we build an <strong>Elimination Tree</strong> (formally known as a Treedepth Decomposition). The vertical height of this tree is exactly your final score, representing the highest number needed for a valid <strong>k-ranking</strong>!
         </p>
@@ -88,12 +89,12 @@ const DocsPage: React.FC = () => {
 
       </div>
 
-      <div style={{ background: 'var(--bg-card)', padding: '32px', borderRadius: '12px', border: '1px solid var(--border-subtle)', marginBottom: '40px' }}>
-        <h2 style={{ marginTop: 0, borderBottom: '2px solid var(--bg-inset)', paddingBottom: '12px' }}>Decoding the Leaderboards</h2>
+      <div className="docs-section-card">
+        <h2 className="docs-heading-2">Decoding the Leaderboards</h2>
         <p>
           Comparing a 4&times;4 score to a 100&times;100 score directly doesn't make sense. That's why the Matrix views offer advanced metrics to evaluate your score against mathematical theory:
         </p>
-        <ul style={{ paddingLeft: '24px', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <ul className="docs-list">
           <li>
             <strong>Perfection Gap:</strong> The difference between the community's Min Rank and the theoretical <strong>Lower Bound</strong>. A gap of 0 means the solution is proven mathematically perfect!
 
@@ -108,20 +109,20 @@ const DocsPage: React.FC = () => {
                 <ul style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: 0 }}>
                   <li>
                     <strong>Paths (m = 1):</strong> Exact logarithmic bound.<br />
-                    <code style={{ background: 'var(--bg-card)', padding: '2px 6px', borderRadius: '4px' }}>r(1,n) = ⌊log<sub>2</sub>(n)⌋ + 1</code>
+                    <code className="docs-math-code">r(1,n) = ⌊log<sub>2</sub>(n)⌋ + 1</code>
                   </li>
                   <li>
                     <strong>Ladder Grids (m = 2):</strong> Exact recursive formula.<br />
-                    <code style={{ background: 'var(--bg-card)', padding: '2px 6px', borderRadius: '4px' }}>r(2,n) = 2 + r(2, ⌈(n - 2) / 2⌉)</code>
+                    <code className="docs-math-code">r(2,n) = 2 + r(2, ⌈(n - 2) / 2⌉)</code>
                   </li>
                   <li>
                     <strong>Narrow Grids (m = 3, 4):</strong> Recursive lower limits.<br />
-                    <code style={{ background: 'var(--bg-card)', padding: '2px 6px', borderRadius: '4px' }}>r(3,n) ≥ 3 + r(3, ⌈(n - 3) / 2⌉)</code><br />
-                    <code style={{ background: 'var(--bg-card)', padding: '2px 6px', borderRadius: '4px', display: 'inline-block', marginTop: '4px' }}>r(4,n) ≥ 4 + r(4, ⌈(n - 4) / 2⌉)</code>
+                    <code className="docs-math-code">r(3,n) ≥ 3 + r(3, ⌈(n - 3) / 2⌉)</code><br />
+                    <code className="docs-math-code docs-math-code-block">r(4,n) ≥ 4 + r(4, ⌈(n - 4) / 2⌉)</code>
                   </li>
                   <li>
                     <strong>Large Grids (m ≥ 5):</strong> Evaluated as the stricter of the linear square-grid limit or its largest 4&times;n subgrid.<br />
-                    <code style={{ background: 'var(--bg-card)', padding: '2px 6px', borderRadius: '4px' }}>r(m,n) ≥ max( ⌈(5/3)m - (25/9)⌉, r(4,n) )</code>
+                    <code className="docs-math-code">r(m,n) ≥ max( ⌈(5/3)m - (25/9)⌉, r(4,n) )</code>
                   </li>
                 </ul>
               </div>
@@ -136,8 +137,8 @@ const DocsPage: React.FC = () => {
         </ul>
       </div>
 
-      <div style={{ marginBottom: '40px' }}>
-        <h2 style={{ borderBottom: '2px solid var(--bg-inset)', paddingBottom: '12px' }}>Real-World Applications</h2>
+      <div className="docs-section">
+        <h2 className="docs-heading-2">Real-World Applications</h2>
         <p>
           The Very Large-Scale Integration (VLSI) circuit layout originally motivated the study of k-ranking. A VLSI circuit consists of a large number of transistors and wires contained within a multi-layer chip. If we treat transistors as vertices and wires as edges in a graph, many graph properties map directly to circuit features.
         </p>
@@ -149,9 +150,9 @@ const DocsPage: React.FC = () => {
         </p>
       </div>
 
-      <div style={{ marginTop: '64px', borderTop: '1px solid var(--border-subtle)', paddingTop: '32px' }}>
-        <h3 style={{ color: 'var(--text-muted)' }}>References & Further Reading</h3>
-        <ul style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '20px' }}>
+      <div className="docs-references">
+        <h3 className="docs-references-title">References & Further Reading</h3>
+        <ul className="docs-references-list">
           <li>
             <strong>[1]</strong> Chen, Sitan. <em>"On the Rank Number of Grid Graphs."</em> arXiv:1208.1814v3 [math.CO] (2013).
           </li>
