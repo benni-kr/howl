@@ -38,7 +38,7 @@ def evaluate_fragment_rank(frag, m, n, net):
     if db_res and (db_res['is_optimal'] or db_res['best_rank'] <= 3):
         return float(db_res['best_rank'])
         
-    frag_obs = np.zeros((m, n), dtype=np.int8)
+    frag_obs = np.zeros((10, 10), dtype=np.int8)
     for x, y in frag.vertices:
         frag_obs[x, y] = 1
         
@@ -87,7 +87,13 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
     with torch.no_grad():
         state_tensor = torch.tensor(root_state, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
         p_logits, v = net(state_tensor)
-        p_probs = F.softmax(p_logits.flatten(), dim=0).numpy()
+        
+        # Action Masking
+        mask = (state_tensor == 0).flatten()
+        p_logits_flat = p_logits.flatten()
+        p_logits_flat[mask] = -1e9
+        p_probs = F.softmax(p_logits_flat, dim=0).numpy()
+        
         root.value_sum = v.item()
         root.visit_count = 1
         root.is_expanded = True
@@ -151,7 +157,13 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                 with torch.no_grad():
                     state_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
                     p_logits, v = net(state_tensor)
-                    p_probs = F.softmax(p_logits.flatten(), dim=0).numpy()
+                    
+                    # Action Masking
+                    mask = (state_tensor == 0).flatten()
+                    p_logits_flat = p_logits.flatten()
+                    p_logits_flat[mask] = -1e9
+                    p_probs = F.softmax(p_logits_flat, dim=0).numpy()
+                    
                     nn_val = v.item()
                 
                 if db_res and not db_res['is_optimal']:
@@ -200,7 +212,7 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
         if total_visits == 0:
             return [], env.cuts_made
             
-        pi = np.zeros(env.m * env.n)
+        pi = np.zeros(obs.size)
         for a, visits in action_visits.items():
             pi[a] = visits / total_visits
             

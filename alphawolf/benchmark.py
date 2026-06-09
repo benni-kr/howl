@@ -14,17 +14,14 @@ def create_gauntlet():
     return [
         {"m": 4, "n": 4, "missing": []},
         
-        # NOTE: AlphaWolfNet currently uses Linear layers (e.g., nn.Linear(2 * m * n, m * n))
-        # which hardcodes the input dimensions. A checkpoint trained on 4x4 CANNOT be loaded 
-        # and evaluated on 5x5, 6x6, or 4x5 grids without throwing a Tensor Size Mismatch error.
-        # To evaluate these boards, we must refactor AlphaWolfNet to be Fully Convolutional 
-        # or implement 0-padding to a maximum board size.
-        # 
-        # {"m": 5, "n": 5, "missing": []},
-        # {"m": 6, "n": 6, "missing": []},
-        # {"m": 4, "n": 5, "missing": [(0, 0), (1, 1), (3, 4)]},
-        # {"m": 4, "n": 5, "missing": [(1, 2), (2, 2)]},
-        # {"m": 4, "n": 5, "missing": [(0, 4), (1, 3), (2, 2), (3, 1)]},
+        # Fully padded environments (supported up to 10x10)
+        {"m": 5, "n": 5, "missing": []},
+        {"m": 6, "n": 6, "missing": []},
+        
+        # Test 4x5 asymmetric layouts
+        {"m": 4, "n": 5, "missing": [(0, 0), (1, 1), (3, 4)]},
+        {"m": 4, "n": 5, "missing": [(1, 2), (2, 2)]},
+        {"m": 4, "n": 5, "missing": [(0, 4), (1, 3), (2, 2), (3, 1)]},
         
         # Testing asymmetric topologies on the supported 4x4 grid size for now:
         {"m": 4, "n": 4, "missing": [(0, 0), (1, 1), (3, 3)]},
@@ -41,7 +38,7 @@ def evaluate_model(model_path, gauntlet_boards, num_simulations=100):
     start_time = time.time()
     
     # Instantiate the network. Currently locked to 4x4 due to Linear layer dimensions.
-    net = AlphaWolfNet(4, 4)
+    net = AlphaWolfNet() # Defaults to 10x10 zero-padded format
     net.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
     net.eval()
 
@@ -55,7 +52,7 @@ def evaluate_model(model_path, gauntlet_boards, num_simulations=100):
         for (x, y) in missing:
             obs[x, y] = 0
             if (x, y) in env.graph.vertices:
-                env.graph._remove_vertex((x, y))
+                env.graph.apply_cut_set([(x, y)])
                 
         # Run deterministic evaluation (add_exploration_noise=False)
         traj, rank = play_episode(net, env, obs, num_simulations=num_simulations, add_exploration_noise=False)

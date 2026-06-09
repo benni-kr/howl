@@ -19,10 +19,11 @@ class ResBlock(nn.Module):
         return out
 
 class AlphaWolfNet(nn.Module):
-    def __init__(self, m, n, hidden_channels=64, num_res_blocks=3):
+    def __init__(self, m=None, n=None, hidden_channels=64, num_res_blocks=3):
         super().__init__()
-        self.m = m
-        self.n = n
+        # Force 10x10 zero-padded architecture
+        self.m = 10
+        self.n = 10
         
         # Input: 1 channel (the 2D grid)
         self.conv_in = nn.Conv2d(1, hidden_channels, kernel_size=3, padding=1)
@@ -32,15 +33,15 @@ class AlphaWolfNet(nn.Module):
             ResBlock(hidden_channels) for _ in range(num_res_blocks)
         ])
         
-        # Policy Head (Outputs probabilities over m*n)
+        # Policy Head (Outputs probabilities over MAX_ROWS * MAX_COLS)
         self.policy_conv = nn.Conv2d(hidden_channels, 2, kernel_size=1)
         self.policy_bn = nn.BatchNorm2d(2)
-        self.policy_fc = nn.Linear(2 * m * n, m * n)
+        self.policy_fc = nn.Linear(2 * self.m * self.n, self.m * self.n)
         
         # Value Head (Outputs a scalar expected rank)
         self.value_conv = nn.Conv2d(hidden_channels, 1, kernel_size=1)
         self.value_bn = nn.BatchNorm2d(1)
-        self.value_fc1 = nn.Linear(1 * m * n, hidden_channels)
+        self.value_fc1 = nn.Linear(1 * self.m * self.n, hidden_channels)
         self.value_fc2 = nn.Linear(hidden_channels, 1)
 
     def forward(self, x):
