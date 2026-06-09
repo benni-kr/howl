@@ -130,7 +130,11 @@ def mcts_search(root_state, net, env, num_simulations=100):
                 
                 if db_res and not db_res['is_optimal']:
                     # Heuristic Ceiling
-                    nn_val = min(nn_val, db_res['best_rank'])
+                    nn_val = min(nn_val, float(db_res['best_rank']))
+                elif not db_res:
+                    # Rank 4 Lower Bound Clamp
+                    # If it's a database miss, it cannot be rank 1, 2, or 3.
+                    nn_val = max(nn_val, 4.0)
                     
                 value = nn_val + env.cuts_made
                 
@@ -251,18 +255,19 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
             
         print(f"Epoch {epoch+1}/{epochs} | P_Loss: {total_p_loss/len(loader):.4f} | V_Loss: {total_v_loss/len(loader):.4f}")
 
-def alpha_zero_loop(m, n, num_generations=5):
+def alpha_zero_loop(m, n, num_generations=5, num_simulations=100):
     net = AlphaWolfNet(m, n)
     optimizer = optim.Adam(net.parameters(), lr=1e-3)
     
     os.makedirs("models/checkpoints", exist_ok=True)
     print(f"Initialized AlphaWolf V1 [{m}x{n}] - Strict Single-Threaded Mode")
+    print(f"MCTS Simulations per move: {num_simulations}")
     
     for gen in range(1, num_generations + 1):
         print(f"\n--- Generation {gen} ---")
         print("Starting Self-Play Phase...")
         # Play games to generate data
-        buffer = self_play(net, m, n, num_games=5, num_simulations=50)
+        buffer = self_play(net, m, n, num_games=5, num_simulations=num_simulations)
         
         print(f"Training Phase ({len(buffer)} samples)...")
         train_network(net, buffer, optimizer, epochs=5)
@@ -272,4 +277,4 @@ def alpha_zero_loop(m, n, num_generations=5):
         print(f"Saved Checkpoint: {ckpt_path}")
 
 if __name__ == "__main__":
-    alpha_zero_loop(4, 4, num_generations=2)
+    alpha_zero_loop(4, 4, num_generations=2, num_simulations=100)
