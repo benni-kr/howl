@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import "./GamePage.css";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "../state/store";
 import { store } from "../state/store";

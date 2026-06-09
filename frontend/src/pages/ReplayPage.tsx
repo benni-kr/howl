@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+import "./ReplayPage.css";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchTopScore } from "../api/api";

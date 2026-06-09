@@ -1,9 +1,4 @@
-import type { Graph, Vertex, CutHistoryAction } from "../state/gameSlice";
-
-type ApiGraph = {
-  vertices: number[][];
-  edges: number[][][];
-};
+import type { Graph, CutHistoryAction } from "../state/gameSlice";
 
 
 

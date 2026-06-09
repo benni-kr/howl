@@ -1,4 +1,5 @@
 import React from 'react';
+import './Sidebar.css';
 import { Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../../state/store';
