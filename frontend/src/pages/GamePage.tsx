@@ -8,20 +8,18 @@ import PixiVisualizer, {
 } from "../components/game-page/PixiVisualizer";
 import VictoryModal from "../components/game-page/VictoryModal";
 import { fetchTopScore, submitScore } from "../api/api";
-import { executeCutLocal } from "../utils/graphUtils";
+
 import { isSubgraphOf } from "../utils/subgraphUtils";
 import { useShapeCache } from "../hooks/useShapeCache";
+import { useCutExecution } from "../hooks/useCutExecution";
+import { RankPanel } from "../components/game-page/RankPanel";
+import { BatchActionBar } from "../components/game-page/BatchActionBar";
 import {
-  applyCutResult,
-  removeSolvedSubgraphs,
   selectIsGameWon,
   confirmGraphSelection,
   undoCut,
   redoCut,
-  pullFromBankIfNeeded,
   autoSolveGraph,
-  autoSolveMultipleGraphs,
-  ignoreMultipleGraphs,
   getLocalGraphFingerprint,
 } from "../state/gameSlice";
 
@@ -150,8 +148,7 @@ const GamePage: React.FC = () => {
     }
   }, [isGameWon, activeGraph, recentCutGraphs, bankedGraphs, gridM, gridN, maxRank, solverName, cutsApplied]);
 
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { isExecuting, errorMessage, handleCut: execCut } = useCutExecution();
   const [splitView, setSplitView] = useState(() => recentCutGraphs.length > 0);
   const [selectedGraphIndex, setSelectedGraphIndex] = useState<number | null>(null);
   const [isNewGameModalOpen, setIsNewGameModalOpen] = useState(false);
@@ -212,70 +209,7 @@ const GamePage: React.FC = () => {
   }, [recentCutGraphs.length]);
 
   const handleCut = async () => {
-    if (!activeGraph || pendingCutSet.length === 0) return;
-
-    setIsExecuting(true);
-    setErrorMessage(null);
-    try {
-      const subgraphs = executeCutLocal(activeGraph, pendingCutSet);
-
-      // ============================================================================
-      // ANIMATION ORCHESTRATION PHASES
-      // The cut execution is split into 3 distinct visual phases so that explosions
-      // and layout shifts don't overlap, creating a rhythmic, punchy feel.
-      // During Phases 1 and 2, `isExecuting` is true, which strictly freezes the
-      // PixiVisualizer layout and camera from shifting.
-      // ============================================================================
-
-      // PHASE 1: Cut Explosion
-      // Apply the cut in Redux. The selected nodes are removed from the graph, causing 
-      // them to visually puff up and explode (duration: 0.3s total in PixiVisualizer).
-      setPendingCutSet([]);
-      dispatch(applyCutResult({ subgraphs, cutSet: pendingCutSet }));
-
-      setTimeout(() => {
-        // PHASE 2: 1x1 Subgraph Explosion
-        // After the cut nodes have exploded, we look for resulting 1x1 trivial subgraphs.
-        const stateBeforeRemove = store.getState().game;
-        const has1x1s = stateBeforeRemove.recentCutGraphs.some(g => g.vertices.length <= 1) || (stateBeforeRemove.activeGraph && stateBeforeRemove.activeGraph.vertices.length <= 1);
-        const willReplaceFromBank = (stateBeforeRemove.activeGraph && stateBeforeRemove.activeGraph.vertices.length <= 1) && stateBeforeRemove.recentCutGraphs.length === 0 && stateBeforeRemove.bankedGraphs.length > 0;
-
-        // This removes the 1x1 subgraphs from Redux, causing them to explode (duration 0.3s).
-        // Note: It purposely DOES NOT pull the replacement banked graph yet so the board clears completely.
-        dispatch(removeSolvedSubgraphs());
-
-        const afterPhase2 = () => {
-          // PHASE 3: Layout Shift & Bank Replacement
-          // Pull from the bank if the board is empty, then unlock the layout.
-          dispatch(pullFromBankIfNeeded());
-
-          // Check if we still have multiple non-trivial graphs after removing solved ones
-          // If so, enter split view so the user can pick which to keep active
-          const stateAfter = store.getState().game;
-          if (stateAfter.recentCutGraphs.length > 0) {
-            setSplitView(true);
-            setSelectedGraphIndex(null);
-          }
-
-          setResetToken((value) => value + 1);
-          setIsExecuting(false);
-        };
-
-        if (has1x1s) {
-          // Standard delay is 600ms. If we are pulling a fresh graph from the bank, 
-          // we double the delay to 1200ms to let the empty board "breathe" before the replacement arrives.
-          const delay = willReplaceFromBank ? 1200 : 600;
-          setTimeout(afterPhase2, delay);
-        } else {
-          // Optimization: Skip the Phase 2 delay entirely if there are no 1x1 blocks to explode.
-          afterPhase2();
-        }
-      }, 600); // 600ms delay gives Phase 1 (Cut Explosion) time to clear before Phase 2 begins.
-    } catch (err: any) {
-      console.error(err);
-      setErrorMessage(err.message || "An unexpected error occurred.");
-      setIsExecuting(false);
-    }
+    execCut(activeGraph, pendingCutSet, setPendingCutSet, setSplitView, setSelectedGraphIndex, setResetToken);
   };
 
   const handleSelectGraph = useCallback((index: number) => {
@@ -347,43 +281,12 @@ const GamePage: React.FC = () => {
           />
         )}
 
-        {gridSize && gridSize.m > 0 && (
-          <div
-            className="rank-panel"
-            style={{
-              display: "flex",
-              gap: "16px",
-              background: "var(--bg-card)",
-              padding: "8px 24px",
-              borderRadius: "16px",
-              border: "1px solid var(--border-subtle)",
-              boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-              alignItems: "center",
-              minWidth: "280px",
-              marginBottom: "24px",
-              
-              zIndex: 10
-            }}
-          >
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}>
-              <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", textAlign: "center" }}>
-                Current Rank
-              </span>
-              <span style={{ fontSize: "24px", fontWeight: 800, color: rankColorHex, lineHeight: 1 }}>
-                {currentRank}
-              </span>
-            </div>
-            <div style={{ width: "1px", height: "32px", background: "var(--border-subtle)" }}></div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}>
-              <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", textAlign: "center" }}>
-                Max Rank
-              </span>
-              <span style={{ fontSize: "24px", fontWeight: 800, color: "var(--text-main)", lineHeight: 1 }}>
-                {maxRank}
-              </span>
-            </div>
-          </div>
-        )}
+        <RankPanel 
+          gridSize={gridSize} 
+          currentRank={currentRank} 
+          maxRank={maxRank} 
+          rankColorHex={rankColorHex} 
+        />
 
         {/* Floating single-piece auto-solve button was removed in favor of Magic Wands inside Pixi */}
 
@@ -424,200 +327,19 @@ const GamePage: React.FC = () => {
             }}
             hasCutsApplied={cutsApplied.length > 0}
           />
-          {(() => {
-            const solvableTargets: { location: 'active' | 'recent', index?: number, optimalRank: number }[] = [];
-            const duplicateTargets: { location: 'active' | 'recent' | 'banked', index?: number }[] = [];
-            let maxResultingRank = maxRank;
-            let allStrictlyOptimal = true;
-
-            const seenHashes = new Set<string>();
-
-            // 1. Process active graph first (highest priority to KEEP)
-            if (activeGraph) {
-              const fp = getLocalGraphFingerprint(activeGraph);
-              const opt = optimalRanks.get(fp);
-              const hashToUse = opt?.hash || fp;
-              
-              seenHashes.add(hashToUse);
-
-              if (opt && cutsApplied.length > 0) {
-                // If it has an optimal rank from a previous discovery, it's solvable
-                if (opt.best_rank !== 999999) {
-                  solvableTargets.push({ location: 'active', optimalRank: opt.best_rank });
-                  maxResultingRank = Math.max(maxResultingRank, activeGraph.baseRank + opt.best_rank);
-                  if (!opt.is_optimal) allStrictlyOptimal = false;
-                }
-              }
-            }
-
-            // 2. Process recent cut graphs (second priority to KEEP)
-            recentCutGraphs.forEach((graph, index) => {
-              const fp = getLocalGraphFingerprint(graph);
-              const opt = optimalRanks.get(fp);
-              const hashToUse = opt?.hash || fp;
-
-              if (seenHashes.has(hashToUse)) {
-                duplicateTargets.push({ location: 'recent', index });
-              } else {
-                seenHashes.add(hashToUse);
-              }
-
-              if (opt && cutsApplied.length > 0) {
-                if (opt.best_rank !== 999999) {
-                  solvableTargets.push({ location: 'recent', index, optimalRank: opt.best_rank });
-                  maxResultingRank = Math.max(maxResultingRank, graph.baseRank + opt.best_rank);
-                  if (!opt.is_optimal) allStrictlyOptimal = false;
-                }
-              }
-            });
-
-            // 3. Process banked graphs (highest priority to DELETE)
-            bankedGraphs.forEach((graph, index) => {
-              const fp = getLocalGraphFingerprint(graph);
-              const opt = optimalRanks.get(fp);
-              const hashToUse = opt?.hash || fp;
-
-              if (seenHashes.has(hashToUse)) {
-                duplicateTargets.push({ location: 'banked', index });
-              } else {
-                seenHashes.add(hashToUse);
-              }
-            });
-
-            // 4. Subgraph detection: check if any active/recent graph fits inside another
-            const subgraphTargets: { location: 'active' | 'recent', index?: number }[] = [];
-            if (cutsApplied.length > 0) {
-              // Collect all candidate graphs with their location info
-              const candidates: { graph: typeof activeGraph, location: 'active' | 'recent', index?: number }[] = [];
-              if (activeGraph) candidates.push({ graph: activeGraph, location: 'active' });
-              recentCutGraphs.forEach((g, i) => candidates.push({ graph: g, location: 'recent', index: i }));
-
-              // Skip graphs already marked as duplicates when checking as 'large'
-              const duplicateKeys = new Set(duplicateTargets.map(d => `${d.location}:${d.index ?? 'active'}`));
-
-              for (let i = 0; i < candidates.length; i++) {
-                const small = candidates[i];
-                // We do NOT skip `small` if it's a duplicate, because we want it to be detected
-                // as a subgraph so we can batch delete it alongside its identical copies!
-
-                for (let j = 0; j < candidates.length; j++) {
-                  if (i === j) continue;
-                  const large = candidates[j];
-                  const largeKey = `${large.location}:${large.index ?? 'active'}`;
-                  if (duplicateKeys.has(largeKey)) continue;
-
-                  if (small.graph!.vertices.length < large.graph!.vertices.length &&
-                      isSubgraphOf(small.graph!.vertices, large.graph!.vertices)) {
-                    subgraphTargets.push({ location: small.location, index: small.index });
-                    break; // This small graph is a subgraph of at least one larger graph
-                  }
-                }
-              }
-            }
-
-            const icon = allStrictlyOptimal ? '🧮' : '🪄';
-
-            return (
-              (solvableTargets.length > 1 || duplicateTargets.length > 0 || subgraphTargets.length > 0) && !isExecuting && (
-                <div style={{ position: "absolute", bottom: "-12px", display: "flex", gap: "12px", justifyContent: "center", width: "100%", pointerEvents: "none" }}>
-                  {duplicateTargets.length > 0 && (
-                    <button
-                      className="btn primary"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        padding: "8px 16px",
-                        borderRadius: "20px",
-                        background: rankColorHex,
-                        color: "#1e293b",
-                        fontWeight: "bold",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-                        border: "none",
-                        pointerEvents: "auto",
-                      }}
-                      onClick={() => {
-                        dispatch(ignoreMultipleGraphs({ targets: duplicateTargets }));
-                        const stateAfter = store.getState().game;
-                        if (stateAfter.recentCutGraphs.length > 0) {
-                          setSplitView(true);
-                          setSelectedGraphIndex(null);
-                        } else {
-                          setSplitView(false);
-                        }
-                        setResetToken((v) => v + 1);
-                      }}
-                    >
-                      🪞 Delete Duplicates
-                    </button>
-                  )}
-                  {subgraphTargets.length > 0 && (
-                    <button
-                      className="btn primary"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        padding: "8px 16px",
-                        borderRadius: "20px",
-                        background: rankColorHex,
-                        color: "#1e293b",
-                        fontWeight: "bold",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-                        border: "none",
-                        pointerEvents: "auto",
-                      }}
-                      onClick={() => {
-                        dispatch(ignoreMultipleGraphs({ targets: subgraphTargets, actionType: 'subgraph' }));
-                        const stateAfter = store.getState().game;
-                        if (stateAfter.recentCutGraphs.length > 0) {
-                          setSplitView(true);
-                          setSelectedGraphIndex(null);
-                        } else {
-                          setSplitView(false);
-                        }
-                        setResetToken((v) => v + 1);
-                      }}
-                    >
-                      ⊇ Delete Subgraphs
-                    </button>
-                  )}
-                  {solvableTargets.length > 1 && (
-                    <button
-                      className="btn primary"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        padding: "8px 16px",
-                        borderRadius: "20px",
-                        background: rankColorHex,
-                        color: "#1e293b",
-                        fontWeight: "bold",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-                        border: "none",
-                        pointerEvents: "auto",
-                      }}
-                      onClick={() => {
-                        dispatch(autoSolveMultipleGraphs({ targets: solvableTargets }));
-                        // After batch vaporize, check if unsolved subgraphs remain
-                        const stateAfterSolve = store.getState().game;
-                        if (stateAfterSolve.recentCutGraphs.length > 0) {
-                          setSplitView(true);
-                          setSelectedGraphIndex(null);
-                        } else {
-                          setSplitView(false);
-                        }
-                        setResetToken((v) => v + 1);
-                      }}
-                    >
-                      {icon} Auto-Solve All (Max Rank → {maxResultingRank})
-                    </button>
-                  )}
-                </div>
-              )
-            );
-          })()}
+          <BatchActionBar
+            activeGraph={activeGraph}
+            recentCutGraphs={recentCutGraphs}
+            bankedGraphs={bankedGraphs}
+            cutsApplied={cutsApplied}
+            maxRank={maxRank}
+            optimalRanks={optimalRanks}
+            isExecuting={isExecuting}
+            rankColorHex={rankColorHex}
+            setSplitView={setSplitView}
+            setSelectedGraphIndex={setSelectedGraphIndex}
+            setResetToken={setResetToken}
+          />
         </div>
 
         {errorMessage && <div className="error-toast">{errorMessage}</div>}
