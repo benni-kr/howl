@@ -305,6 +305,10 @@ def alpha_zero_loop(m, n, num_generations=5, num_simulations=100):
         ckpt_path = f"models/checkpoints/alphawolf_gen_{gen}.pt"
         torch.save(net.state_dict(), ckpt_path)
         print(f"Saved Checkpoint: {ckpt_path}")
+        
+        # Benchmark Suite Promotion Check
+        from benchmark import promote_model
+        promote_model(ckpt_path)
 
 if __name__ == "__main__":
     alpha_zero_loop(4, 4, num_generations=2, num_simulations=100)
