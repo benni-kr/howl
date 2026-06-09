@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, field_validator
 
+Coordinate = Tuple[int, int]
+Edge = Tuple[Coordinate, Coordinate]
+
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
 class SolutionCreate(BaseModel):
     """Payload for POST /api/submit_solution.
@@ -97,21 +105,3 @@ class CheckShapesResponse(BaseModel):
     """Response for POST /api/check_shapes."""
     results: List[ShapeResult]
 
-
-class MatrixCellResponse(BaseModel):
-    m: int
-    n: int
-    min_rank: int
-    solver_name: str
-    is_optimal: bool
-
-class TopSolverResponse(BaseModel):
-    solver_name: str
-    first_places: int
-    total_grids: int
-
-class GridLeaderboardEntry(BaseModel):
-    rank_position: int
-    solver_name: str
-    achieved_rank: int
-    created_at: Any # datetime

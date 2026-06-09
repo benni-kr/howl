@@ -49,6 +49,7 @@ const SettingsPage: React.FC = () => {
                 className={`theme-card ${colorId === theme.id ? "active" : ""}`}
                 onClick={() => dispatch(setColorTheme(theme.id))}
                 style={{
+                  '--hover-color': hexA,
                   padding: "12px",
                   borderRadius: "12px",
                   border: colorId === theme.id ? `2px solid ${hexA}` : "2px solid var(--border-subtle)",
@@ -58,7 +59,7 @@ const SettingsPage: React.FC = () => {
                   flexDirection: "column",
                   alignItems: "center",
                   gap: "8px"
-                }}
+                } as React.CSSProperties}
               >
                 <div style={{ display: "flex", width: "40px", height: "40px", borderRadius: "8px", overflow: "hidden" }}>
                   <div style={{ flex: 1, background: hexA }} />

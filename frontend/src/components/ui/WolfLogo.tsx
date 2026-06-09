@@ -1,5 +1,5 @@
 import React from 'react';
-import wolfLogoUrl from '../assets/wolf-logo.svg';
+import wolfLogoUrl from '../../assets/wolf-logo.svg';
 
 interface WolfLogoProps {
   size?: number;

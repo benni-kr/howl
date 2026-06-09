@@ -1,9 +1,9 @@
-# 🐺 HOWL: The Mathematical Foundation
+# HOWL: The Mathematical Foundation
 
 ## Overview
 HOWL (Hyper Optimizing Wolf's Logic) is a gamified, crowdsourced scientific tool designed to solve an open mathematical problem in graph theory: finding the **minimum vertex $k$-ranking** (also known as the rank number) for $m \times n$ grid graphs. 
 
-While the game presents this as a spatial puzzle of cutting and shrinking grids, the underlying engine is rigorously calculating graph separators to bound the rank number. This document explains the formal mathematics behind the game.
+While the game presents this as a spatial puzzle of cutting and shrinking grids, the underlying engine is rigorously calculating graph separators to bound the rank number. This document explains the formal mathematics behind the game, including treedepth decompositions and theoretical lower bounds.
 
 ---
 
@@ -33,11 +33,11 @@ As the grid size increases, the search space for valid rankings explodes combina
 
 ---
 
-## The "Top-Down" Approach (HOWL's Mechanics)
+## The "Top-Down" Approach & Treedepth
 
-Instead of trying to label the graph from the bottom up ($1, 2, 3\dots$), HOWL approaches the problem top-down using **Graph Separators** (the "Cuts").
+Instead of trying to label the graph from the bottom up ($1, 2, 3\dots$), HOWL approaches the problem top-down using **Graph Separators** (the "Cuts"). This top-down process mathematically constructs a **Treedepth Decomposition** (or Elimination Tree).
 
-### The Separator Theorem for Rankings
+### The Separator Theorem
 If you remove a set of vertices $S$ (the cut set) from a graph $G$, the graph fragments into a set of disconnected subgraphs $G_1, G_2, \dots, G_p$. 
 
 Because there are no edges connecting these subgraphs, they can share labels without violating the ranking condition, *provided* that all vertices in the cut set $S$ are assigned the highest unique labels.
@@ -58,14 +58,26 @@ Where:
 
 ---
 
-## Why Crowdsourcing?
+## Gameplay Mechanics: Batch Actions & Shortcuts
 
-Human players are exceptionally good at recognizing 2D spatial patterns, symmetries, and structural weaknesses in a grid—things that algorithmic heuristics often struggle to optimize without massive computational overhead. 
+Human players are exceptionally good at recognizing 2D spatial patterns and symmetries. HOWL introduces automated "Batch Actions" to speed up gameplay by leveraging graph theory shortcuts:
 
-By wrapping this graph theory problem in a satisfying, tactile puzzle game, HOWL captures the exact sequences of cuts (graph separators) that lead to new, scientifically valuable upper bounds for the rank numbers of grid graphs. These sequences are recorded in the database and contribute directly to ongoing mathematical research.
+### 1. The Subgraph Dictionary (Magic Wand Vaporization)
+Because graphs frequently break down into the same common shapes (e.g., $2 \times 2$ squares, L-shapes), HOWL maintains a crowdsourced **Subgraph Dictionary**. Every shape solved by any player is hashed (invariant of rotation and reflection) and cached. If a player encounters a known shape, they can "vaporize" it. Mathematically, this simply short-circuits the recursive $\max(\chi_r(G_i))$ calculation by substituting the known optimal upper bound from the database.
 
-### Caching Known Bounds (The Magic Wand)
+### 2. Isomorphic Duplicates (Mirror Vaporization)
+If a cut fragments a graph into two identical subgraphs, the player only needs to solve one of them. Because disconnected components can share labels perfectly, solving one subgraph proves the rank bound for both.
 
-Because graphs frequently break down into the same common shapes (e.g., $2 \times 2$ squares, L-shapes, crosses), HOWL features a **Subgraph Dictionary**. Every time any player completes a grid, the optimal rank found for every intermediate shape is hashed (rotation and reflection invariant) and saved.
+### 3. Subgraph Containment (Subset Vaporization)
+If a cut creates two subgraphs $A$ and $B$, and shape $B$ fits entirely inside shape $A$ (under rotation or reflection), then mathematically, the rank of $B$ can never exceed the rank of $A$. Thus, the player only needs to solve the larger bounding shape $A$, and shape $B$ can be vaporized for free.
 
-When a player encounters a shape that the community has already solved, they can "vaporize" it using the **Magic Wand**. Mathematically, this simply short-circuits the recursive $\max(\chi_r(G_i))$ calculation by substituting the known optimal upper bound for that subgraph, saving the player from having to manually cut it again.
+---
+
+## Theoretical Lower Bounds & "The Abacus"
+
+While players discover **Upper Bounds** by making cuts, mathematicians have discovered rigid **Lower Bounds** formulas for standard rectangular grids. These bounds are used in the leaderboard matrix, to show how far off the current best scores are from the theoretical minimum, or the other way around: Where the lower bound may not be optimal!
+
+Assume $m \le n$:
+* **Paths ($m=1$):** $r(1,n) = \lfloor\log_2(n)\rfloor + 1$
+* **Ladders ($m=2$):** $r(2,n) = 2 + r(2, \lceil(n - 2) / 2\rceil)$
+* **Large Grids ($m \ge 5$):** $r(m,n) \ge \max( \lceil\frac{5}{3}m - \frac{25}{9}\rceil, r(4,n) )$

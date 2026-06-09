@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { WolfLogo } from "./WolfLogo";
+import { WolfLogo } from "../ui/WolfLogo";
 
 type TopNavBarProps = {
   alias: string | null;

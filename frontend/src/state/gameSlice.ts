@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { buildGridGraph } from "../utils/graphUtils";
 
 export interface Vertex {
   x: number;
@@ -55,31 +56,6 @@ export interface GameState {
   cutsApplied: CutHistoryAction[];
 }
 
-const buildGridGraph = (m: number, n: number): Graph => {
-  const vertices: Vertex[] = [];
-  const edges: Edge[] = [];
-
-  for (let x = 0; x < m; x += 1) {
-    for (let y = 0; y < n; y += 1) {
-      vertices.push({ x, y });
-    }
-  }
-
-  for (let x = 0; x < m; x += 1) {
-    for (let y = 0; y < n; y += 1) {
-      const current = { x, y };
-      if (x + 1 < m) {
-        edges.push({ from: current, to: { x: x + 1, y } });
-      }
-      if (y + 1 < n) {
-        edges.push({ from: current, to: { x, y: y + 1 } });
-      }
-    }
-  }
-
-  return { vertices, edges, baseRank: 0 };
-};
-
 /**
  * Maximum number of undo history entries to retain.
  * Oldest entries are dropped when this limit is exceeded.
@@ -121,6 +97,33 @@ const pushHistory = (state: GameState) => {
     state.history.splice(0, state.history.length - MAX_HISTORY_LENGTH);
   }
   state.futureHistory = [];
+};
+
+/** Shared helper to pull the next available graph into the active slot. */
+const pullNextGraph = (state: GameState) => {
+  if (!state.activeGraph) {
+    if (state.recentCutGraphs.length > 0) {
+      state.activeGraph = state.recentCutGraphs.shift() || null;
+    } else if (state.bankedGraphs.length > 0) {
+      state.activeGraph = state.bankedGraphs.pop() || null;
+    }
+  }
+};
+
+/** Shared helper to safely extract a graph from its array/slot. */
+const removeGraphFromLocation = (state: GameState, location: 'active' | 'banked' | 'recent', index?: number): Graph | null => {
+  let targetGraph: Graph | null = null;
+  if (location === 'active' && state.activeGraph) {
+    targetGraph = state.activeGraph;
+    state.activeGraph = null;
+  } else if (location === 'banked' && index !== undefined) {
+    targetGraph = state.bankedGraphs[index];
+    state.bankedGraphs.splice(index, 1);
+  } else if (location === 'recent' && index !== undefined) {
+    targetGraph = state.recentCutGraphs[index];
+    state.recentCutGraphs.splice(index, 1);
+  }
+  return targetGraph;
 };
 
 const initialState: GameState = {
@@ -171,11 +174,7 @@ const gameSlice = createSlice({
         return;
       }
 
-      state.history.push(snapshotState(state));
-      if (state.history.length > MAX_HISTORY_LENGTH) {
-        state.history.splice(0, state.history.length - MAX_HISTORY_LENGTH);
-      }
-      state.futureHistory = []; // Clear redo stack on new action
+      pushHistory(state);
       
       state.cutsApplied.push({ type: "cut", vertices: cutSet });
 
@@ -325,102 +324,10 @@ const gameSlice = createSlice({
      * If `activeGraph` is null, pull the next graph to work on.
      *
      * Priority: `recentCutGraphs` (shift) → `bankedGraphs` (pop).
-     * Called after `removeSolvedSubgraphs` or `autoSolveGraph`.
+     * Called after `removeSolvedSubgraphs` or `autoSolveMultipleGraphs`.
      */
     pullFromBankIfNeeded(state) {
-      if (!state.activeGraph) {
-        if (state.recentCutGraphs.length > 0) {
-          state.activeGraph = state.recentCutGraphs.shift() || null;
-        } else if (state.bankedGraphs.length > 0) {
-          state.activeGraph = state.bankedGraphs.pop() || null;
-        }
-      }
-    },
-    /**
-     * Vaporize (auto-solve) a graph using a known optimal rank.
-     *
-     * - Snapshots state for undo.
-     * - Removes the target graph from its location (active/banked/recent).
-     * - Updates `maxRank = max(maxRank, targetGraph.baseRank + optimalRank)`.
-     * - Records a `vaporize` action in `cutsApplied` with the full vertex
-     *   list (needed by the backend replay engine to identify the shape).
-     * - Automatically pulls the next graph if `activeGraph` became null.
-     *
-     * The `optimalRank` comes from the SubgraphDictionary via `checkShapes`.
-     */
-    autoSolveGraph(state, action: PayloadAction<{ location: 'active' | 'banked' | 'recent', index?: number, optimalRank: number }>) {
-      const { location, index, optimalRank } = action.payload;
-      
-      pushHistory(state);
-
-      let targetGraph: Graph | null = null;
-
-      if (location === 'active') {
-        targetGraph = state.activeGraph;
-        state.activeGraph = null;
-      } else if (location === 'banked' && index !== undefined) {
-        targetGraph = state.bankedGraphs[index];
-        state.bankedGraphs.splice(index, 1);
-      } else if (location === 'recent' && index !== undefined) {
-        targetGraph = state.recentCutGraphs[index];
-        state.recentCutGraphs.splice(index, 1);
-      }
-
-      if (targetGraph) {
-        state.maxRank = Math.max(state.maxRank, targetGraph.baseRank + optimalRank);
-        state.cutsApplied.push({
-          type: "vaporize",
-          vertices: [...targetGraph.vertices],
-          optimal_rank: optimalRank
-        });
-      }
-
-      if (!state.activeGraph) {
-        if (state.recentCutGraphs.length > 0) {
-          state.activeGraph = state.recentCutGraphs.shift() || null;
-        } else if (state.bankedGraphs.length > 0) {
-          state.activeGraph = state.bankedGraphs.pop() || null;
-        }
-      }
-    },
-    /**
-     * Ignore a graph (for duplicates).
-     *
-     * - Removes the target graph from its location.
-     * - Records an `ignore` action in `cutsApplied` so the backend knows to skip it.
-     */
-    ignoreGraph(state, action: PayloadAction<{ location: 'active' | 'banked' | 'recent', index?: number, actionType?: 'ignore' | 'subgraph' }>) {
-      const { location, index, actionType = 'ignore' } = action.payload;
-      
-      pushHistory(state);
-
-      let targetGraph: Graph | null = null;
-
-      if (location === 'active') {
-        targetGraph = state.activeGraph;
-        state.activeGraph = null;
-      } else if (location === 'banked' && index !== undefined) {
-        targetGraph = state.bankedGraphs[index];
-        state.bankedGraphs.splice(index, 1);
-      } else if (location === 'recent' && index !== undefined) {
-        targetGraph = state.recentCutGraphs[index];
-        state.recentCutGraphs.splice(index, 1);
-      }
-
-      if (targetGraph) {
-        state.cutsApplied.push({
-          type: actionType,
-          vertices: [...targetGraph.vertices]
-        });
-      }
-
-      if (!state.activeGraph) {
-        if (state.recentCutGraphs.length > 0) {
-          state.activeGraph = state.recentCutGraphs.shift() || null;
-        } else if (state.bankedGraphs.length > 0) {
-          state.activeGraph = state.bankedGraphs.pop() || null;
-        }
-      }
+      pullNextGraph(state);
     },
     /**
      * Vaporize multiple graphs simultaneously.
@@ -444,22 +351,9 @@ const gameSlice = createSlice({
       });
 
       for (const target of sortedTargets) {
-        let targetGraph: Graph | null = null;
-        if (target.location === 'active' && state.activeGraph) {
-          targetGraph = state.activeGraph;
-          state.activeGraph = null;
-        } else if (target.location === 'banked' && target.index !== undefined) {
-          targetGraph = state.bankedGraphs[target.index];
-          state.bankedGraphs.splice(target.index, 1);
-        } else if (target.location === 'recent' && target.index !== undefined) {
-          targetGraph = state.recentCutGraphs[target.index];
-          state.recentCutGraphs.splice(target.index, 1);
-        }
+        const targetGraph = removeGraphFromLocation(state, target.location, target.index);
 
         if (targetGraph) {
-          // Note: maxRank is a global high watermark. In batch solve, we actually want 
-          // to make sure it captures the maximum rank achieved across all branches,
-          // but each vaporize technically resolves a separate component.
           state.maxRank = Math.max(state.maxRank, targetGraph.baseRank + target.optimalRank);
           state.cutsApplied.push({
             type: "vaporize",
@@ -469,13 +363,7 @@ const gameSlice = createSlice({
         }
       }
 
-        if (!state.activeGraph) {
-        if (state.recentCutGraphs.length > 0) {
-          state.activeGraph = state.recentCutGraphs.shift() || null;
-        } else if (state.bankedGraphs.length > 0) {
-          state.activeGraph = state.bankedGraphs.pop() || null;
-        }
-      }
+      pullNextGraph(state);
     },
     ignoreMultipleGraphs(state, action: PayloadAction<{ targets: { location: 'active' | 'banked' | 'recent', index?: number }[], actionType?: 'ignore' | 'subgraph' }>) {
       const { targets, actionType = 'ignore' } = action.payload;
@@ -490,17 +378,7 @@ const gameSlice = createSlice({
       });
 
       for (const target of sortedTargets) {
-        let targetGraph: Graph | null = null;
-        if (target.location === 'active' && state.activeGraph) {
-          targetGraph = state.activeGraph;
-          state.activeGraph = null;
-        } else if (target.location === 'banked' && target.index !== undefined) {
-          targetGraph = state.bankedGraphs[target.index];
-          state.bankedGraphs.splice(target.index, 1);
-        } else if (target.location === 'recent' && target.index !== undefined) {
-          targetGraph = state.recentCutGraphs[target.index];
-          state.recentCutGraphs.splice(target.index, 1);
-        }
+        const targetGraph = removeGraphFromLocation(state, target.location, target.index);
 
         if (targetGraph) {
           state.cutsApplied.push({
@@ -510,13 +388,7 @@ const gameSlice = createSlice({
         }
       }
 
-      if (!state.activeGraph) {
-        if (state.recentCutGraphs.length > 0) {
-          state.activeGraph = state.recentCutGraphs.shift() || null;
-        } else if (state.bankedGraphs.length > 0) {
-          state.activeGraph = state.bankedGraphs.pop() || null;
-        }
-      }
+      pullNextGraph(state);
     },
     /**
      * Completely overwrite the game state. Used for forking a replay.
@@ -536,8 +408,6 @@ export const {
   redoCut,
   removeSolvedSubgraphs,
   pullFromBankIfNeeded,
-  autoSolveGraph,
-  ignoreGraph,
   autoSolveMultipleGraphs,
   ignoreMultipleGraphs,
   forkGame,

@@ -1,0 +1,64 @@
+.main-stage {
+  grid-area: main;
+  position: relative;
+  padding: 16px 32px 24px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.stage-shell {
+  padding: 12px;
+  border-radius: 18px;
+  background: transparent;
+  display: flex;
+  justify-content: center;
+  position: relative;
+}
+
+@media (max-width: 768px) {
+  .main-stage {
+    overflow-y: visible;
+    overflow-x: hidden;
+    padding: 16px 8px;
+    justify-content: flex-start;
+    min-height: 0;
+  }
+}
+
+/* Dynamic colored buttons for the Batch Action Bar */
+.dynamic-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  backdrop-filter: blur(8px);
+}
+
+.dynamic-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  filter: brightness(1.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
+.dynamic-btn:active {
+  transform: translateY(0) scale(0.98);
+  filter: brightness(1);
+}
+
+.action-bar {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 0;
+}

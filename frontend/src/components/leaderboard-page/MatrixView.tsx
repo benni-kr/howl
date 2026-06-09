@@ -3,7 +3,7 @@ import { MatrixCellData } from '../../api/api';
 import { useAlias } from '../../hooks/useAlias';
 import * as math from 'mathjs';
 
-export type MatrixMode = 'min_rank' | 'top_solver' | 'perfection_gap' | 'density_linear' | 'log_adjusted_density' | 'improvability' | 'custom_formula';
+export type MatrixMode = 'min_rank' | 'top_solver' | 'perfection_gap' | 'density_linear' | 'log_adjusted_density' | 'rank_jump' | 'custom_formula';
 
 interface MatrixViewProps {
   data: MatrixCellData[];
@@ -163,7 +163,7 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
         bgColor = 'var(--tile-selected)';
         color = '#fff';
       }
-    } else if (mode === 'improvability') {
+    } else if (mode === 'rank_jump') {
       const currentRank = cellData.min_rank;
       
       let diffAbove = Infinity;

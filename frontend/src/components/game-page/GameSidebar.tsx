@@ -1,4 +1,5 @@
 import React from 'react';
+import './GameSidebar.css';
 import { Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../../state/store';
@@ -6,7 +7,7 @@ import { switchActiveGraph } from '../../state/gameSlice';
 import { selectActivePalette } from '../../state/settingsSlice';
 import { MiniGraphPreview } from './MiniGraphPreview';
 import { GameStats } from './GameStats';
-import { WolfLogo } from '../WolfLogo';
+import { WolfLogo } from '../ui/WolfLogo';
 
 interface GameSidebarProps {
   setIsNewGameModalOpen: (open: boolean) => void;
