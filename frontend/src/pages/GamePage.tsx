@@ -22,6 +22,7 @@ import {
   autoSolveMultipleGraphs,
   getLocalGraphFingerprint,
 } from "../state/gameSlice";
+import { useStageSize } from "../hooks/useStageSize";
 
 import type { Vertex, Graph } from "../state/gameSlice";
 import { selectActivePalette } from "../state/settingsSlice";
@@ -31,41 +32,6 @@ import { GameSidebar } from "../components/game-page/GameSidebar";
 import { OnboardingTooltip } from "../components/ui/OnboardingTooltip";
 
 const DEBUG_SPAWN_AREA = false;
-
-const useStageSize = () => {
-  const [size, setSize] = useState({ width: 900, height: 640 });
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const update = () => {
-      const isMobile = window.innerWidth <= 768;
-      const sidebarWidth = isMobile ? 0 : 280;
-      const verticalReserve = isMobile ? 200 : 230;
-      
-      const width = Math.max(
-        300,
-        Math.min(1000, window.innerWidth - sidebarWidth - 48),
-      );
-      
-      // On mobile, the page scrolls normally, so let the height match the width
-      // to ensure the grid is as big as possible without artificial vertical constraints.
-      const height = isMobile 
-        ? width 
-        : Math.max(300, Math.min(720, window.innerHeight - verticalReserve));
-        
-      setSize({ width, height });
-    };
-
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-
-  return size;
-};
 
 const GamePage: React.FC = () => {
   const dispatch = useDispatch();
@@ -82,7 +48,7 @@ const GamePage: React.FC = () => {
   const rankColorHex = '#' + rankColor.toString(16).padStart(6, '0');
 
   const gridRef = useRef<PixiVisualizerHandle>(null);
-  const { width, height } = useStageSize();
+  const { width, height } = useStageSize({ hasSidebar: true });
 
   const [pendingCutSet, setPendingCutSet] = useState<Vertex[]>([]);
   const [resetToken, setResetToken] = useState(0);

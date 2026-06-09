@@ -11,105 +11,10 @@ import { selectActivePalette } from "../state/settingsSlice";
 import { DynamicEliminationTree } from "../components/replay-page/DynamicEliminationTree";
 import { OnboardingTooltip } from "../components/ui/OnboardingTooltip";
 
-const ActionLog: React.FC<{ sequence: any[], currentStep: number, activeColor: string }> = ({ sequence, currentStep, activeColor }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+import { ActionLog } from "../components/replay-page/ActionLog";
+import { useStageSize } from "../hooks/useStageSize";
+import { CutHistoryAction } from "../state/gameSlice";
 
-  useEffect(() => {
-    if (containerRef.current) {
-      const container = containerRef.current;
-      const activeEl = container.querySelector('.active-step') as HTMLElement;
-      if (activeEl && window.innerWidth > 1024) {
-        // Manually scroll only the container so the main window doesn't jump
-        const topOffset = activeEl.offsetTop - container.clientHeight / 2 + activeEl.clientHeight / 2;
-        container.scrollTo({
-          top: topOffset,
-          behavior: 'smooth'
-        });
-      }
-    }
-  }, [currentStep]);
-
-  return (
-    <div ref={containerRef} className="custom-scrollbar" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', flex: 1, position: 'relative' }}>
-      <div style={{ position: 'sticky', top: 0, background: 'var(--bg-main)', zIndex: 10, padding: '16px 16px 8px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
-        <h3 style={{ margin: 0 }}>Action Log</h3>
-      </div>
-      <div style={{ padding: '8px 16px 16px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {sequence.length === 0 && <div className="muted">No actions recorded.</div>}
-        {sequence.map((action, idx) => (
-          <div
-            key={idx}
-            className={idx === currentStep ? 'active-step' : ''}
-            style={{
-              padding: '12px',
-              borderRadius: '8px',
-              background: idx < currentStep ? 'var(--bg-card)' : (idx === currentStep ? activeColor : 'var(--bg-inset)'),
-              border: `1px solid ${idx === currentStep ? 'var(--border-strong)' : 'var(--border-subtle)'}`,
-              opacity: idx <= currentStep ? 1 : 0.5,
-              transition: 'all 0.2s ease',
-            }}
-          >
-            <div style={{ fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', color: idx === currentStep ? '#000' : 'inherit' }}>
-              <span>Step {idx + 1}</span>
-              <span style={{
-                color: idx === currentStep ? '#000' : (action.type === 'cut' ? 'var(--text-main)' : 'var(--text-highlight)'),
-                fontSize: '0.8em',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em'
-              }}>
-                {action.type === 'ignore' ? 'duplicate' : action.type}
-              </span>
-            </div>
-            <div style={{ fontSize: '0.9em', color: idx === currentStep ? 'rgba(0,0,0,0.7)' : 'var(--text-muted)', marginTop: '4px' }}>
-              {action.type === 'vaporize'
-                ? `Optimal Rank: ${action.optimal_rank}`
-                : action.type === 'ignore'
-                  ? `Duplicate shape trimmed`
-                  : action.type === 'subgraph'
-                    ? `Subgraph shape trimmed`
-                    : `Vertices: ${action.vertices.length}`}
-            </div>
-          </div>
-        ))}
-        {sequence.length > 0 && currentStep === sequence.length && (
-          <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-highlight)', fontWeight: 'bold' }}>
-            ✓ Solved
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const useStageSize = (_containerRef: React.RefObject<HTMLDivElement | null>) => {
-  const [size, setSize] = useState(() => {
-    const isMobile = window.innerWidth <= 1024;
-    const w = isMobile
-      ? Math.floor(window.innerWidth)
-      : Math.max(300, Math.min(1000, Math.floor(window.innerWidth * 0.6)));
-    const h = isMobile
-      ? w
-      : Math.max(300, Math.min(720, window.innerHeight - 230));
-    return { width: w, height: h };
-  });
-
-  useEffect(() => {
-    const update = () => {
-      const isMobile = window.innerWidth <= 1024;
-      const w = isMobile
-        ? Math.floor(window.innerWidth)
-        : Math.max(300, Math.min(1000, Math.floor(window.innerWidth * 0.6)));
-      const h = isMobile
-        ? w
-        : Math.max(300, Math.min(720, window.innerHeight - 230));
-      setSize({ width: w, height: h });
-    };
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-
-  return size;
-};
 
 export default function ReplayPage() {
   const { m, n, solverName } = useParams();
@@ -120,14 +25,14 @@ export default function ReplayPage() {
   const activeColor = '#' + activePalette.tileA.toString(16).padStart(6, '0');
 
   const canvasContainerRef = useRef<HTMLDivElement>(null);
-  const { width, height } = useStageSize(canvasContainerRef);
+  const { width, height } = useStageSize();
 
   const mNum = parseInt(m || "0", 10);
   const nNum = parseInt(n || "0", 10);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [globalSequence, setGlobalSequence] = useState<any[]>([]);
+  const [globalSequence, setGlobalSequence] = useState<CutHistoryAction[]>([]);
   const [rank, setRank] = useState(0);
   const [isTreeModalOpen, setIsTreeModalOpen] = useState(false);
   const [actualM, setActualM] = useState<number>(mNum);
@@ -141,7 +46,7 @@ export default function ReplayPage() {
       fetchTopScore(mNum, nNum, solverName)
         .then(data => {
           if (data && data.cut_sequence) {
-            setGlobalSequence(data.cut_sequence as any[]);
+            setGlobalSequence(data.cut_sequence);
             setRank(data.rank);
             if (data.m) setActualM(data.m);
             if (data.n) setActualN(data.n);
@@ -176,12 +81,12 @@ export default function ReplayPage() {
     try {
       const results = await checkShapes([targetGraph]);
       const res = results[0];
-      if (res && res.best_rank && Array.isArray((res as any).best_cut_sequence)) {
-        const seq = decompactSequence((res as any).best_cut_sequence);
+      if (res && res.best_rank && Array.isArray(res.best_cut_sequence)) {
+        const seq = decompactSequence(res.best_cut_sequence);
         
         // Parse the canonical shape string to reconstruct the exact shape the sequence was built for
         // (We use res.shape_str instead of res.hash since the hash is now MD5)
-        const canonicalStr = (res as any).shape_str || "";
+        const canonicalStr = res.shape_str || "";
         const canonicalVertices: { x: number; y: number }[] = canonicalStr.split('|').filter(Boolean).map((pair: string) => {
           const [x, y] = pair.split(',');
           return { x: parseInt(x, 10), y: parseInt(y, 10) };

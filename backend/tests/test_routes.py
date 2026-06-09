@@ -11,23 +11,7 @@ def test_login_failure(client):
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid credentials"
 
-def test_cut_graph_unauthorized(client):
-    response = client.post("/api/cut", json={
-        "vertices": [[0,0], [1,0], [0,1]],
-        "cut_set": [[0,0]]
-    })
-    assert response.status_code == 401
 
-def test_cut_graph_success(client):
-    auth_secret = os.getenv("AUTH_SECRET", "howl2026")
-    response = client.post("/api/cut", json={
-        "vertices": [[0,0], [1,0], [0,1]],
-        "cut_set": [[0,0]]
-    }, headers={"Authorization": f"Bearer {auth_secret}"})
-    assert response.status_code == 200
-    subgraphs = response.json()["subgraphs"]
-    # The graph breaks into two isolated vertices [1,0] and [0,1]
-    assert len(subgraphs) == 2
 
 def test_leaderboard_empty(client):
     auth_secret = os.getenv("AUTH_SECRET", "howl2026")

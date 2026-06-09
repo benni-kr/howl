@@ -5,9 +5,7 @@ type ApiGraph = {
   edges: number[][][];
 };
 
-type CutResponse = {
-  subgraphs: ApiGraph[];
-};
+
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
 
@@ -38,59 +36,7 @@ export const login = async (username: string, password: string): Promise<boolean
   }
 };
 
-const CUT_URL = `${API_BASE_URL}/cut`;
 
-const serializeGraph = (graph: Graph) => ({
-  vertices: graph.vertices.map((vertex) => [vertex.x, vertex.y]),
-  edges: graph.edges.map((edge) => [
-    [edge.from.x, edge.from.y],
-    [edge.to.x, edge.to.y],
-  ]),
-});
-
-const serializeCutSet = (cutSet: Vertex[]) =>
-  cutSet.map((vertex) => [vertex.x, vertex.y]);
-
-const deserializeGraph = (graph: ApiGraph): Graph => ({
-  vertices: graph.vertices.map(([x, y]) => ({ x, y })),
-  edges: graph.edges.map(([[fromX, fromY], [toX, toY]]) => ({
-    from: { x: fromX, y: fromY },
-    to: { x: toX, y: toY },
-  })),
-  baseRank: 0,
-});
-
-export const executeCut = async (
-  activeGraph: Graph,
-  cutSet: Vertex[],
-): Promise<Graph[]> => {
-  try {
-    const response = await apiFetch(CUT_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ...serializeGraph(activeGraph),
-        cut_set: serializeCutSet(cutSet),
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Cut request failed with status ${response.status}`);
-    }
-
-    const data = (await response.json()) as CutResponse;
-    if (!data?.subgraphs) {
-      throw new Error("Cut response missing subgraphs.");
-    }
-
-    return data.subgraphs.map(deserializeGraph);
-  } catch (error) {
-    console.error("executeCut failed:", error);
-    throw error;
-  }
-};
 
 export type ShapeResult = {
   hash: string;
@@ -98,6 +44,8 @@ export type ShapeResult = {
   best_rank: number | null;
   is_optimal: boolean | null;
   discovered_by?: string | null;
+  best_cut_sequence?: any[];
+  shape_str?: string;
 };
 
 export const checkShapes = async (graphs: Graph[]): Promise<ShapeResult[]> => {

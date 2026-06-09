@@ -9,12 +9,7 @@ from pydantic import BaseModel, field_validator
 Coordinate = Tuple[int, int]
 Edge = Tuple[Coordinate, Coordinate]
 
-class CutRequest(BaseModel):
-    """Payload for applying a cut set to a grid graph."""
 
-    vertices: List[Coordinate]
-    edges: Optional[List[Edge]] = None
-    cut_set: List[Coordinate]
 
 class LoginRequest(BaseModel):
     username: str

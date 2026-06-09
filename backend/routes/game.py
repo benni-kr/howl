@@ -15,30 +15,14 @@ from schemas import (
     SolutionCreate,
     SolutionResponse,
     SubmitResponse,
-    CutRequest,
 )
 from routes.auth import verify_token
-from services.graph_service import build_graph, serialize_graph
 from services.subgraph_service import update_subgraph_dictionary
 from core.hashing import generate_canonical_data
 
 router = APIRouter()
 
-@router.post("/cut")
-def cut_graph(payload: CutRequest, token: str = Depends(verify_token), db: Session = Depends(get_db)) -> dict:
-    """
-    Apply a cut set to the provided graph and return disconnected subgraphs.
-    """
-    graph = build_graph(payload.vertices, payload.edges)
-    graph.apply_cut_set(payload.cut_set)
-    subgraphs = graph.get_disconnected_subgraphs()
 
-    serialized = []
-    for subgraph in subgraphs:
-        sg_data = serialize_graph(subgraph)
-        serialized.append(sg_data)
-
-    return {"subgraphs": serialized}
 
 
 @router.post("/submit_solution", response_model=SubmitResponse)
