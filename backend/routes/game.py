@@ -20,7 +20,7 @@ from schemas import (
 from routes.auth import verify_token
 from services.graph_service import build_graph, serialize_graph
 from services.subgraph_service import update_subgraph_dictionary
-from graph_logic import generate_canonical_data
+from core.hashing import generate_canonical_data
 
 router = APIRouter()
 

@@ -1,0 +1,57 @@
+import hashlib
+
+def get_transformations():
+    """Returns the 8 D4 transformations as lambda functions."""
+    return [
+        lambda x, y: (x, y),           # Identity
+        lambda x, y: (-y, x),          # Rot 90
+        lambda x, y: (-x, -y),         # Rot 180
+        lambda x, y: (y, -x),          # Rot 270
+        lambda x, y: (-x, y),          # Reflect X
+        lambda x, y: (-y, -x),         # Reflect X + Rot 90
+        lambda x, y: (x, -y),          # Reflect X + Rot 180
+        lambda x, y: (y, x),           # Reflect X + Rot 270
+    ]
+
+
+def generate_canonical_data(vertices: list[dict]) -> dict:
+    """
+    Generate a canonical hash and the metadata required to transform 
+    any other coordinates into this exact canonical space.
+    """
+    if not vertices:
+        return {"hash": "", "transform_idx": 0, "shift_x": 0, "shift_y": 0}
+
+    coords = [(v["x"], v["y"]) for v in vertices]
+    transforms = get_transformations()
+    
+    best_hash = None
+    best_meta = {}
+
+    for idx, transform in enumerate(transforms):
+        transformed = [transform(x, y) for x, y in coords]
+        min_x = min(x for x, _ in transformed)
+        min_y = min(y for _, y in transformed)
+        
+        normalized = sorted((x - min_x, y - min_y) for x, y in transformed)
+        candidate_string = "|".join(f"{x},{y}" for x, y in normalized)
+        
+        if best_hash is None or candidate_string < best_hash:
+            best_hash = candidate_string
+            # Use an MD5 hash to guarantee a short, fixed-length primary key for PostgreSQL
+            # avoiding B-Tree index size limits on very large grids (e.g. 30x30).
+            md5_hash = hashlib.md5(candidate_string.encode('utf-8')).hexdigest()
+            best_meta = {
+                "hash": md5_hash,
+                "shape_str": candidate_string,
+                "transform_idx": idx,
+                "shift_x": min_x,
+                "shift_y": min_y
+            }
+
+    return best_meta
+
+
+def generate_canonical_hash(vertices: list[dict]) -> str:
+    """Wrapper that just returns the canonical hash string."""
+    return generate_canonical_data(vertices)["hash"]

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from models import SubgraphDictionary
-from graph_logic import replay_and_extract_subgraphs
+from core.replay_engine import replay_and_extract_subgraphs
 
 logger = logging.getLogger("howl.submit")
 
