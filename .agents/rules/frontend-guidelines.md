@@ -21,5 +21,8 @@ When modifying API calls in `src/api/api.ts`, ensure proper compaction and decom
 ## 3. Local Fingerprinting vs. Canonical Hashing
 The frontend uses `getLocalGraphFingerprint` to track active shapes locally in a single render cycle. Do **not** confuse this with the backend's $D_4$ canonical hashing. Local fingerprinting is position-dependent and not rotationally invariant.
 
-## 4. Verification and Testing
+## 4. Color Palette Support
+Always make sure everything works for the different color palettes including light and dark mode. When adding new styles or UI elements, use CSS variables (e.g., `var(--bg-card)`, `var(--text-main)`) instead of hardcoding colors to ensure compatibility across themes.
+
+## 5. Verification and Testing
 After working in the frontend, you must always verify the application builds correctly. Always run `npm run build` and `npx tsc --noEmit` (or equivalent type checks) to ensure your changes didn't introduce TypeScript or build errors.

@@ -7,6 +7,7 @@ import { switchActiveGraph } from '../../state/gameSlice';
 import { selectActivePalette } from '../../state/settingsSlice';
 import { MiniGraphPreview } from './MiniGraphPreview';
 import { GameStats } from './GameStats';
+import { DisplaySettings } from './DisplaySettings';
 import { WolfLogo } from '../ui/WolfLogo';
 
 interface GameSidebarProps {
@@ -52,6 +53,10 @@ export const GameSidebar: React.FC<GameSidebarProps> = ({
         n={hasGame ? gridSize.n : 0}
         topScore={topScore}
       />
+
+      {hasGame && (
+        <DisplaySettings />
+      )}
 
       <div className="sidebar-banked-section">
         <h2 className="section-title">Banked Graphs</h2>

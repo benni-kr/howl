@@ -3,7 +3,7 @@ import { MatrixCellData } from '../../api/api';
 import { useAlias } from '../../hooks/useAlias';
 import * as math from 'mathjs';
 
-export type MatrixMode = 'min_rank' | 'top_solver' | 'perfection_gap' | 'density_linear' | 'log_adjusted_density' | 'rank_jump' | 'custom_formula';
+export type MatrixMode = 'min_rank' | 'top_solver' | 'perfection_gap' | 'density_linear' | 'rank_jump' | 'custom_formula';
 
 interface MatrixViewProps {
   data: MatrixCellData[];
@@ -229,11 +229,6 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
         metricValue = density;
         content = density.toFixed(2);
         goodness = Math.max(0.15, 1 - (density / 4.0));
-      } else if (mode === 'log_adjusted_density') {
-        const density = cellData.min_rank / (minEdge + Math.log2(maxEdge + 1));
-        metricValue = density;
-        content = density.toFixed(2);
-        goodness = Math.max(0.15, 1 - (density / 3.0));
       } else if (mode === 'custom_formula') {
         if (compiledFormula) {
           try {

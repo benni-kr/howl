@@ -218,7 +218,10 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           hasCutsApplied,
           readOnly,
           onDeepDiveRequest,
-          vaporizeActionType
+          vaporizeActionType,
+          settings.showGridIndices,
+          settings.showCoordinateSystem,
+          settings.showGridLines
         );
       });
 
@@ -260,7 +263,10 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           hasCutsApplied,
           readOnly,
           onDeepDiveRequest,
-          vaporizeActionType
+          vaporizeActionType,
+          settings.showGridIndices,
+          settings.showCoordinateSystem,
+          settings.showGridLines
         );
       }
     }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, vaporizeActionType, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, onSelectGraph, onAutoSolve, onIgnoreDuplicate, onNodePointerDown, onNodePointerEnter, onPointerUp, isExecuting, hasCutsApplied, readOnly, onDeepDiveRequest]);

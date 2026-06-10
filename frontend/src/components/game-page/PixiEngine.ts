@@ -20,6 +20,8 @@ export class PixiEngine {
   particleContainer: PIXI.Container;
   glowContainer: PIXI.Container;
   wandContainer: PIXI.Container;
+  textContainer: PIXI.Container;
+  gridLinesContainer: PIXI.Container;
 
   nodes: Map<string, { x: number; y: number; vertex: Vertex; graphics: PIXI.Graphics; glowGraphics: PIXI.Graphics; isPendingCut: boolean; color: number }>;
   activeEdges: Set<string>;
@@ -50,6 +52,8 @@ export class PixiEngine {
     this.particleContainer = new PIXI.Container();
     this.glowContainer = new PIXI.Container();
     this.wandContainer = new PIXI.Container();
+    this.textContainer = new PIXI.Container();
+    this.gridLinesContainer = new PIXI.Container();
 
     const blurFilter = new PIXI.BlurFilter();
     blurFilter.blur = 12;
@@ -60,6 +64,8 @@ export class PixiEngine {
     this.stage.addChild(this.glowContainer);
     this.stage.addChild(this.edgeGraphics);
     this.stage.addChild(this.nodeContainer);
+    this.stage.addChild(this.gridLinesContainer);
+    this.stage.addChild(this.textContainer);
     this.stage.addChild(this.wandContainer);
     this.stage.addChild(this.particleContainer);
 
@@ -149,7 +155,10 @@ export class PixiEngine {
     hasCutsApplied: boolean = false,
     readOnly: boolean = false,
     onDeepDiveRequest?: (graphIndex: number) => void,
-    vaporizeActionType: 'vaporize' | 'ignore' | 'subgraph' | null = null
+    vaporizeActionType: 'vaporize' | 'ignore' | 'subgraph' | null = null,
+    showGridIndices: boolean = false,
+    showCoordinateSystem: boolean = false,
+    showGridLines: boolean = false
   ) {
     this.palette = palette;
     this.splitView = splitView;
@@ -254,6 +263,8 @@ export class PixiEngine {
     }
 
     this.wandContainer.removeChildren();
+    this.textContainer.removeChildren();
+    this.gridLinesContainer.removeChildren();
 
     const seenHashes = new Set<string>();
     if (splitView && optimalRanks) {
@@ -271,6 +282,213 @@ export class PixiEngine {
 
       const isUntouchedFirstGraph = graphIndex === 0 && !hasCutsApplied;
       const optRank = optimalRanks.get(meta.graphFingerprint);
+
+      if ((showCoordinateSystem || showGridLines) && graphs.length === 1) {
+        const gridColor = document.documentElement.dataset.theme === 'light' ? 0x1f2937 : 0xffffff;
+        const textScale = Math.max(8, this.cellSize * 0.4) / 32;
+        const minXPixel = layout.offsetX;
+        const maxXPixel = layout.offsetX + meta.widthCells * this.cellSize;
+        const minYPixel = layout.offsetY;
+        const maxYPixel = layout.offsetY + meta.heightCells * this.cellSize;
+
+        if (showCoordinateSystem) {
+          const axisOffset = 5;
+          const originX = minXPixel - axisOffset;
+          const originY = minYPixel - axisOffset;
+
+          for (let x = meta.minX; x <= meta.maxX; x++) {
+            const text = new PIXI.Text({
+               text: x.toString(),
+               style: { fontFamily: "sans-serif", fontSize: 32, fill: gridColor }
+            });
+            text.scale.set(textScale);
+            text.alpha = 0.6;
+            text.x = layout.offsetX + (x - meta.minX) * this.cellSize + this.cellSize / 2 - text.width / 2;
+            text.y = originY - text.height - 4;
+            this.textContainer.addChild(text);
+          }
+          for (let y = meta.minY; y <= meta.maxY; y++) {
+            const text = new PIXI.Text({
+               text: y.toString(),
+               style: { fontFamily: "sans-serif", fontSize: 32, fill: gridColor }
+            });
+            text.scale.set(textScale);
+            text.alpha = 0.6;
+            text.x = originX - text.width - 6;
+            text.y = layout.offsetY + (y - meta.minY) * this.cellSize + this.cellSize / 2 - text.height / 2;
+            this.textContainer.addChild(text);
+          }
+
+          const gridGfx = new PIXI.Graphics();
+          gridGfx.alpha = 0.5;
+          const arrowOffset = 10;
+
+          // Main axes paths
+          gridGfx.moveTo(maxXPixel + arrowOffset - 8, originY);
+          gridGfx.lineTo(originX, originY);
+          gridGfx.lineTo(originX, maxYPixel + arrowOffset - 8);
+          gridGfx.stroke({ color: gridColor, alpha: 1.0, width: 1.5 });
+
+          // m arrow (filled triangle)
+          gridGfx.moveTo(maxXPixel + arrowOffset, originY);
+          gridGfx.lineTo(maxXPixel + arrowOffset - 8, originY - 4);
+          gridGfx.lineTo(maxXPixel + arrowOffset - 8, originY + 4);
+          gridGfx.fill({ color: gridColor, alpha: 1.0 });
+
+          // n arrow (filled triangle)
+          gridGfx.moveTo(originX, maxYPixel + arrowOffset);
+          gridGfx.lineTo(originX - 4, maxYPixel + arrowOffset - 8);
+          gridGfx.lineTo(originX + 4, maxYPixel + arrowOffset - 8);
+          gridGfx.fill({ color: gridColor, alpha: 1.0 });
+
+          // Label for X-axis (m)
+          const labelM = new PIXI.Text({ text: "m", style: { fontFamily: "sans-serif", fontSize: 32, fill: gridColor, fontStyle: "italic" } });
+          labelM.scale.set(textScale);
+          labelM.alpha = 0.6;
+          labelM.x = maxXPixel + arrowOffset - labelM.width / 2;
+          labelM.y = originY - labelM.height - 4;
+          this.gridLinesContainer.addChild(labelM);
+
+          // Label for Y-axis (n)
+          const labelN = new PIXI.Text({ text: "n", style: { fontFamily: "sans-serif", fontSize: 32, fill: gridColor, fontStyle: "italic" } });
+          labelN.scale.set(textScale);
+          labelN.alpha = 0.6;
+          labelN.x = originX - labelN.width - 6;
+          labelN.y = maxYPixel + arrowOffset - labelN.height / 2;
+          this.gridLinesContainer.addChild(labelN);
+
+          this.gridLinesContainer.addChild(gridGfx);
+        }
+
+        if (showGridLines) {
+          const linesHalfGfx = new PIXI.Graphics(); linesHalfGfx.alpha = 0.5;
+          const linesQuarterGfx = new PIXI.Graphics(); linesQuarterGfx.alpha = 0.35;
+          const linesOtherGfx = new PIXI.Graphics(); linesOtherGfx.alpha = 0.2;
+
+          const drawDashedLine = (gfx: PIXI.Graphics, x1: number, y1: number, x2: number, y2: number, dashLength: number, spaceLength: number, strokeOptions: any) => {
+             const dx = x2 - x1;
+             const dy = y2 - y1;
+             const distance = Math.sqrt(dx * dx + dy * dy);
+             const numDashes = Math.floor(distance / (dashLength + spaceLength));
+             const dashX = (dx / distance) * dashLength;
+             const dashY = (dy / distance) * dashLength;
+             const spaceX = (dx / distance) * spaceLength;
+             const spaceY = (dy / distance) * spaceLength;
+
+             let cx = x1;
+             let cy = y1;
+
+             for (let i = 0; i < numDashes; i++) {
+               gfx.moveTo(cx, cy);
+               gfx.lineTo(cx + dashX, cy + dashY);
+               cx += dashX + spaceX;
+               cy += dashY + spaceY;
+             }
+             
+             const remaining = distance - numDashes * (dashLength + spaceLength);
+             if (remaining > 0) {
+               const finalDash = Math.min(remaining, dashLength);
+               gfx.moveTo(cx, cy);
+               gfx.lineTo(cx + (dx / distance) * finalDash, cy + (dy / distance) * finalDash);
+             }
+             
+             gfx.stroke(strokeOptions);
+          };
+
+          const drawFractions = (sizePixels: number, sizeCells: number, isX: boolean) => {
+             if (sizeCells < 2) return;
+             
+             let maxDivisor = 1;
+             let current = 2;
+             while (current <= sizeCells / 2) {
+                 maxDivisor = current;
+                 current *= 2;
+             }
+             if (maxDivisor < 2) maxDivisor = 2;
+
+             let fractions: number[] = [];
+             for (let div = 2; div <= maxDivisor; div *= 2) {
+                 for (let i = 1; i < div; i += 2) {
+                     fractions.push(i / div);
+                 }
+             }
+
+             for (const frac of fractions) {
+               const pixelOffset = sizePixels * frac;
+               
+               const isHalf = Math.abs(frac - 1/2) < 0.01;
+               const isQuarter = Math.abs((frac * 4) - Math.round(frac * 4)) < 0.01 && !isHalf;
+               
+               let width = 1.5;
+               let dashLength = 2; 
+               let spaceLength = 4;
+               let targetGfx = linesOtherGfx;
+
+               if (isHalf) { targetGfx = linesHalfGfx; width = 2; dashLength = 8; spaceLength = 6; }
+               else if (isQuarter) { targetGfx = linesQuarterGfx; dashLength = 2; spaceLength = 4; }
+               else { dashLength = 2; spaceLength = 5; }
+               
+               const gfxOptions = { color: gridColor, alpha: 1.0, width };
+               const lineExtension = 8;
+               const labelOffset = 6;
+
+               if (isX) {
+                 drawDashedLine(targetGfx, minXPixel + pixelOffset, minYPixel, minXPixel + pixelOffset, maxYPixel + lineExtension, dashLength, spaceLength, gfxOptions);
+               } else {
+                 drawDashedLine(targetGfx, minXPixel, minYPixel + pixelOffset, maxXPixel + lineExtension, minYPixel + pixelOffset, dashLength, spaceLength, gfxOptions);
+               }
+
+               let num = Math.round(frac * maxDivisor);
+               const isSmallestDivision = (num % 2 !== 0);
+
+               if (!isSmallestDivision || frac === 1/2) {
+                 let numSimp = Math.round(frac * maxDivisor);
+                 let denSimp = maxDivisor;
+                 while(numSimp % 2 === 0 && denSimp % 2 === 0) { numSimp /= 2; denSimp /= 2; }
+                 const fracStr = `${numSimp}/${denSimp}`;
+
+                 const fracText = new PIXI.Text({ text: fracStr, style: { fontFamily: "sans-serif", fontSize: 24, fill: gridColor }});
+                 fracText.scale.set(textScale * 0.7);
+                 fracText.alpha = 0.7;
+
+                 if (isX) {
+                   fracText.x = minXPixel + pixelOffset - fracText.width / 2;
+                   fracText.y = maxYPixel + labelOffset + 4;
+                 } else {
+                   fracText.x = maxXPixel + labelOffset + 6;
+                   fracText.y = minYPixel + pixelOffset - fracText.height / 2;
+                 }
+                 this.gridLinesContainer.addChild(fracText);
+               }
+             }
+          };
+
+          drawFractions(meta.widthCells * this.cellSize, meta.widthCells, true);
+          drawFractions(meta.heightCells * this.cellSize, meta.heightCells, false);
+
+          this.gridLinesContainer.addChild(linesOtherGfx);
+          this.gridLinesContainer.addChild(linesQuarterGfx);
+          this.gridLinesContainer.addChild(linesHalfGfx);
+        }
+      }
+
+      if (showGridIndices && graphs.length === 1) {
+        const gridColor = document.documentElement.dataset.theme === 'light' ? 0x1f2937 : 0xffffff;
+        const textScale = Math.max(5, this.cellSize * 0.25) / 32;
+        graph.vertices.forEach(vertex => {
+          const text = new PIXI.Text({
+             text: `${vertex.x},${vertex.y}`,
+             style: { fontFamily: "sans-serif", fontSize: 32, fill: gridColor }
+          });
+          text.scale.set(textScale);
+          text.alpha = 0.4;
+          const targetX = layout.offsetX + (vertex.x - meta.minX) * this.cellSize + this.cellSize / 2;
+          const targetY = layout.offsetY + (vertex.y - meta.minY) * this.cellSize + this.cellSize / 2;
+          text.x = targetX - text.width / 2;
+          text.y = targetY - text.height / 2;
+          this.textContainer.addChild(text);
+        });
+      }
 
       if (optRank && optRank.best_rank !== 999999 && !isExecuting && pendingCutSet.length === 0 && !isUntouchedFirstGraph) {
         const wandScale = 1 / targetScale;

@@ -131,8 +131,13 @@ def get_top_solvers(token: str = Depends(verify_token), square_only: bool = Fals
     ).group_by(GridSolution.solver_name).all()
     
     total_grids_map = {row.solver_name: row.total_grids for row in solver_total_grids}
+    
+    # Ensure all solvers with at least 1 grid solved are included
+    for solver_name in total_grids_map.keys():
+        if solver_name not in counts:
+            counts[solver_name] = 0
 
-    sorted_solvers = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+    sorted_solvers = sorted(counts.items(), key=lambda x: (x[1], total_grids_map.get(x[0], 0)), reverse=True)
     return [
         {
             "solver_name": s[0], 
