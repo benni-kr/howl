@@ -6,7 +6,7 @@
 
 AlphaWolf is the Reinforcement Learning (RL) pipeline for HOWL, designed to compute minimal graph separators for the vertex $k$-ranking problem autonomously. It heavily draws inspiration from the AlphaZero architecture, employing a combination of Monte Carlo Tree Search (MCTS), a policy-value neural network, and self-play.
 
-Unlike standard game engines, AlphaWolf is integrated with a globally shared tablebase containing community-discovered optimal shapes, allowing it to efficiently prune branches and bootstrap its learning.
+Unlike standard game engines, AlphaWolf is integrated with a globally shared tablebase containing community-discovered best known shapes, allowing it to efficiently prune branches and bootstrap its learning.
 
 ## Tech Stack
 
@@ -23,7 +23,7 @@ Unlike standard game engines, AlphaWolf is integrated with a globally shared tab
 ┌────────────────────────────────────────────────────────┐
 │                      MCTS (Self-Play)                  │
 │  1. Expand nodes using Neural Network priors           │
-│  2. Prune optimal shapes using Tablebase Lookups       │
+│  2. Prune known shapes using Tablebase Lookups         │
 │  3. Simulate trajectories & collect value targets      │
 └──────────────────────────┬─────────────────────────────┘
                            │ Trajectories & Values
@@ -61,7 +61,7 @@ The main training orchestrator implements a mixed curriculum self-play phase. To
 During self-play:
 - Each MCTS simulation explores possible cuts, guided by the neural network's policy and value heads.
 - When an action shatters the graph into subgraphs, AlphaWolf evaluates each fragment. If a fragment is found in the `tablebase`, it immediately returns its known rank, halting the MCTS branch for that fragment.
-- Discovered sub-sequences and final optimal grid solutions are upserted to the database, ensuring the community UI and future RL generations benefit from the run.
+- Discovered sub-sequences and final best known grid solutions are upserted to the database, ensuring the community UI and future RL generations benefit from the run.
 
 ### 2. Neural Network (`models/net.py`)
 
@@ -87,5 +87,5 @@ To ensure monotonic improvement, AlphaWolf uses an automated gauntlet:
 ### 5. Tablebase Integration (`db/tablebase.py`)
 
 This module connects AlphaWolf directly to the shared backend database (`howl.db` / `test.db`).
-- **`query_tablebase`**: Checks if the canonical hashes of current board shapes have known optimal solutions. If `is_optimal` is true, or the rank is extremely small ($\le 3$), MCTS stops exploring that subgraph and uses the value.
+- **`query_tablebase`**: Checks if the canonical hashes of current board shapes have known best solutions. If `is_optimal` is true, or the rank is extremely small ($\le 3$), MCTS stops exploring that subgraph and uses the value.
 - **`upsert_subgraph`** / **`upsert_grid_solution`**: Records new discoveries so the React frontend can automatically display Magic Wands and Abacuses for humans who encounter those same states.
