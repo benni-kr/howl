@@ -15,6 +15,7 @@ type VictoryModalProps = {
   alias: string;
   onPlayAgain: () => void;
   onReviewBoard: () => void;
+  onScoreSubmitted?: () => void;
 };
 
 const DEFAULT_SOLVER = "Anonymous";
@@ -28,6 +29,7 @@ const VictoryModal = ({
   alias,
   onPlayAgain,
   onReviewBoard,
+  onScoreSubmitted,
 }: VictoryModalProps) => {
   const [status, setStatus] = useState<
     "idle" | "submitting" | "success" | "error"
@@ -52,6 +54,8 @@ const VictoryModal = ({
           cutsApplied,
         );
         if (!mounted) return;
+        
+        onScoreSubmitted?.();
 
         let resultMsg = "";
         if (!oldTopScore) {

@@ -417,7 +417,7 @@ const isSolvedGraph = (graph: Graph | null): boolean => {
   if (!graph) {
     return true;
   }
-  return graph.edges.length === 0 || graph.vertices.length <= 1;
+  return graph.vertices.length <= 1;
 };
 
 export const selectIsGameWon = (state: GameState): boolean => {

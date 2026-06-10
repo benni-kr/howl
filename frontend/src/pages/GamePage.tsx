@@ -92,28 +92,9 @@ const GamePage: React.FC = () => {
     };
   }, [activeGraph, recentCutGraphs, bankedGraphs]);
 
-  const hasSubmittedScoreRef = useRef(false);
   const { alias: solverName } = useAlias();
   const gridM = gridSize?.m;
   const gridN = gridSize?.n;
-
-  useEffect(() => {
-    if (isGameWon && activeGraph === null && recentCutGraphs.length === 0 && bankedGraphs.length === 0) {
-      if (gridM && gridN && solverName && !hasSubmittedScoreRef.current) {
-        hasSubmittedScoreRef.current = true;
-
-        submitScore(gridM, gridN, maxRank, solverName, cutsApplied).then(() => {
-          // Clear shape cache after successful submission so newly discovered optimal ranks are fetched
-          clearCache();
-        }).catch(err => {
-          console.error("Failed to submit score:", err);
-          hasSubmittedScoreRef.current = false;
-        });
-      }
-    } else {
-      hasSubmittedScoreRef.current = false;
-    }
-  }, [isGameWon, activeGraph, recentCutGraphs, bankedGraphs, gridM, gridN, maxRank, solverName, cutsApplied]);
 
   const { isExecuting, errorMessage, handleCut: execCut } = useCutExecution();
   const [splitView, setSplitView] = useState(() => recentCutGraphs.length > 0);
@@ -398,6 +379,7 @@ const GamePage: React.FC = () => {
             dispatch(undoCut());
             setResetToken((v) => v + 1);
           }}
+          onScoreSubmitted={() => clearCache()}
         />
       )}
     </>
