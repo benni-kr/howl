@@ -132,7 +132,10 @@ const DocsPage: React.FC = () => {
             <strong>Linear Density (Rank / Longest Edge):</strong> This is the <strong>true scientific metric</strong>. Mathematicians have proven that the rank number scales linearly with the length of the grid's edge, not its area. By pushing Linear Density as low as possible, players are helping researchers discover the exact missing coefficients for these formulas.
           </li>
           <li>
-            <strong>Log-Adjusted Density (Rank / (m + log<sub>2</sub>(n + 1))):</strong> A hybrid density scaling that dampens the penalty for extreme rectangles.
+            <strong>Rank Jump:</strong> <code>min(rank - rank_above, rank - rank_left)</code>. Measures how much a cell's rank exceeds its smaller neighbors. A difference of 3+ strongly suggests the solution is suboptimal.
+          </li>
+          <li>
+            <strong>Custom Formula:</strong> An interactive metric where you can write a valid Math.js expression using: <code>m</code>, <code>n</code>, <code>min_edge</code>, <code>max_edge</code>, and <code>rank</code>.
           </li>
         </ul>
       </div>

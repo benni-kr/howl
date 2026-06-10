@@ -27,7 +27,7 @@ router = APIRouter()
 
 @router.post("/submit_solution", response_model=SubmitResponse)
 def submit_solution(payload: SolutionCreate, token: str = Depends(verify_token), db: Session = Depends(get_db)) -> SubmitResponse:
-    if payload.solver_name.lower() in ["computer", "alphawolf"]:
+    if payload.solver_name.lower() in ["computer", "alphawolf", "god"]:
         raise HTTPException(status_code=403, detail="Reserved system alias")
 
     existing = (
