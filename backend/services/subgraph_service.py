@@ -11,16 +11,18 @@ from core_engine.replay_engine import replay_and_extract_subgraphs
 
 logger = logging.getLogger("howl.submit")
 
-def update_subgraph_dictionary(db: Session, m: int, n: int, cut_sequence: object, solver_name: str) -> None:
+def update_subgraph_dictionary(db: Session, m: int, n: int, cut_sequence: object, solver_name: str) -> int:
     """Replay *cut_sequence* on an m×n grid and upsert discovered subgraph ranks.
 
     This acts as a strict validation layer: if the replay engine fails to 
     reconstruct the run, the entire score submission is rejected.
     """
     try:
-        ranks_dict = replay_and_extract_subgraphs(m, n, cut_sequence)
+        ranks_dict, root_rank = replay_and_extract_subgraphs(m, n, cut_sequence)
+        if root_rank >= 999999:
+            raise ValueError("Incomplete sequence: The root graph was not fully solved.")
         if not ranks_dict:
-            return
+            return root_rank
 
         logger.info("Replay produced %d subgraph entries for %dx%d", len(ranks_dict), m, n)
         
@@ -58,6 +60,8 @@ def update_subgraph_dictionary(db: Session, m: int, n: int, cut_sequence: object
         # Flush subgraph dictionary writes so they survive a potential
         # IntegrityError rollback on the GridSolution insert later.
         db.flush()
+        
+        return root_rank
 
     except Exception as e:
         # Replay failed: meaning the run is mathematically invalid or corrupted.

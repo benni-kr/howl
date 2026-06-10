@@ -96,7 +96,8 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
       ``{t: "i", v: [[x,y], ...]}``           — ignore (duplicate removal)
 
     Returns:
-        dict: Mapping from canonical_hash to dict with rank and best_cut_sequence.
+        tuple[dict[str, dict], int]: A tuple containing the mapping of canonical_hash to rank/sequence dict, 
+        and the total intrinsic rank of the root graph (which will be >= 999999 if the solution is incomplete).
     """
     root = TreeNode(GridGraph(m, n, generate=True))
     active_nodes = [root]
@@ -218,5 +219,5 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
 
         return rank
 
-    calc_intrinsic_rank(root)
-    return ranks_dict
+    root_rank = calc_intrinsic_rank(root)
+    return ranks_dict, root_rank
