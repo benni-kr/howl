@@ -111,11 +111,17 @@ export const THEMES: ThemeConfig[] = [
 export interface SettingsState {
   mode: "light" | "dark";
   colorId: string;
+  showGridIndices: boolean;
+  showCoordinateSystem: boolean;
+  showGridLines: boolean;
 }
 
 const initialState: SettingsState = {
   mode: "dark",
   colorId: "purple",
+  showGridIndices: false,
+  showCoordinateSystem: false,
+  showGridLines: false,
 };
 
 const settingsSlice = createSlice({
@@ -128,10 +134,19 @@ const settingsSlice = createSlice({
     setColorTheme(state, action: PayloadAction<string>) {
       state.colorId = action.payload;
     },
+    setShowGridIndices(state, action: PayloadAction<boolean>) {
+      state.showGridIndices = action.payload;
+    },
+    setShowCoordinateSystem(state, action: PayloadAction<boolean>) {
+      state.showCoordinateSystem = action.payload;
+    },
+    setShowGridLines(state, action: PayloadAction<boolean>) {
+      state.showGridLines = action.payload;
+    },
   },
 });
 
-export const { setMode, setColorTheme } = settingsSlice.actions;
+export const { setMode, setColorTheme, setShowGridIndices, setShowCoordinateSystem, setShowGridLines } = settingsSlice.actions;
 
 export const selectActivePalette = (state: { settings: SettingsState }): Palette => {
   const theme = THEMES.find((t) => t.id === state.settings.colorId) || THEMES[0];
