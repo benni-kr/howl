@@ -8,7 +8,7 @@ The HOWL backend is a Fast/API Python server that powers the crowdsourced mathem
 
 The backend is modularized into clearly separated layers:
 - `main.py` / `routes/`: FastAPI endpoints and lifespan management.
-- `core/`: Agnostic, pure-python business logic (graph calculations, theoretical limits, hashing, security).
+- `core_engine/`: Shared, pure-python business logic package (graph calculations, hashing).
 - `services/`: Database interface services and session management.
 - `database.py` / `models.py` / `schemas.py`: SQLAlchemy setup, ORM classes, and Pydantic DTOs.
 
@@ -51,7 +51,7 @@ The backend has two primary persistence tables:
 
 ---
 
-## The Replay Engine (`core/graph_logic.py`)
+## The Replay Engine (`core_engine/replay_engine.py`)
 
 ### Purpose
 
@@ -92,7 +92,7 @@ replay_and_extract_subgraphs(m, n, cut_sequence):
 ```
 
 ### Subgraph Detection (Connected Components)
-When an action instructs the engine to "cut" vertices, the graph fragments. The engine uses a **Breadth-First Search (BFS)** algorithm (`_bfs_component` in `graph_logic.py`) traversing the 4-way grid adjacencies of the remaining un-cut vertices to identify all distinct connected components. Each component is then isolated, instantiated as a new `GridGraph`, and appended to the tree as a child node.
+When an action instructs the engine to "cut" vertices, the graph fragments. The engine uses a **Breadth-First Search (BFS)** algorithm (`_bfs_component` in `core_engine/graph_logic.py`) traversing the 4-way grid adjacencies of the remaining un-cut vertices to identify all distinct connected components. Each component is then isolated, instantiated as a new `GridGraph`, and appended to the tree as a child node.
 
 ### Target Matching & Batch Actions
 - **Cut (`c`)**: Match by checking that ALL cut vertices are a subset of the node's vertex set (`cut_set.issubset(node.graph.vertices)`).
@@ -143,16 +143,16 @@ The frontend has a helper `getLocalGraphFingerprint(graph)` that builds a positi
 
 ---
 
-## Theoretical Math Bounds (`core/math_bounds.py`)
+## Theoretical Math Bounds
 
-HOWL computes theoretical lower bounds for standard rectangular grids.
+HOWL leverages known theoretical lower bounds for standard rectangular grids.
 
 Assume $m \le n$:
 - **Paths ($m=1$):** $r(1,n) = \lfloor\log_2(n)\rfloor + 1$
 - **Ladders ($m=2$):** $r(2,n) = 2 + r(2, \lceil(n - 2) / 2\rceil)$
 - **Narrow / Large Grids:** Advanced piecewise boundary formulas.
 
-These theoretical bounds are used on the Leaderboard Matrix to calculate the "Perfection Gap"—the difference between the community's achieved minimum rank and mathematical reality.
+These theoretical bounds are used on the Leaderboard Matrix to calculate the "Perfection Gap"—the difference between the community's achieved minimum rank and mathematical reality. In the latest architecture, bounds logic is integrated directly into the pre-populated tablebase and queried via canonical hashing, rather than calculated repeatedly at runtime.
 
 ---
 

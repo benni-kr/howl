@@ -20,7 +20,7 @@ from sqlalchemy.orm import sessionmaker
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.graph_logic import _normalize_sequence
+from core_engine.graph_logic import _normalize_sequence
 
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./howl.db")
 if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):

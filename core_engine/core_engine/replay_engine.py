@@ -1,5 +1,5 @@
-from core.graph_logic import GridGraph
-from core.hashing import generate_canonical_data, get_transformations
+from core_engine.graph_logic import GridGraph
+from core_engine.hashing import generate_canonical_data, get_transformations
 
 class TreeNode:
     """A node in the replay tree built during solution replay.

@@ -25,18 +25,29 @@ A highly responsive, web-based crowdsourcing game designed to solve the vertex $
 
 ```text
 howl-project/
+├── alphawolf/                # AlphaZero-style RL pipeline
+│   ├── envs/                 # Custom Howl environments
+│   ├── models/               # PyTorch neural network definitions
+│   ├── db/                   # Tablebase interface
+│   ├── train.py              # Main training loop (MCTS + Self-Play)
+│   ├── benchmark.py          # Automated model evaluation
+│   └── ARCHITECTURE.md       # RL engine architecture documentation
+│
 ├── backend/                  # Python/FastAPI app + SQLite
 │   ├── venv/                 # Virtual environment
 │   ├── main.py               # FastAPI entry point & lifespan events
 │   ├── routes/               # API routers (auth, game, leaderboards)
 │   ├── services/             # Application services
-│   ├── core/                 # Business logic (graph_logic, math_bounds, security)
 │   ├── database.py           # SQLite connection & session configuration
 │   ├── models.py             # SQLAlchemy ORM models
 │   ├── schemas.py            # Pydantic validation schemas
 │   ├── requirements.txt      # Python dependencies
 │   ├── .env                  # Backend environment variables
 │   └── ARCHITECTURE.md       # Backend architecture documentation
+│
+├── core_engine/              # Shared pure-python business logic package
+│   ├── core_engine/          # graph_logic, hashing, replay_engine
+│   └── pyproject.toml        # Package definition
 │
 ├── frontend/                 # React/Vite app
 │   ├── package.json          
@@ -90,6 +101,8 @@ The project is designed to be deployed across two separate services:
 
 ## Architecture
 
-See [`backend/ARCHITECTURE.md`](backend/ARCHITECTURE.md) for a detailed technical overview of the backend replay engine, theoretical mathematical bounds, and canonical hashing logic.
+See [`alphawolf/ARCHITECTURE.md`](alphawolf/ARCHITECTURE.md) for a deep dive into the Reinforcement Learning pipeline, MCTS search, and model benchmarking.
+
+See [`backend/ARCHITECTURE.md`](backend/ARCHITECTURE.md) for a detailed technical overview of the backend server and its interactions with the shared core engine.
 
 See [`frontend/ARCHITECTURE.md`](frontend/ARCHITECTURE.md) for details on the React/PixiJS rendering loop, Redux state management, and mobile-responsive layout.

@@ -1,0 +1,10 @@
+[project]
+name = "core_engine"
+version = "0.1.0"
+description = "Pure mathematical graph operations and D4 Canonical Hashing for HOWL"
+requires-python = ">=3.10"
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

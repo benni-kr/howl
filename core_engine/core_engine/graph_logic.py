@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections import deque
 from typing import Iterable, List, Set, Tuple
 
+from core_engine.hashing import generate_canonical_hash
+
 Vertex = Tuple[int, int]
 
 
@@ -117,5 +119,26 @@ class GridGraph:
         return subgraph
 
 
-
+def filter_and_deduplicate(fragments: List[GridGraph]) -> List[GridGraph]:
+    """
+    Filters a list of subgraphs to remove canonical duplicates.
+    Since Treedepth relies on a MAX() operator across independent fragments,
+    max(A, A) = A. Thus, only one unique shape is needed.
+    (Subgraph containment checks are explicitly skipped for V1 performance).
+    """
+    seen_hashes = set()
+    unique_fragments = []
+    
+    for frag in fragments:
+        if not frag.vertices:
+            continue
+        # Convert vertices (x, y) tuples to list of dicts for the hashing function
+        verts = [{"x": x, "y": y} for x, y in frag.vertices]
+        can_hash = generate_canonical_hash(verts)
+        
+        if can_hash not in seen_hashes:
+            seen_hashes.add(can_hash)
+            unique_fragments.append(frag)
+            
+    return unique_fragments
 
