@@ -16,14 +16,13 @@ import { OnboardingTooltip } from '../components/ui/OnboardingTooltip';
 // ─── Valid URL values ────────────────────────────────────────────────
 type ViewTab = 'matrix' | 'solvers';
 const VALID_VIEWS: ViewTab[] = ['matrix', 'solvers'];
-const VALID_MODES: MatrixMode[] = ['min_rank', 'top_solver', 'perfection_gap', 'density_linear', 'log_adjusted_density', 'rank_jump', 'custom_formula'];
+const VALID_MODES: MatrixMode[] = ['min_rank', 'top_solver', 'perfection_gap', 'density_linear', 'rank_jump', 'custom_formula'];
 
 const MODE_LABELS: Record<MatrixMode, string> = {
   min_rank: 'Min Rank',
   top_solver: 'Top Solver',
   perfection_gap: 'Perfection Gap',
   density_linear: 'Lin. Density',
-  log_adjusted_density: 'Log. Density',
   rank_jump: 'Rank Jump',
   custom_formula: 'Custom',
 };
@@ -114,7 +113,7 @@ const LeaderboardPage: React.FC = () => {
 
   const toggleSquare = useCallback(() => {
     const next = !squareOnly;
-    navigate(`/leaderboard?view=solvers${next ? '&square=true' : ''}`);
+    navigate(`/leaderboard?view=solvers&square=${next}`);
   }, [navigate, squareOnly]);
 
   const handleCellClick = useCallback((m: number, n: number, hasData: boolean) => {
@@ -278,7 +277,6 @@ const LeaderboardPage: React.FC = () => {
               <li><strong>Perfection Gap:</strong> <code>Min Rank - Lower Bound</code>. A lower bound is calculated based on known theoretical limits. 0 means optimal.</li>
               <li><strong>Rank Jump:</strong> <code>min(rank - rank_above, rank - rank_left)</code>. Measures how much a cell's rank exceeds its smaller neighbors. A difference of 3+ strongly suggests the solution is suboptimal.</li>
               <li><strong>Lin. Density:</strong> <code>Min Rank / max(m, n)</code>. Measures how sparse or dense the solution is relative to the largest dimension.</li>
-              <li><strong>Log. Density:</strong> <code>Min Rank / (min(m, n) + log2(max(m, n) + 1))</code>. An adjusted density scaling logarithmically with grid size.</li>
               <li><strong>Custom:</strong> Enter a valid Math.js expression using: <code>m</code>, <code>n</code>, <code>min_edge</code>, <code>max_edge</code>, and <code>rank</code>. Example: <code>rank - m - n</code>.</li>
             </ul>
           </div>
@@ -295,24 +293,28 @@ const LeaderboardPage: React.FC = () => {
               /* ─── Matrix View ─── */
               loading && matrixData.length === 0 ? (
                 <div style={{ padding: '16px', overflow: 'hidden', height: '100%' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    {[...Array(60)].map((_, r) => (
-                      <div key={r} style={{ display: 'flex', gap: '2px', paddingLeft: `${r * 40}px` }}>
-                        {[...Array(60 - r)].map((_, c) => (
-                          <div 
-                            key={c} 
-                            className="skeleton" 
-                            style={{ 
-                              minWidth: '38px', 
-                              height: '38px', 
-                              borderRadius: '4px',
-                              animationDelay: `${(r * 2 + c) * 0.03}s`
-                            }} 
-                          />
-                        ))}
-                      </div>
-                    ))}
-                  </div>
+                  <table style={{ borderCollapse: 'separate', borderSpacing: '2px' }}>
+                    <tbody>
+                      {[...Array(60)].map((_, r) => (
+                        <tr key={r}>
+                          {r > 0 && <td colSpan={r} style={{ padding: 0, border: 'none' }} />}
+                          {[...Array(60 - r)].map((_, c) => (
+                            <td key={c} style={{ width: '40px', height: '40px', minWidth: '40px', padding: 0 }}>
+                              <div 
+                                className="skeleton" 
+                                style={{ 
+                                  width: '100%', 
+                                  height: '100%', 
+                                  borderRadius: '4px',
+                                  animationDelay: `${(r * 2 + c) * 0.03}s`
+                                }} 
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
                 <div style={{ width: '100%', height: '100%' }}>
@@ -347,7 +349,7 @@ const LeaderboardPage: React.FC = () => {
                   </div>
                 ) : topSolvers.length > 0 ? (
                   <div style={{ display: 'grid', gap: '12px' }}>
-                    {topSolvers.map((solver, idx) => {
+                    {topSolvers.filter(s => s.first_places > 0).map((solver, idx) => {
                       const isFirst = idx === 0;
                       const isSecond = idx === 1;
                       const isThird = idx === 2;
@@ -384,6 +386,53 @@ const LeaderboardPage: React.FC = () => {
                         </div>
                       );
                     })}
+                    
+                    {topSolvers.some(s => s.first_places === 0) && (
+                      <div style={{ marginTop: '24px', textAlign: 'center' }}>
+                        <h3 style={{ margin: '0 0 16px 0', fontSize: '1.2rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                          Honorable Mentions
+                        </h3>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', justifyContent: 'center', alignItems: 'center', padding: '16px 0' }}>
+                          {topSolvers.filter(s => s.first_places === 0).map(solver => {
+                            // Deterministic pseudo-random size based on name
+                            let hash = 0;
+                            for (let i = 0; i < solver.solver_name.length; i++) hash = solver.solver_name.charCodeAt(i) + ((hash << 5) - hash);
+                            
+                            const size = 100 + (Math.abs(hash) % 40); // 100px to 140px
+                            
+                            // Organic scattering offsets
+                            const mt = Math.abs(hash * 3) % 40;
+                            const mb = Math.abs(hash * 7) % 40;
+                            
+                            return (
+                            <div key={solver.solver_name} style={{
+                              width: `${size}px`,
+                              height: `${size}px`,
+                              background: 'var(--bg-card)',
+                              border: '1px dashed var(--border-subtle)',
+                              borderRadius: '50%',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '4px',
+                              padding: '8px',
+                              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
+                              flexShrink: 0,
+                              marginTop: `${mt}px`,
+                              marginBottom: `${mb}px`
+                            }}>
+                              <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: `${Math.max(0.85, size / 130)}rem`, textAlign: 'center', wordBreak: 'break-word', lineHeight: 1.1 }}>
+                                {solver.solver_name}
+                              </span>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                                {solver.total_grids} played
+                              </span>
+                            </div>
+                          )})}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="muted">No solvers found.</div>
@@ -476,7 +525,7 @@ const LeaderboardPage: React.FC = () => {
                                 <td style={{ padding: '12px' }}>#{entry.rank_position}</td>
                                 <td style={{ padding: '12px', fontWeight: 600 }}>{entry.solver_name}</td>
                                 <td style={{ padding: '12px' }}>{entry.achieved_rank}</td>
-                                <td style={{ padding: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(entry.created_at))}</td>
+                                <td style={{ padding: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }).format(new Date(entry.created_at))}</td>
                                 <td style={{ padding: '12px', textAlign: 'right' }}>
                                   <div className="row-action-icon">
                                     ▶
