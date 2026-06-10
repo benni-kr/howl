@@ -7,7 +7,7 @@ import os
 # Add parent directory to sys.path so we can import backend modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core_engine.graph_logic import generate_canonical_data, get_transformations
+from core_engine.hashing import generate_canonical_data, get_transformations
 
 ROBUST_CACHE = {}
 
@@ -69,21 +69,17 @@ def get_optimal_coloring(G):
 def coloring_to_cut_sequence(colored_nodes):
     """Converts a list of colored nodes into a valid cut sequence (compact format)."""
     if not colored_nodes: return []
-    max_rank = max(node["rank"] for node in colored_nodes)
-
+    
+    sorted_nodes = sorted(colored_nodes, key=lambda n: n["rank"], reverse=True)
+    
     cut_sequence = []
-    for current_rank in range(max_rank, 1, -1):
-        vertices_to_cut = [
-            [node["x"], node["y"]]
-            for node in colored_nodes
-            if node["rank"] == current_rank
-        ]
-        if vertices_to_cut:
+    for node in sorted_nodes:
+        if node["rank"] > 1:
             cut_sequence.append({
                 "t": "c",
-                "v": vertices_to_cut
+                "v": [[node["x"], node["y"]]]
             })
-
+            
     return cut_sequence
 
 
@@ -131,7 +127,7 @@ def export_to_sqlite(G, canonical_data, rank):
     # 5. Output the SQL
     sql = (
         f"INSERT INTO subgraph_dictionary (hash, best_rank, is_optimal, best_cut_sequence, discovered_by, last_updated) "
-        f"VALUES ('{hash_str}', {rank}, True, '{cut_seq_json}'::json, 'computer', '{timestamp}') "
+        f"VALUES ('{hash_str}', {rank}, True, '{cut_seq_json}', 'computer', '{timestamp}') "
         f"ON CONFLICT (hash) DO UPDATE SET "
         f"best_rank = EXCLUDED.best_rank, is_optimal = EXCLUDED.is_optimal, "
         f"best_cut_sequence = EXCLUDED.best_cut_sequence, discovered_by = EXCLUDED.discovered_by, "
