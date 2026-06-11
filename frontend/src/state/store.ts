@@ -34,10 +34,15 @@ export const store = configureStore({
   preloadedState,
 });
 
+let persistTimeout: ReturnType<typeof setTimeout> | null = null;
 store.subscribe(() => {
-  const state = store.getState();
-  localStorage.setItem("howl_settings", JSON.stringify(state.settings));
-  localStorage.setItem("howl_user_prefs", JSON.stringify(state.userPreferences));
+  if (persistTimeout) return;
+  persistTimeout = setTimeout(() => {
+    persistTimeout = null;
+    const state = store.getState();
+    localStorage.setItem("howl_settings", JSON.stringify(state.settings));
+    localStorage.setItem("howl_user_prefs", JSON.stringify(state.userPreferences));
+  }, 500);
 });
 
 export type RootState = ReturnType<typeof store.getState>;

@@ -110,21 +110,29 @@ def check_shapes(payload: CheckShapesRequest, token: str = Depends(verify_token)
     """
     results: list[ShapeResult] = []
 
+    # 1. Compute all hashes up front
+    canonical_results = []
     for subgraph in payload.subgraphs:
         canonical_data = generate_canonical_data(subgraph.vertices)
-        canonical_hash = canonical_data["hash"]
-        shape_str = canonical_data.get("shape_str")
+        canonical_results.append((subgraph.index, canonical_data))
+    
+    # 2. Single batched DB query
+    all_hashes = [cd["hash"] for _, cd in canonical_results]
+    entries = db.query(SubgraphDictionary).filter(
+        SubgraphDictionary.hash.in_(all_hashes)
+    ).all()
+    entry_map = {e.hash: e for e in entries}
 
-        entry = (
-            db.query(SubgraphDictionary).filter(SubgraphDictionary.hash == canonical_hash).first()
-        )
-
+    # 3. Build results
+    for idx, canonical_data in canonical_results:
+        h = canonical_data["hash"]
+        entry = entry_map.get(h)
         if entry:
             results.append(
                 ShapeResult(
-                    index=subgraph.index,
-                    hash=canonical_hash,
-                    shape_str=shape_str,
+                    index=idx,
+                    hash=h,
+                    shape_str=canonical_data.get("shape_str"),
                     found=True,
                     best_rank=entry.best_rank,
                     is_optimal=entry.is_optimal,
@@ -136,9 +144,9 @@ def check_shapes(payload: CheckShapesRequest, token: str = Depends(verify_token)
         else:
             results.append(
                 ShapeResult(
-                    index=subgraph.index,
-                    hash=canonical_hash,
-                    shape_str=shape_str,
+                    index=idx,
+                    hash=h,
+                    shape_str=canonical_data.get("shape_str"),
                     found=False,
                 )
             )

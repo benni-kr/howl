@@ -46,10 +46,13 @@ export function spawnExplosion(
   x: number,
   y: number,
   colors: number[],
-  readOnly: boolean = false
+  readOnly: boolean = false,
+  totalVertexCount: number = 0
 ) {
-  const maxParticles = 600;
-  let baseCount = readOnly ? 8 : 15;
+  if (totalVertexCount > 900) return; // Minimal & Performance: no particles
+
+  const maxParticles = totalVertexCount > 200 ? 200 : 600;
+  let baseCount = totalVertexCount > 200 ? 6 : (readOnly ? 8 : 15);
 
   // Scale down particles per node dynamically based on how many nodes are exploding simultaneously
   if (dyingCount > 10) {

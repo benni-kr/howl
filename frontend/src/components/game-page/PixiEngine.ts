@@ -23,10 +23,22 @@ export class PixiEngine {
   textContainer: PIXI.Container;
   gridLinesContainer: PIXI.Container;
 
-  nodes: Map<string, { x: number; y: number; vertex: Vertex; graphics: PIXI.Graphics; glowGraphics: PIXI.Graphics; isPendingCut: boolean; color: number }>;
+  nodes: Map<string, {
+    x: number; y: number; vertex: Vertex;
+    graphics: PIXI.Graphics; glowGraphics: PIXI.Graphics;
+    isPendingCut: boolean; color: number;
+    graphIndex: number;
+    _drawnPendingCut: boolean;
+    _drawnSelected: boolean;
+    _drawnVaporizeType: string | null;
+    _drawnCellSize: number;
+    _drawnPaletteId: number;
+  }>;
   activeEdges: Set<string>;
   particles: Particle[];
   dyingGraphics: Set<PIXI.Graphics>;
+  _blurFilter: PIXI.BlurFilter;
+  _textCache: Map<string, PIXI.Text>;
 
   onNodePointerDown?: (vertex: Vertex, graphIndex: number, shiftKey: boolean) => void;
   onNodePointerEnter?: (vertex: Vertex, graphIndex: number) => void;
@@ -43,6 +55,16 @@ export class PixiEngine {
   _activeExplosions: number = 0;
   _edgesDirty: boolean = true;
 
+  _isManualCamera: boolean = false;
+  _isPanning: boolean = false;
+  _panStart: { x: number, y: number } = { x: 0, y: 0 };
+  _stageStart: { x: number, y: number } = { x: 0, y: 0 };
+  _minScale: number = 0.05;
+  _activePointers: Map<number, { x: number, y: number }> = new Map();
+  _initialPinchDistance: number = 0;
+  _initialPinchScale: number = 0;
+  onCameraManualOverride?: (isManual: boolean) => void;
+
   constructor(container: HTMLDivElement) {
     this.container = container;
     this.app = new PIXI.Application();
@@ -53,13 +75,17 @@ export class PixiEngine {
     this.glowContainer = new PIXI.Container();
     this.wandContainer = new PIXI.Container();
     this.textContainer = new PIXI.Container();
+    this.textContainer.eventMode = "none";
+    this.textContainer.interactiveChildren = false;
     this.gridLinesContainer = new PIXI.Container();
+    this.gridLinesContainer.eventMode = "none";
+    this.gridLinesContainer.interactiveChildren = false;
 
-    const blurFilter = new PIXI.BlurFilter();
-    blurFilter.blur = 12;
-    blurFilter.quality = 4;
-    blurFilter.padding = 100;
-    this.glowContainer.filters = [blurFilter];
+    this._blurFilter = new PIXI.BlurFilter();
+    this._blurFilter.blur = 12;
+    this._blurFilter.quality = 4;
+    this._blurFilter.padding = 100;
+    this.glowContainer.filters = [this._blurFilter];
 
     this.stage.addChild(this.glowContainer);
     this.stage.addChild(this.edgeGraphics);
@@ -73,6 +99,7 @@ export class PixiEngine {
     this.activeEdges = new Set();
     this.particles = [];
     this.dyingGraphics = new Set();
+    this._textCache = new Map();
   }
 
   async init(width: number, height: number) {
@@ -93,8 +120,133 @@ export class PixiEngine {
 
     this.stage.eventMode = "static";
     this.stage.hitArea = new PIXI.Rectangle(-10000, -10000, 20000, 20000);
-    this.stage.on("pointerup", () => this.onPointerUp?.());
-    this.stage.on("pointerupoutside", () => this.onPointerUp?.());
+
+    this.stage.on("pointerdown", (e) => {
+      this._activePointers.set(e.pointerId, { x: e.global.x, y: e.global.y });
+
+      // Two-finger touch for mobile pan/zoom
+      if (this._activePointers.size === 2) {
+        this._isPanning = true;
+        const pts = Array.from(this._activePointers.values());
+        this._initialPinchDistance = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        this._initialPinchScale = this.stage.scale.x;
+        this._panStart = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+        this._stageStart = { x: this.stage.position.x, y: this.stage.position.y };
+      } 
+      // Initiate pan on desktop only if cmd/ctrl is held
+      else if (e.metaKey || e.ctrlKey) {
+        this._isPanning = true;
+        this._panStart = { x: e.global.x, y: e.global.y };
+        this._stageStart = { x: this.stage.position.x, y: this.stage.position.y };
+      }
+    });
+
+    this.stage.on("globalpointermove", (e) => {
+      if (this._activePointers.has(e.pointerId)) {
+        this._activePointers.set(e.pointerId, { x: e.global.x, y: e.global.y });
+      }
+
+      if (this._isPanning) {
+        if (!this._isManualCamera) {
+          this._isManualCamera = true;
+          this.onCameraManualOverride?.(true);
+          gsap.killTweensOf(this.stage.position);
+          gsap.killTweensOf(this.stage.scale);
+        }
+
+        if (this._activePointers.size === 2) {
+          // Pinch-to-zoom + pan
+          const pts = Array.from(this._activePointers.values());
+          const currentDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+          const currentCenter = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+
+          if (this._initialPinchDistance > 0) {
+            let zoomScale = currentDist / this._initialPinchDistance;
+            
+            // Limit scale
+            const newScaleRaw = this._initialPinchScale * zoomScale;
+            let newScale = newScaleRaw;
+            if (newScale > 10) newScale = 10;
+            if (newScale < this._minScale) newScale = this._minScale;
+
+            this.stage.scale.set(newScale);
+
+            // Pan offset
+            const dx = currentCenter.x - this._panStart.x;
+            const dy = currentCenter.y - this._panStart.y;
+            
+            // Adjust position so that the zoom is centered around the initial pinch point
+            // This requires calculating where the original center would be at the new scale
+            const scaleRatio = newScale / this._initialPinchScale;
+            const scaledStageStartX = this._panStart.x - (this._panStart.x - this._stageStart.x) * scaleRatio;
+            const scaledStageStartY = this._panStart.y - (this._panStart.y - this._stageStart.y) * scaleRatio;
+
+            this.stage.position.set(scaledStageStartX + dx, scaledStageStartY + dy);
+          }
+        } else {
+          // Single-finger (with Cmd/Ctrl) or single-mouse pan
+          const dx = e.global.x - this._panStart.x;
+          const dy = e.global.y - this._panStart.y;
+          this.stage.position.set(this._stageStart.x + dx, this._stageStart.y + dy);
+        }
+      }
+    });
+
+    const pointerUpHandler = (e: PIXI.FederatedPointerEvent) => {
+      this._activePointers.delete(e.pointerId);
+      if (this._activePointers.size < 2) {
+        if (this._isPanning && this._activePointers.size === 1) {
+          // If we lift one finger during a pinch, reset pan anchor to the remaining finger to avoid jumping
+          const remainingPt = Array.from(this._activePointers.values())[0];
+          this._panStart = { x: remainingPt.x, y: remainingPt.y };
+          this._stageStart = { x: this.stage.position.x, y: this.stage.position.y };
+        } else if (this._activePointers.size === 0) {
+          this._isPanning = false;
+        }
+      }
+      this.onPointerUp?.();
+    };
+
+    this.stage.on("pointerup", pointerUpHandler);
+    this.stage.on("pointerupoutside", pointerUpHandler);
+
+    this.app.canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      
+      if (!this._isManualCamera) {
+        this._isManualCamera = true;
+        this.onCameraManualOverride?.(true);
+        gsap.killTweensOf(this.stage.position);
+        gsap.killTweensOf(this.stage.scale);
+      }
+
+      const point = new PIXI.Point(e.offsetX, e.offsetY);
+      const localPoint = this.stage.toLocal(point);
+
+      // Scroll up/down controls zoom in/out
+      let zoomScale = e.deltaY > 0 ? 0.9 : 1.1;
+      
+      // Limit scale to avoid extreme zooms
+      const currentScale = this.stage.scale.x;
+      if (currentScale * zoomScale > 10) zoomScale = 10 / currentScale;
+      if (currentScale * zoomScale < this._minScale) zoomScale = this._minScale / currentScale;
+
+      const newScaleX = this.stage.scale.x * zoomScale;
+      const newScaleY = this.stage.scale.y * zoomScale;
+      
+      this.stage.scale.set(newScaleX, newScaleY);
+      
+      const newLocalPoint = this.stage.toGlobal(localPoint);
+      this.stage.position.x += point.x - newLocalPoint.x;
+      this.stage.position.y += point.y - newLocalPoint.y;
+    }, { passive: false });
+  }
+
+  resetCamera() {
+    this._isManualCamera = false;
+    this.onCameraManualOverride?.(false);
+    // Returning true tells the caller we successfully reset state, they should re-sync
+    return true;
   }
 
   resize(width: number, height: number) {
@@ -105,6 +257,7 @@ export class PixiEngine {
     if (this._edgesDirty) {
       this.edgeGraphics.clear();
       const edgeColor = this.palette?.border ?? 0x334155;
+      let hasEdges = false;
       for (const edgeKey of this.activeEdges) {
         const [fromKey, toKey] = edgeKey.split('-');
         const fromNode = this.nodes.get(fromKey);
@@ -114,9 +267,12 @@ export class PixiEngine {
           if (scaleAlpha > 0.01) {
             this.edgeGraphics.moveTo(fromNode.graphics.x, fromNode.graphics.y);
             this.edgeGraphics.lineTo(toNode.graphics.x, toNode.graphics.y);
-            this.edgeGraphics.stroke({ color: edgeColor, width: 2, alpha: 0.4 * scaleAlpha });
+            hasEdges = true;
           }
         }
+      }
+      if (hasEdges) {
+        this.edgeGraphics.stroke({ color: edgeColor, width: 2, alpha: 0.4 });
       }
       this._edgesDirty = false;
     }
@@ -169,6 +325,29 @@ export class PixiEngine {
     this.onAutoSolve = onAutoSolve;
     this.onIgnoreDuplicate = onIgnoreDuplicate;
     this.onDeepDiveRequest = onDeepDiveRequest;
+
+    let totalVertexCount = 0;
+    graphs.forEach(g => totalVertexCount += g.vertices.length);
+    bankedGraphs.forEach(g => totalVertexCount += g.vertices.length);
+
+    if (totalVertexCount > 2500) {
+      this.glowContainer.filters = [];
+    } else {
+      if (totalVertexCount > 900) {
+        this._blurFilter.quality = 1;
+        this._blurFilter.blur = 6;
+        this._blurFilter.padding = 10;
+      } else if (totalVertexCount > 200) {
+        this._blurFilter.quality = 2;
+        this._blurFilter.blur = 8;
+        this._blurFilter.padding = 20;
+      } else {
+        this._blurFilter.quality = 3;
+        this._blurFilter.blur = 10;
+        this._blurFilter.padding = 40;
+      }
+      this.glowContainer.filters = [this._blurFilter];
+    }
 
     const graphMetas = graphs.map((graph) => {
       let minX = Infinity, maxX = -Infinity;
@@ -253,20 +432,32 @@ export class PixiEngine {
       const scaleX = width / vWidth;
       const scaleY = height / vHeight;
       targetScale = Math.min(scaleX, scaleY);
+      this._minScale = targetScale;
       const offsetX = -minX * targetScale + (width - vWidth * targetScale) / 2;
       const offsetY = -minY * targetScale + (height - vHeight * targetScale) / 2;
 
       if (!isExecuting) {
-        gsap.to(this.stage.position, { x: offsetX, y: offsetY, duration: 0.6, delay: layoutDelay, ease: "power2.out" });
-        gsap.to(this.stage.scale, { x: targetScale, y: targetScale, duration: 0.6, delay: layoutDelay, ease: "power2.out" });
+        if (!this._isManualCamera) {
+          gsap.to(this.stage.position, { x: offsetX, y: offsetY, duration: 0.6, delay: layoutDelay, ease: "power2.out" });
+          gsap.to(this.stage.scale, { x: targetScale, y: targetScale, duration: 0.6, delay: layoutDelay, ease: "power2.out" });
+        }
       }
     }
 
     this.wandContainer.removeChildren();
-    this.textContainer.removeChildren();
+    // We pool text objects now, so don't clear textContainer here.
     this.gridLinesContainer.removeChildren();
 
     const seenHashes = new Set<string>();
+    const usedTextKeys = new Set<string>();
+    
+    const pendingCutKeys = new Set<string>();
+    pendingCutSet.forEach(v => pendingCutKeys.add(`${v.x},${v.y}`));
+    
+    const bankedVertexKeys = new Set<string>();
+    bankedGraphs.forEach(g => {
+      g.vertices.forEach(v => bankedVertexKeys.add(`${v.x},${v.y}`));
+    });
     if (splitView && optimalRanks) {
       bankedGraphs.forEach(bg => {
         const h = optimalRanks.get(getLocalGraphFingerprint(bg))?.hash;
@@ -298,25 +489,25 @@ export class PixiEngine {
 
           for (let x = meta.minX; x <= meta.maxX; x++) {
             const text = new PIXI.Text({
-               text: x.toString(),
+               text: (x - meta.minX).toString(),
                style: { fontFamily: "sans-serif", fontSize: 32, fill: gridColor }
             });
             text.scale.set(textScale);
             text.alpha = 0.6;
             text.x = layout.offsetX + (x - meta.minX) * this.cellSize + this.cellSize / 2 - text.width / 2;
             text.y = originY - text.height - 4;
-            this.textContainer.addChild(text);
+            this.gridLinesContainer.addChild(text);
           }
           for (let y = meta.minY; y <= meta.maxY; y++) {
             const text = new PIXI.Text({
-               text: y.toString(),
+               text: (y - meta.minY).toString(),
                style: { fontFamily: "sans-serif", fontSize: 32, fill: gridColor }
             });
             text.scale.set(textScale);
             text.alpha = 0.6;
             text.x = originX - text.width - 6;
             text.y = layout.offsetY + (y - meta.minY) * this.cellSize + this.cellSize / 2 - text.height / 2;
-            this.textContainer.addChild(text);
+            this.gridLinesContainer.addChild(text);
           }
 
           const gridGfx = new PIXI.Graphics();
@@ -472,25 +663,33 @@ export class PixiEngine {
         }
       }
 
-      if (showGridIndices && graphs.length === 1) {
+      if (showGridIndices && graphs.length === 1 && totalVertexCount <= 2500) {
         const gridColor = document.documentElement.dataset.theme === 'light' ? 0x1f2937 : 0xffffff;
         const textScale = Math.max(5, this.cellSize * 0.25) / 32;
         graph.vertices.forEach(vertex => {
-          const text = new PIXI.Text({
-             text: `${vertex.x},${vertex.y}`,
-             style: { fontFamily: "sans-serif", fontSize: 32, fill: gridColor }
-          });
+          const key = `${vertex.x},${vertex.y}`;
+          usedTextKeys.add(key);
+          let text = this._textCache.get(key);
+          if (!text) {
+            text = new PIXI.Text({
+               text: key,
+               style: { fontFamily: "sans-serif", fontSize: 32, fill: gridColor }
+            });
+            this._textCache.set(key, text);
+            this.textContainer.addChild(text);
+          } else {
+            text.style.fill = gridColor;
+          }
           text.scale.set(textScale);
           text.alpha = 0.4;
           const targetX = layout.offsetX + (vertex.x - meta.minX) * this.cellSize + this.cellSize / 2;
           const targetY = layout.offsetY + (vertex.y - meta.minY) * this.cellSize + this.cellSize / 2;
           text.x = targetX - text.width / 2;
           text.y = targetY - text.height / 2;
-          this.textContainer.addChild(text);
         });
       }
 
-      if (optRank && optRank.best_rank !== 999999 && !isExecuting && pendingCutSet.length === 0 && !isUntouchedFirstGraph) {
+      if (optRank && optRank.best_rank !== 999999 && !isExecuting && pendingCutSet.length === 0 && !isUntouchedFirstGraph && totalVertexCount <= 2500) {
         const wandScale = 1 / targetScale;
 
         const wandBg = new PIXI.Graphics();
@@ -603,7 +802,7 @@ export class PixiEngine {
 
         const targetX = layout.offsetX + (vertex.x - meta.minX) * this.cellSize + this.cellSize / 2;
         const targetY = layout.offsetY + (vertex.y - meta.minY) * this.cellSize + this.cellSize / 2;
-        const isPendingCut = pendingCutSet.some((v) => isSameVertex(v, vertex));
+        const isPendingCut = pendingCutKeys.has(key);
 
         let node = this.nodes.get(key);
         if (!node) {
@@ -615,6 +814,12 @@ export class PixiEngine {
             glowGraphics: new PIXI.Graphics(),
             isPendingCut,
             color: 0,
+            graphIndex,
+            _drawnPendingCut: !isPendingCut,
+            _drawnSelected: !isSelected,
+            _drawnVaporizeType: "none",
+            _drawnCellSize: -1,
+            _drawnPaletteId: -1,
           };
           node.graphics.x = targetX;
           node.graphics.y = targetY;
@@ -622,26 +827,41 @@ export class PixiEngine {
           node.glowGraphics.y = targetY;
           node.graphics.eventMode = "static";
           node!.graphics.cursor = "pointer";
+          
           node!.graphics.on("pointerdown", (e) => {
-            e.stopPropagation();
+            this._activePointers.set(e.pointerId, { x: e.global.x, y: e.global.y });
+
             if (e.pointerId !== undefined && (node!.graphics as any).hasPointerCapture?.(e.pointerId)) {
               (node!.graphics as any).releasePointerCapture(e.pointerId);
             }
+            
+            if (e.metaKey || e.ctrlKey) {
+              return; // Let stage handle desktop panning
+            }
+
+            if (this._activePointers.size >= 2) {
+              return; // Let stage handle multi-touch panning
+            }
+
+            e.stopPropagation();
+
+            if (this.isDestroyed) return;
+            const currentGraphIndex = node!.graphIndex;
             if (readOnly) {
               if (node!.isPendingCut && this.onDeepDiveRequest) {
-                this.onDeepDiveRequest(graphIndex);
+                this.onDeepDiveRequest(currentGraphIndex);
               }
               return;
             }
-            if (!this.splitView) {
-              this.onNodePointerDown?.(vertex, graphIndex, e.shiftKey);
-            } else {
-              this.onGraphClick?.(graphIndex);
+
+            if (!splitView || currentGraphIndex === selectedGraphIndex) {
+              onNodePointerDown?.(vertex, currentGraphIndex, e.shiftKey);
             }
           });
+
           node!.graphics.on("pointerenter", () => {
-            if (readOnly || this.splitView) return;
-            this.onNodePointerEnter?.(vertex, graphIndex);
+            if (readOnly || splitView || this.isDestroyed || this._isPanning) return;
+            onNodePointerEnter?.(vertex, node!.graphIndex);
           });
           this.nodeContainer.addChild(node.graphics);
           this.glowContainer.addChild(node.glowGraphics);
@@ -651,53 +871,61 @@ export class PixiEngine {
           node.glowGraphics.scale.set(0);
           gsap.to([node.graphics.scale, node.glowGraphics.scale], { x: 1, y: 1, duration: 0.4, delay: layoutDelay, ease: "back.out(1.7)", onUpdate: () => this.markEdgesDirty() });
         } else {
+          node.graphIndex = graphIndex;
           if (!isExecuting) {
             gsap.to([node.graphics, node.glowGraphics], { x: targetX, y: targetY, duration: 0.6, ease: "power2.out", onUpdate: () => this.markEdgesDirty() });
           }
-
-          node!.graphics.off("pointerdown");
-          node!.graphics.on("pointerdown", (e) => {
-            e.stopPropagation();
-            if (e.pointerId !== undefined && (node!.graphics as any).hasPointerCapture?.(e.pointerId)) {
-              (node!.graphics as any).releasePointerCapture(e.pointerId);
-            }
-            if (readOnly) {
-              if (node!.isPendingCut && this.onDeepDiveRequest) {
-                this.onDeepDiveRequest(graphIndex);
-              }
-              return;
-            }
-            if (!this.splitView) {
-              this.onNodePointerDown?.(vertex, graphIndex, e.shiftKey);
-            } else {
-              this.onGraphClick?.(graphIndex);
-            }
-          });
-          node!.graphics.off("pointerenter");
-          node!.graphics.on("pointerenter", () => {
-            if (readOnly || this.splitView) return;
-            this.onNodePointerEnter?.(vertex, graphIndex);
-          });
         }
 
         node.isPendingCut = isPendingCut;
-        drawNode(node, this.cellSize, this.palette, isSelected, vaporizeActionType);
+        
+        const paletteId = this.palette?.tileA ?? 0;
+        const needsRedraw = 
+          node._drawnPendingCut !== isPendingCut ||
+          node._drawnSelected !== isSelected ||
+          node._drawnVaporizeType !== vaporizeActionType ||
+          node._drawnCellSize !== this.cellSize ||
+          node._drawnPaletteId !== paletteId;
+
+        if (needsRedraw) {
+          drawNode(node, this.cellSize, this.palette, isSelected, vaporizeActionType);
+          node._drawnPendingCut = isPendingCut;
+          node._drawnSelected = isSelected;
+          node._drawnVaporizeType = vaporizeActionType;
+          node._drawnCellSize = this.cellSize;
+          node._drawnPaletteId = paletteId;
+        }
       });
 
     });
+
+    for (const [key, text] of this._textCache.entries()) {
+      if (!usedTextKeys.has(key)) {
+        this.textContainer.removeChild(text);
+        text.destroy();
+        this._textCache.delete(key);
+      }
+    }
 
     this.activeEdges = activeEdges;
 
     for (const [key, node] of this.nodes.entries()) {
       if (!activeKeys.has(key)) {
-        const isBanked = bankedGraphs.some((g) => g.vertices.some((v) => isSameVertex(v, node.vertex)));
+        const isBanked = bankedVertexKeys.has(key);
 
         this.dyingGraphics.add(node.graphics);
         this.dyingGraphics.add(node.glowGraphics);
         gsap.killTweensOf(node.graphics);
         gsap.killTweensOf(node.glowGraphics);
 
-        if (isBanked) {
+        if (totalVertexCount > 2500) {
+          this.nodeContainer.removeChild(node.graphics);
+          this.glowContainer.removeChild(node.glowGraphics);
+          this.dyingGraphics.delete(node.graphics);
+          this.dyingGraphics.delete(node.glowGraphics);
+          node.graphics.destroy();
+          node.glowGraphics.destroy();
+        } else if (isBanked) {
           gsap.to([node.graphics.scale, node.glowGraphics.scale], {
             x: 0,
             y: 0,
@@ -726,7 +954,7 @@ export class PixiEngine {
             onUpdate: () => this.markEdgesDirty(),
             onComplete: () => {
               const shardColors = this.palette ? [this.palette.select, this.palette.selectBorder] : [node.color, 0xdcfce7];
-              spawnExplosion(this.particleContainer, this.particles, this.dyingGraphics.size / 2, node.graphics.x, node.graphics.y, shardColors, readOnly);
+              spawnExplosion(this.particleContainer, this.particles, this.dyingGraphics.size / 2, node.graphics.x, node.graphics.y, shardColors, readOnly, totalVertexCount);
               this.nodeContainer.removeChild(node.graphics);
               this.glowContainer.removeChild(node.glowGraphics);
               gsap.killTweensOf(node.graphics);
@@ -749,7 +977,7 @@ export class PixiEngine {
             onUpdate: () => this.markEdgesDirty(),
             onComplete: () => {
               const shardColors = this.palette ? [this.palette.tileA, this.palette.tileB] : [0x10b981, 0x34d399, 0xfcd34d];
-              spawnExplosion(this.particleContainer, this.particles, this.dyingGraphics.size / 2, node.graphics.x, node.graphics.y, shardColors, readOnly);
+              spawnExplosion(this.particleContainer, this.particles, this.dyingGraphics.size / 2, node.graphics.x, node.graphics.y, shardColors, readOnly, totalVertexCount);
               this.nodeContainer.removeChild(node.graphics);
               this.glowContainer.removeChild(node.glowGraphics);
               gsap.killTweensOf(node.graphics);

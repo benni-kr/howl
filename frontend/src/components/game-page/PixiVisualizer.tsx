@@ -53,6 +53,8 @@ const isSameVertex = (a: Vertex, b: Vertex) => a.x === b.x && a.y === b.y;
 
 import { PixiEngine } from "./PixiEngine";
 
+const EMPTY_OPTIMAL_RANKS = new Map();
+
 const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
   (
     {
@@ -66,7 +68,7 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
       bankedGraphs = [],
       settings,
       isExecuting = false,
-      optimalRanks = new Map(),
+      optimalRanks = EMPTY_OPTIMAL_RANKS,
       onAutoSolve,
       onIgnoreDuplicate,
       hasCutsApplied = false,
@@ -83,6 +85,8 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const engineRef = useRef<PixiEngine | null>(null);
     const [pendingCutSet, setPendingCutSet] = useState<Vertex[]>([]);
+    const [isManualCamera, setIsManualCamera] = useState(false);
+    const [resetTrigger, setResetTrigger] = useState(0);
 
     const displayGraphs = useMemo(() => {
       if (recentCutGraphs.length > 0) {
@@ -95,6 +99,29 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
     const isDraggingRef = useRef(false);
     const dragTargetStateRef = useRef(true);
     const lastClickedVertexRef = useRef<Vertex | null>(null);
+
+    const pendingCutRafRef = useRef<number | null>(null);
+    const pendingCutUpdatersRef = useRef<((prev: Vertex[]) => Vertex[])[]>([]);
+
+    const setPendingCutThrottled = useCallback((updater: (prev: Vertex[]) => Vertex[]) => {
+      pendingCutUpdatersRef.current.push(updater);
+      if (pendingCutRafRef.current === null) {
+        pendingCutRafRef.current = requestAnimationFrame(() => {
+          pendingCutRafRef.current = null;
+          const updaters = pendingCutUpdatersRef.current;
+          pendingCutUpdatersRef.current = [];
+          if (updaters.length > 0) {
+            setPendingCutSet(prev => {
+              let state = prev;
+              for (const u of updaters) {
+                state = u(state);
+              }
+              return state;
+            });
+          }
+        });
+      }
+    }, []);
 
     const onNodePointerDown = useCallback((vertex: Vertex, graphIndex: number, shiftKey: boolean) => {
       if (displayGraphs.length > 1 || splitView) {
@@ -170,7 +197,7 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
     const onNodePointerEnter = useCallback((vertex: Vertex, graphIndex: number) => {
       if (graphIndex !== 0 || !isDraggingRef.current) return;
       const forceSelect = dragTargetStateRef.current;
-      setPendingCutSet((prev) => {
+      setPendingCutThrottled((prev) => {
         const isSelected = prev.some((item) => isSameVertex(item, vertex));
         let newSet = [...prev];
         if (isSelected && !forceSelect) {
@@ -183,7 +210,7 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
         
         return newSet;
       });
-    }, []);
+    }, [setPendingCutThrottled]);
 
     const onPointerUp = useCallback(() => {
       isDraggingRef.current = false;
@@ -193,6 +220,9 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
       if (!containerRef.current) return;
       let isMounted = true;
       const engine = new PixiEngine(containerRef.current);
+      engine.onCameraManualOverride = (isManual) => {
+        if (isMounted) setIsManualCamera(isManual);
+      };
       engine.init(width, height).then(() => {
         if (!isMounted) return;
         engineRef.current = engine;
@@ -237,9 +267,34 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Resize
+    const prevSyncParamsRef = useRef<string | null>(null);
+
+    // Resize and Sync
     useEffect(() => {
       if (engineRef.current) {
+        const currentParams = {
+          width, height,
+          displayGraphsCount: displayGraphs.length,
+          displayGraphsVerts: displayGraphs.reduce((sum, g) => sum + g.vertices.length, 0),
+          pendingCuts: (overridePendingCutSet || pendingCutSet).map(v => `${v.x},${v.y}`).join('|'),
+          vaporizeActionType,
+          splitView,
+          selectedGraphIndex,
+          bankedGraphsCount: bankedGraphs.length,
+          settings: `${settings.showGridIndices}|${settings.showGridLines}|${settings.showCoordinateSystem}`,
+          optimalRanksCount: optimalRanks?.size,
+          isExecuting,
+          hasCutsApplied,
+          readOnly,
+          palette: selectActivePalette({ settings })?.tileA, // proxy for palette change
+          resetTrigger
+        };
+        const currentParamsStr = JSON.stringify(currentParams);
+        if (prevSyncParamsRef.current === currentParamsStr) {
+          return;
+        }
+        prevSyncParamsRef.current = currentParamsStr;
+
         engineRef.current.resize(width, height);
         engineRef.current.syncState(
           displayGraphs,
@@ -254,15 +309,9 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           onNodePointerDown,
           onNodePointerEnter,
           onPointerUp,
-          (graphIndex) => {
-            onSelectGraph?.(graphIndex);
-          },
-          (graphIndex) => {
-            onAutoSolve?.(graphIndex);
-          },
-          (graphIndex) => {
-            onIgnoreDuplicate?.(graphIndex);
-          },
+          onSelectGraph,
+          onAutoSolve,
+          onIgnoreDuplicate,
           isExecuting,
           hasCutsApplied,
           readOnly,
@@ -273,7 +322,20 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           settings.showGridLines
         );
       }
-    }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, vaporizeActionType, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, onSelectGraph, onAutoSolve, onIgnoreDuplicate, onNodePointerDown, onNodePointerEnter, onPointerUp, isExecuting, hasCutsApplied, readOnly, onDeepDiveRequest]);
+    }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, vaporizeActionType, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, isExecuting, hasCutsApplied, readOnly, resetTrigger]);
+
+    // Callback updates
+    useEffect(() => {
+      if (engineRef.current) {
+        engineRef.current.onNodePointerDown = onNodePointerDown;
+        engineRef.current.onNodePointerEnter = onNodePointerEnter;
+        engineRef.current.onPointerUp = onPointerUp;
+        engineRef.current.onGraphClick = onSelectGraph;
+        engineRef.current.onAutoSolve = onAutoSolve;
+        engineRef.current.onIgnoreDuplicate = onIgnoreDuplicate;
+        engineRef.current.onDeepDiveRequest = onDeepDiveRequest;
+      }
+    }, [onNodePointerDown, onNodePointerEnter, onPointerUp, onSelectGraph, onAutoSolve, onIgnoreDuplicate, onDeepDiveRequest]);
 
     useEffect(() => {
       onPendingCutSetChange?.(pendingCutSet);
@@ -292,6 +354,31 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
         lastClickedVertexRef.current = null;
       }
     }, [splitView]);
+
+    const prevDisplayGraphsRef = useRef<Graph[]>(displayGraphs);
+
+    useEffect(() => {
+      const prev = prevDisplayGraphsRef.current;
+      const current = displayGraphs;
+      
+      let shouldReset = false;
+      if (current.length === 1) {
+        if (prev.length > 1) {
+          shouldReset = true;
+        } else if (prev.length === 1 && prev[0] !== current[0]) {
+          shouldReset = true;
+        }
+      }
+
+      if (shouldReset && isManualCamera && engineRef.current) {
+        engineRef.current.resetCamera();
+        setResetTrigger(prevVal => prevVal + 1);
+        prevSyncParamsRef.current = null;
+        setIsManualCamera(false);
+      }
+
+      prevDisplayGraphsRef.current = current;
+    }, [displayGraphs, isManualCamera]);
 
 
 
@@ -315,16 +402,48 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
     );
 
     return (
-      <div 
-        ref={containerRef} 
-        style={{ 
-          width, 
-          height, 
-          background: "transparent", 
-          overflow: "hidden", 
-          touchAction: "none" 
-        }} 
-      />
+      <div style={{ position: "relative", width, height }}>
+        <div 
+          ref={containerRef} 
+          style={{ 
+            width: "100%", 
+            height: "100%", 
+            background: "transparent", 
+            overflow: "hidden", 
+            touchAction: "none" 
+          }} 
+        />
+        {isManualCamera && (
+          <button
+            onClick={() => {
+              if (engineRef.current) {
+                if (engineRef.current.resetCamera()) {
+                  // Force a re-layout by changing the trigger
+                  setResetTrigger(prev => prev + 1);
+                  prevSyncParamsRef.current = null;
+                  setIsManualCamera(false);
+                }
+              }
+            }}
+            style={{
+              position: "absolute",
+              top: 16,
+              right: 16,
+              padding: "6px 12px",
+              background: "var(--bg-card)",
+              color: "var(--text-main)",
+              border: "1px solid var(--border)",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontSize: "12px",
+              zIndex: 10,
+              boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
+            }}
+          >
+            Reset View
+          </button>
+        )}
+      </div>
     );
   }
 );

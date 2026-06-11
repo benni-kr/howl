@@ -25,29 +25,31 @@ def generate_canonical_data(vertices: list[dict]) -> dict:
     coords = [(v["x"], v["y"]) for v in vertices]
     transforms = get_transformations()
     
-    best_hash = None
+    best_string = None
     best_meta = {}
 
     for idx, transform in enumerate(transforms):
         transformed = [transform(x, y) for x, y in coords]
-        min_x = min(x for x, _ in transformed)
-        min_y = min(y for _, y in transformed)
+        
+        min_x = min_y = float('inf')
+        for x, y in transformed:
+            if x < min_x: min_x = x
+            if y < min_y: min_y = y
         
         normalized = sorted((x - min_x, y - min_y) for x, y in transformed)
         candidate_string = "|".join(f"{x},{y}" for x, y in normalized)
         
-        if best_hash is None or candidate_string < best_hash:
-            best_hash = candidate_string
-            # Use an MD5 hash to guarantee a short, fixed-length primary key for PostgreSQL
-            # avoiding B-Tree index size limits on very large grids (e.g. 30x30).
-            md5_hash = hashlib.md5(candidate_string.encode('utf-8')).hexdigest()
+        if best_string is None or candidate_string < best_string:
+            best_string = candidate_string
             best_meta = {
-                "hash": md5_hash,
-                "shape_str": candidate_string,
                 "transform_idx": idx,
                 "shift_x": min_x,
                 "shift_y": min_y
             }
+
+    md5_hash = hashlib.md5(best_string.encode('utf-8')).hexdigest()
+    best_meta["hash"] = md5_hash
+    best_meta["shape_str"] = best_string
 
     return best_meta
 

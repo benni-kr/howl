@@ -22,6 +22,15 @@ export type EliminationNode = {
   isSubgraph?: boolean;
 };
 
+type Snapshot = {
+  graphs: Graph[];
+  cutsApplied: CutHistoryAction[];
+  maxRank: number;
+  treeRoot: EliminationNode;
+  activeNodes: EliminationNode[];
+  nextId: number;
+};
+
 const buildGridGraph = (m: number, n: number): Graph => {
   const vertices: Vertex[] = [];
   const edges: Edge[] = [];
@@ -103,8 +112,7 @@ export const useReplayEngine = (initialM: number, initialN: number, globalSequen
     return () => clearInterval(interval);
   }, [isPlaying, currentStep, totalSteps, playbackSpeed]);
 
-  // Recalculate board state from step 0 to currentStep
-  const boardState = useMemo(() => {
+  const snapshots = useMemo(() => {
     let initialGraph: Graph = activeContext.initialGraph
       ? { vertices: [...activeContext.initialGraph.vertices], edges: [...activeContext.initialGraph.edges], baseRank: 0 }
       : buildGridGraph(activeContext.m, activeContext.n);
@@ -121,7 +129,119 @@ export const useReplayEngine = (initialM: number, initialN: number, globalSequen
     let activeNodes: EliminationNode[] = [treeRoot];
     let nextId = 1;
 
-    for (let i = 0; i < currentStep; i++) {
+    const cache: Record<number, Snapshot> = {};
+    
+    const cloneSnapshot = () => {
+      const clonedTree = JSON.parse(JSON.stringify(treeRoot));
+      const newActiveNodes: EliminationNode[] = [];
+      const activeIds = new Set(activeNodes.map(n => n.id));
+      const findActive = (node: EliminationNode) => {
+        if (activeIds.has(node.id)) newActiveNodes.push(node);
+        node.children.forEach(findActive);
+      };
+      findActive(clonedTree);
+
+      return {
+        graphs: graphs.map(g => ({ ...g, vertices: [...g.vertices], edges: [...g.edges] })),
+        cutsApplied: [...cutsApplied],
+        maxRank,
+        treeRoot: clonedTree,
+        activeNodes: newActiveNodes,
+        nextId
+      };
+    };
+
+    cache[0] = cloneSnapshot();
+
+    for (let i = 0; i < activeContext.sequence.length; i++) {
+      const action = activeContext.sequence[i];
+      if (!action || !action.vertices || action.vertices.length === 0) continue;
+
+      cutsApplied.push(action);
+
+      const firstVertexKey = getVertexKey(action.vertices[0]);
+      const targetIndex = graphs.findIndex(g => 
+        g.vertices.some(v => getVertexKey(v) === firstVertexKey)
+      );
+
+      if (targetIndex !== -1) {
+        const targetGraph = graphs[targetIndex];
+
+        const nodeIndex = activeNodes.findIndex(n => 
+          n.graph.vertices.some(v => getVertexKey(v) === firstVertexKey)
+        );
+        const targetNode = activeNodes[nodeIndex];
+        if (targetNode) {
+          targetNode.action = action;
+        }
+
+        if (action.type === "cut") {
+          const subgraphs = executeCutLocal(targetGraph, action.vertices);
+          const cutSize = targetGraph.vertices.length - subgraphs.reduce((sum, g) => sum + g.vertices.length, 0);
+          const newBaseRank = targetGraph.baseRank + cutSize;
+          
+          const rankedSubgraphs = subgraphs.map(g => ({ ...g, baseRank: newBaseRank }));
+          
+          graphs.splice(targetIndex, 1, ...rankedSubgraphs);
+
+          if (targetNode) {
+            targetNode.children = rankedSubgraphs.map(g => ({
+              id: `node_${nextId++}`,
+              graph: g,
+              children: []
+            }));
+            activeNodes.splice(nodeIndex, 1, ...targetNode.children);
+          }
+        } else if (action.type === "vaporize" || action.type === "ignore" || action.type === "subgraph") {
+          if (action.type === "vaporize") {
+            maxRank = Math.max(maxRank, targetGraph.baseRank + action.optimal_rank);
+          }
+          graphs.splice(targetIndex, 1);
+
+          if (targetNode) {
+            if (action.type === "vaporize") {
+              targetNode.isVaporized = true;
+            } else if (action.type === "ignore") {
+              targetNode.isIgnored = true;
+            } else if (action.type === "subgraph") {
+              targetNode.isSubgraph = true;
+            }
+            activeNodes.splice(nodeIndex, 1);
+          }
+        }
+      }
+      
+      // Cache every 10 steps and at the very end
+      if ((i + 1) % 10 === 0 || i + 1 === activeContext.sequence.length) {
+        cache[i + 1] = cloneSnapshot();
+      }
+    }
+    
+    return cache;
+  }, [activeContext]);
+
+  // Recalculate board state from the nearest snapshot
+  const boardState = useMemo(() => {
+    const nearestStep = currentStep - (currentStep % 10);
+    const snap = snapshots[nearestStep] || snapshots[0];
+
+    // Clone the snapshot to avoid mutating the cache
+    let graphs = snap.graphs.map(g => ({ ...g, vertices: [...g.vertices], edges: [...g.edges] }));
+    let cutsApplied = [...snap.cutsApplied];
+    let maxRank = snap.maxRank;
+    
+    let treeRoot: EliminationNode = JSON.parse(JSON.stringify(snap.treeRoot));
+    let activeNodes: EliminationNode[] = [];
+    const activeIds = new Set(snap.activeNodes.map(n => n.id));
+    const findActive = (node: EliminationNode) => {
+      if (activeIds.has(node.id)) activeNodes.push(node);
+      node.children.forEach(findActive);
+    };
+    findActive(treeRoot);
+    
+    let nextId = snap.nextId;
+
+    for (let i = nearestStep; i < currentStep; i++) {
       const action = activeContext.sequence[i];
       if (!action || !action.vertices || action.vertices.length === 0) continue;
 
