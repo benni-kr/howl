@@ -69,7 +69,12 @@ To power the "Subset Vaporize" batch action, the frontend must check if a smalle
 4. Returning true if a perfect coordinate subset match is found.
 
 ### Local Fingerprinting
-To manage active graph caching without complex geometry, the frontend implements an $O(V \log V)$ localized graph fingerprinting algorithm (`getLocalGraphFingerprint`). While not rotationally invariant like the backend's canonical hash, it is used strictly for exact-match coordinate deduplication within a single render cycle.
+To manage active graph caching without complex geometry, the frontend implements an $O(V)$ localized graph fingerprinting algorithm (`getLocalGraphFingerprint`). This fingerprint is generated strictly from the coordinate data and is cached efficiently using the `baseRank` as a short-circuit. While not rotationally invariant like the backend's canonical hash, it is used strictly for exact-match coordinate deduplication within a single render cycle.
+
+### Performance Optimizations for Large Grids ($100 \times 100$)
+1. **Dirty Flag Rendering**: `PixiVisualizer` skips re-drawing nodes that have not changed state (e.g. hovered/selected) during the game loop, significantly reducing geometry uploads to the GPU.
+2. **Debounced Persistence**: The Redux state synchronizes with `localStorage` on a debounce, preventing synchronous `JSON.stringify` blocking when rapidly selecting tiles.
+3. **Batched API Calls**: Calls to `check_shapes` are batched through the `BatchActionBar`, drastically reducing HTTP overhead and database contention on the backend when the board splits into many small fragments.
 
 ---
 
@@ -80,7 +85,7 @@ Because HTML/DOM elements become incredibly sluggish when rendering hundreds of 
 ### `PixiVisualizer.tsx`
 This component acts as a bridge between the React/Redux world and the WebGL canvas.
 1. **Reconciliation**: It translates the current `GridGraph` object from Redux into Pixi `Graphics` primitives based on the active `colorPalette`.
-2. **Viewport Management**: It wraps the scene in a `pixi-viewport` to allow for drag-to-pan and pinch-to-zoom controls.
+2. **Viewport Management**: It wraps the scene in a `pixi-viewport` to allow for drag-to-pan and wheel-to-zoom controls. Panning requires the user to hold `Cmd`/`Ctrl` to avoid conflict with node selection. The camera automatically resets/re-centers when the active graph changes.
 3. **Split View**: If the user enables split-view (or makes a cut resulting in multiple fragments), the visualizer splits the canvas into two interactive panes, rendering `activeGraph` on the left and `recentCutGraphs[0]` on the right.
 4. **Interaction**: Clicks on nodes are registered as local component state (`pendingCutSet`). Committing a cut dispatches it to Redux.
 5. **Batch Actions Overlay**: If the backend reports that a subgraph has a known optimal rank or is mathematically perfect, the visualizer overlays a Magic Wand or Abacus icon on that subgraph.
@@ -92,6 +97,7 @@ This component acts as a bridge between the React/Redux world and the WebGL canv
 HOWL features a dedicated Replay system to view community solutions.
 - **`ReplayPage.tsx`**: Uses a custom `useReplayEngine` hook to step through the decompressed action history block by block.
 - **VCR Controls**: Allows users to step forward, backward, play/pause, or skip to the end of a replay.
+- **Cache Snapshots**: To support $O(1)$ fast-forwarding and jumping through deep replays, `useReplayEngine` periodically snapshots the board state (every 10 steps), avoiding costly $O(N)$ recompilations from step 0.
 - **Elimination Tree (`TreeModal.tsx`)**: A visual diagram that dynamically draws the mathematical Treedepth Decomposition as the replay progresses, illustrating exactly how the score is derived.
 - **Forking**: Players can click "Fork Replay" at any point to clone the current replay board state into their own active Game session.
 
