@@ -198,7 +198,7 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
         engineRef.current = engine;
         engine.syncState(
           displayGraphs,
-          pendingCutSet,
+          (overridePendingCutSet && overridePendingCutSet.length > 0) ? overridePendingCutSet : pendingCutSet,
           splitView,
           selectedGraphIndex ?? null,
           width,

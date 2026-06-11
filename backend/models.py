@@ -36,3 +36,19 @@ class SubgraphDictionary(Base):
     best_cut_sequence: Mapped[object] = mapped_column(JSON, nullable=True)
     discovered_by: Mapped[str] = mapped_column(String, nullable=True)
     last_updated = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=True)
+
+
+class Issue(Base):
+    """User reported issues and known bugs."""
+
+    __tablename__ = "issues"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    type: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=False)
+    influenced_runs: Mapped[str] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="open", nullable=False)
+    created_by: Mapped[str] = mapped_column(String, nullable=False)
+    created_at = mapped_column(DateTime, server_default=func.now(), nullable=True)
+    last_changed_by: Mapped[str] = mapped_column(String, nullable=True)
+    updated_at = mapped_column(DateTime, onupdate=func.now(), nullable=True)

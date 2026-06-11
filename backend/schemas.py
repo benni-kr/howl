@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
 
 from pydantic import BaseModel, field_validator
 
@@ -105,3 +106,30 @@ class CheckShapesResponse(BaseModel):
     """Response for POST /api/check_shapes."""
     results: List[ShapeResult]
 
+
+class IssueCreate(BaseModel):
+    type: str
+    description: str
+    influenced_runs: Optional[str] = None
+    created_by: str
+
+class IssueUpdate(BaseModel):
+    type: Optional[str] = None
+    description: Optional[str] = None
+    influenced_runs: Optional[str] = None
+    status: Optional[str] = None
+    last_changed_by: str
+
+class IssueResponse(BaseModel):
+    id: int
+    type: str
+    description: str
+    influenced_runs: Optional[str] = None
+    status: str
+    created_by: str
+    created_at: datetime
+    last_changed_by: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

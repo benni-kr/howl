@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from database import Base, engine
-from routes import auth, game, leaderboard
+from routes import auth, game, leaderboard, issues
 
 logger = logging.getLogger("howl.main")
 
@@ -51,3 +51,4 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(game.router, prefix="/api", tags=["game"])
 app.include_router(leaderboard.router, prefix="/api/leaderboard", tags=["leaderboard"])
+app.include_router(issues.router, prefix="/api/issues", tags=["issues"])
