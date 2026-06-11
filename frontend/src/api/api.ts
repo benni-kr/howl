@@ -250,13 +250,78 @@ export type GridLeaderboardEntry = {
   created_at: string;
 };
 
-export const fetchGridLeaderboard = async (
-  m: number,
-  n: number,
-): Promise<GridLeaderboardEntry[]> => {
-  const response = await apiFetch(`${API_BASE_URL}/leaderboard/grid/${m}/${n}`);
+export async function fetchGridLeaderboard(m: number, n: number): Promise<GridLeaderboardEntry[]> {
+  const url = `${API_BASE_URL}/leaderboard/grid/${m}/${n}`;
+  const response = await apiFetch(url);
   if (!response.ok) {
-    throw new Error(`fetchGridLeaderboard failed: ${response.status}`);
+    throw new Error('Failed to fetch grid leaderboard');
   }
   return response.json();
-};
+}
+
+export interface Issue {
+  id: number;
+  type: string;
+  description: string;
+  influenced_runs: string | null;
+  status: string;
+  created_by: string;
+  created_at: string;
+  last_changed_by: string | null;
+  updated_at: string | null;
+}
+
+export async function fetchIssues(): Promise<Issue[]> {
+  const url = `${API_BASE_URL}/issues/`;
+  const response = await apiFetch(url);
+  if (!response.ok) {
+    throw new Error('Failed to fetch issues');
+  }
+  return response.json();
+}
+
+export async function submitIssue(type: string, description: string, influenced_runs: string | null, created_by: string): Promise<Issue> {
+  const url = `${API_BASE_URL}/issues/`;
+  const payload = {
+    type,
+    description,
+    influenced_runs,
+    created_by
+  };
+  const response = await apiFetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to submit issue');
+  }
+  return response.json();
+}
+
+export async function updateIssue(id: number, updates: Partial<Issue>): Promise<Issue> {
+  const url = `${API_BASE_URL}/issues/${id}`;
+  const response = await apiFetch(url, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(updates),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update issue');
+  }
+  return response.json();
+}
+
+export async function deleteIssue(id: number): Promise<void> {
+  const url = `${API_BASE_URL}/issues/${id}`;
+  const response = await apiFetch(url, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete issue');
+  }
+}
