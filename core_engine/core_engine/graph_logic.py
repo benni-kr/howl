@@ -119,7 +119,7 @@ class GridGraph:
         return subgraph
 
 
-def filter_and_deduplicate(fragments: List[GridGraph]) -> List[GridGraph]:
+def filter_and_deduplicate(fragments: List[GridGraph]) -> Tuple[List[GridGraph], List[GridGraph]]:
     """
     Filters a list of subgraphs to remove canonical duplicates.
     Since Treedepth relies on a MAX() operator across independent fragments,
@@ -128,6 +128,7 @@ def filter_and_deduplicate(fragments: List[GridGraph]) -> List[GridGraph]:
     """
     seen_hashes = set()
     unique_fragments = []
+    duplicate_fragments = []
     
     for frag in fragments:
         if not frag.vertices:
@@ -139,6 +140,8 @@ def filter_and_deduplicate(fragments: List[GridGraph]) -> List[GridGraph]:
         if can_hash not in seen_hashes:
             seen_hashes.add(can_hash)
             unique_fragments.append(frag)
+        else:
+            duplicate_fragments.append(frag)
             
-    return unique_fragments
+    return unique_fragments, duplicate_fragments
 

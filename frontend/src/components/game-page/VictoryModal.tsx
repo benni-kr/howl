@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import confetti from "canvas-confetti";
 
@@ -15,6 +15,7 @@ type VictoryModalProps = {
   alias: string;
   onPlayAgain: () => void;
   onReviewBoard: () => void;
+  onScoreSubmitted?: () => void;
 };
 
 const DEFAULT_SOLVER = "Anonymous";
@@ -28,11 +29,14 @@ const VictoryModal = ({
   alias,
   onPlayAgain,
   onReviewBoard,
+  onScoreSubmitted,
 }: VictoryModalProps) => {
   const [status, setStatus] = useState<
     "idle" | "submitting" | "success" | "error"
   >("idle");
   const [message, setMessage] = useState<string | null>(null);
+
+  const submitPromiseRef = useRef<Promise<string> | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -41,29 +45,35 @@ const VictoryModal = ({
       setStatus("submitting");
       setMessage(null);
       try {
-        const latestAlias = localStorage.getItem("howl_alias") || alias;
-        const submitAlias = latestAlias.trim() || DEFAULT_SOLVER;
+        if (!submitPromiseRef.current) {
+          const latestAlias = localStorage.getItem("howl_alias") || alias;
+          const submitAlias = latestAlias.trim() || DEFAULT_SOLVER;
 
-        await submitScore(
-          gridSize.m,
-          gridSize.n,
-          rank,
-          submitAlias,
-          cutsApplied,
-        );
+          submitPromiseRef.current = submitScore(
+            gridSize.m,
+            gridSize.n,
+            rank,
+            submitAlias,
+            cutsApplied,
+          ).then(() => submitAlias);
+        }
+
+        const usedAlias = await submitPromiseRef.current;
         if (!mounted) return;
+        
+        onScoreSubmitted?.();
 
         let resultMsg = "";
         if (!oldTopScore) {
-          resultMsg = `First to solve this grid! Saved as ${submitAlias}`;
+          resultMsg = `First to solve this grid! Saved as ${usedAlias}`;
         } else if (rank < oldTopScore.rank) {
-          if (oldTopScore.solver_name === submitAlias) {
-            resultMsg = `You beat your own record! Saved as ${submitAlias}`;
+          if (oldTopScore.solver_name === usedAlias) {
+            resultMsg = `You beat your own record! Saved as ${usedAlias}`;
           } else {
-            resultMsg = `You beat ${oldTopScore.solver_name}'s record! Saved as ${submitAlias}`;
+            resultMsg = `You beat ${oldTopScore.solver_name}'s record! Saved as ${usedAlias}`;
           }
         } else if (rank === oldTopScore.rank) {
-          if (oldTopScore.solver_name === submitAlias) {
+          if (oldTopScore.solver_name === usedAlias) {
             resultMsg = `You matched your own record!`;
           } else {
             resultMsg = `You tied with ${oldTopScore.solver_name}'s record!`;

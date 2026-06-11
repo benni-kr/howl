@@ -173,6 +173,10 @@ const gameSlice = createSlice({
       if (!state.activeGraph) {
         return;
       }
+      if (state.recentCutGraphs.length > 0) {
+        console.warn("Cut rejected: Must confirm graph selection first.");
+        return;
+      }
 
       pushHistory(state);
       
@@ -276,18 +280,32 @@ const gameSlice = createSlice({
      */
     redoCut(state) {
       if (state.futureHistory.length === 0) return;
-      const next = state.futureHistory.pop();
-      if (!next) return;
-
-      // Save current state to history
-      state.history.push(snapshotState(state));
-
-      state.activeGraph = next.activeGraph;
-      state.bankedGraphs = next.bankedGraphs;
-      state.recentCutGraphs = next.recentCutGraphs;
-      state.maxRank = next.maxRank;
-      state.gridSize = next.gridSize;
-      state.cutsApplied = next.cutsApplied;
+      const nextState = state.futureHistory.pop()!;
+      state.history.push({
+        activeGraph: state.activeGraph,
+        bankedGraphs: [...state.bankedGraphs],
+        recentCutGraphs: [...state.recentCutGraphs],
+        maxRank: state.maxRank,
+        cutsApplied: [...state.cutsApplied],
+        gridSize: {...state.gridSize}
+      });
+      state.activeGraph = nextState.activeGraph;
+      state.bankedGraphs = nextState.bankedGraphs;
+      state.recentCutGraphs = nextState.recentCutGraphs;
+      state.maxRank = nextState.maxRank;
+      state.gridSize = nextState.gridSize;
+      state.cutsApplied = nextState.cutsApplied;
+    },
+    devSolve(state) {
+      state.cutsApplied = [
+        { type: "cut", vertices: [[0, 0]] },
+        { type: "cut", vertices: [[1, 1]] }
+      ] as any;
+      state.activeGraph = { vertices: [[0, 1]], edges: [], baseRank: 2 } as any;
+      state.history = [{}] as any;
+      state.bankedGraphs = [];
+      state.recentCutGraphs = [];
+      state.maxRank = 3;
     },
     /**
      * Remove all 1×1 (trivially solved) subgraphs from the board.
@@ -417,7 +435,7 @@ const isSolvedGraph = (graph: Graph | null): boolean => {
   if (!graph) {
     return true;
   }
-  return graph.edges.length === 0 || graph.vertices.length <= 1;
+  return graph.vertices.length <= 1;
 };
 
 export const selectIsGameWon = (state: GameState): boolean => {

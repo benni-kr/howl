@@ -52,11 +52,13 @@ class HowlEnv(gym.Env):
         self.cuts_made += 1
         
         fragments = self.graph.get_disconnected_subgraphs()
-        unique_fragments = filter_and_deduplicate(fragments)
+        unique_fragments, duplicate_fragments = filter_and_deduplicate(fragments)
         
         reward = -1
         terminated = False
         info = {}
+        if duplicate_fragments:
+            info["duplicates"] = duplicate_fragments
         
         if len(unique_fragments) == 0:
             # Completely obliterated

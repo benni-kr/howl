@@ -97,6 +97,10 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
     const lastClickedVertexRef = useRef<Vertex | null>(null);
 
     const onNodePointerDown = useCallback((vertex: Vertex, graphIndex: number, shiftKey: boolean) => {
+      if (displayGraphs.length > 1 || splitView) {
+        onSelectGraph?.(graphIndex);
+        return;
+      }
       if (graphIndex !== 0) return;
       isDraggingRef.current = true;
 

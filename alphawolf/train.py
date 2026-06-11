@@ -204,7 +204,7 @@ def get_symmetries(state, pi):
 
 def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
     state_history = []
-    local_cuts_made = []
+    local_sequence = []
     
     while True:
         root = mcts_search(obs, net, env, num_simulations, add_exploration_noise)
@@ -218,16 +218,21 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
         for a, visits in action_visits.items():
             pi[a] = visits / total_visits
             
-        state_history.append((obs.copy(), pi, env.cuts_made))
+        state_history.append((obs.copy(), pi, env.cuts_made, len(local_sequence)))
         
         actions = list(action_visits.keys())
         probs = [action_visits[a] / total_visits for a in actions]
         action = np.random.choice(actions, p=probs)
         
         # Hardcoding 10 since MAX_COLS is 10
-        local_cuts_made.append([int(action // 10), int(action % 10)])
+        local_sequence.append({"t": "c", "v": [[int(action // 10), int(action % 10)]]})
         
         obs, reward, terminated, _, info = env.step(action)
+        
+        if "duplicates" in info and info["duplicates"]:
+            for dup_frag in info["duplicates"]:
+                dup_vertices = [[int(x), int(y)] for x, y in dup_frag.vertices]
+                local_sequence.append({"t": "i", "v": dup_vertices})
         
         if terminated:
             frag_ranks = []
@@ -263,14 +268,13 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
             max_frag_rank = max(frag_ranks) if frag_ranks else 0
             total_rank = env.cuts_made + max_frag_rank
             
-            local_sequence = [{"t": "c", "v": [[r, c]]} for r, c in local_cuts_made]
             final_sequence = local_sequence + recursive_cuts
             
             local_trajectory = []
             local_discoveries = []
-            for i, (state, policy, cuts_at_state) in enumerate(state_history):
+            for i, (state, policy, cuts_at_state, seq_idx) in enumerate(state_history):
                 intrinsic_rank = total_rank - cuts_at_state
-                local_discoveries.append((state.copy(), intrinsic_rank, final_sequence[i:]))
+                local_discoveries.append((state.copy(), intrinsic_rank, final_sequence[seq_idx:]))
                 
                 syms = get_symmetries(state, policy)
                 for s, p in syms:

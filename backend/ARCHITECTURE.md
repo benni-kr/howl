@@ -99,6 +99,9 @@ When an action instructs the engine to "cut" vertices, the graph fragments. The 
 - **Vaporize (`v`)**: Match by canonical hash first (rotation/reflection invariant). Falls back to a single-vertex probe for edge cases. Short-circuits recursion and marks node with `optimal_rank`.
 - **Ignore / Vaporize Duplicate (`i`)**: Matches identically to Vaporize, but inherently asserts the node has a sibling or superset already handling the bounding limits. Marks node as "solved".
 
+### Strict Validation Guard
+The engine enforces **strict subset validation** during replay. If any target nodes in a cut or vaporize action cannot be resolved against the active tree (e.g., due to frontend state lag or phantom nodes), the engine explicitly raises a `ValueError`. This ensures that mathematically invalid run sequences are unconditionally rejected by the backend and never committed to the `subgraph_dictionary`.
+
 ### Rank Calculation (Bottom-Up)
 
 ```python
@@ -179,6 +182,15 @@ These theoretical bounds are used on the Leaderboard Matrix to calculate the "Pe
 | hash      | TEXT    | Canonical hash (primary key)                   |
 | best_rank | INTEGER | Best known intrinsic rank for this shape        |
 | is_optimal| BOOLEAN | Theoretically optimal flag (reserved for future/leaderboard math) |
+
+---
+
+## Database Sanitization (`scripts/sanitize_db.py`)
+
+A standalone maintenance script is provided to audit the mathematical integrity of the production database. 
+- It iteratively replays every `GridSolution` against the latest Replay Engine validation logic.
+- It detects "CORRUPT" runs (where a `ValueError` is thrown due to invalid cuts) and "MISMATCH" runs (where the server's intrinsic rank computation differs from the recorded score).
+- By default, it operates in a **non-destructive dry-run mode**. Appending the `--destructive` flag allows administrators to permanently purge invalid subgraphs and runs from the active tables.
 
 ---
 
