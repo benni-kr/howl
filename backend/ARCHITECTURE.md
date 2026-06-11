@@ -12,12 +12,27 @@ The backend is modularized into clearly separated layers:
 - `services/`: Database interface services and session management.
 - `database.py` / `models.py` / `schemas.py`: SQLAlchemy setup, ORM classes, and Pydantic DTOs.
 
-The backend has two primary persistence tables:
+The backend has two primary persistence tables.
 
-| Table               | Purpose                                             |
-|---------------------|-----------------------------------------------------|
-| `grid_solutions`    | Best-known rank per (m, n, solver_name) triple      |
-| `subgraph_dictionary` | Canonical hash → best known rank for *any* shape  |
+### `grid_solutions`
+Purpose: Best-known rank per $(m, n)$ grid, per solver.
+- `id` (Integer, Primary Key)
+- `m` (Integer): Grid width
+- `n` (Integer): Grid height
+- `rank` (Integer): Total computed cuts required to solve the grid
+- `solver_name` (String): Player or AI alias that achieved this rank
+- `cut_sequence` (JSON): The compact chronological list of actions to replay
+- `created_at` (DateTime)
+
+### `subgraph_dictionary`
+Purpose: Persistent repository of intermediate shapes and their mathematically verified lower bounds.
+- `hash` (String, Primary Key): MD5 digest of the `shape_str`
+- `shape_str` (String, Nullable): Canonical, origin-normalized `"x,y|x,y"` representation of the geometry
+- `best_rank` (Integer): Fewest cuts required to solve this shape
+- `is_optimal` (Boolean): True if proven mathematically optimal
+- `best_cut_sequence` (JSON, Nullable): The sequence to achieve `best_rank`
+- `discovered_by` (String): Player or AI alias
+- `last_updated` (DateTime)
 
 ---
 
@@ -44,7 +59,7 @@ The backend has two primary persistence tables:
 │    3. Build an Elimination Tree of intermediate subgraphs           │
 │    4. Calculate intrinsic rank for each subgraph (bottom-up)        │
 │    5. Check mathematical perfection via theoretical lower bounds    │
-│    6. Upsert each (canonical_hash, rank) into subgraph_dictionary   │
+│    6. Upsert each (canonical_hash, shape_str, rank) into subgraph_dictionary │
 │    7. Upsert the GridSolution (if rank is globally optimal)         │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -119,15 +134,16 @@ Only entries with `rank < 999999` and non-obliterated nodes are written to the `
 
 Every subgraph shape is identified by a **canonical hash** that is invariant under translation, rotation ($0^\circ/90^\circ/180^\circ/270^\circ$), and reflection.
 
-```python
 def generate_canonical_hash(vertices):
     # 1. Generate all 8 orientations (4 rotations × 2 reflections)
     # 2. Normalize each to the origin (min_x, min_y) = (0, 0)
     # 3. Sort vertices lexicographically
-    # 4. Build string: "x,y|x,y|..."
-    # 5. Return the lexicographically smallest string
+    # 4. Build string: "x,y|x,y|..." (This becomes the `shape_str`)
+    # 5. Return the `shape_str` and its MD5 digest (the `hash`)
 ```
-Example: A $2 \times 2$ square at any position always hashes to `"0,0|0,1|1,0|1,1"`.
+Example: A $2 \times 2$ square at any position always results in the `shape_str` `"0,0|0,1|1,0|1,1"` and its corresponding hash.
+
+The `shape_str` is explicitly stored in the `subgraph_dictionary` database table alongside the hash. This allows the backend to retain the exact normalized geometry of every discovered subgraph, enabling features like visualization grids without requiring the frontend to re-calculate geometries from raw game replays.
 
 ### ⚠️ Frontend `getLocalGraphFingerprint` ≠ Canonical Hash
 The frontend has a helper `getLocalGraphFingerprint(graph)` that builds a position-dependent string from sorted vertices. This is **NOT** a canonical hash — it does not account for rotation or reflection. It is only used as a local `Map<string, number>` key within a single React render cycle to correlate `checkShapes` API results back to their source graphs.
