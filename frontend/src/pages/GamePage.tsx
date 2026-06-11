@@ -221,6 +221,11 @@ const GamePage: React.FC = () => {
             content="📏 Tip: Hold Shift and click another tile to automatically select a straight line between them!"
           />
         )}
+        <OnboardingTooltip
+            tutorialKey="hasSeenZoomPan"
+            position="fixed-canvas"
+            content={<>🔎 Tip: Use your scroll wheel to zoom into the board. Hold <kbd>⌘ Cmd</kbd> (or <kbd>Ctrl</kbd>) and drag to pan the camera.</>}
+        />
 
         <RankPanel 
           gridSize={gridSize} 

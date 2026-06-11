@@ -4,6 +4,7 @@ import { useAlias } from "../hooks/useAlias";
 import { IssuesTable } from "../components/issues-page/IssuesTable";
 import { IssueModal } from "../components/issues-page/IssueModal";
 import { EmptyState } from "../components/issues-page/EmptyState";
+import { OnboardingTooltip } from "../components/ui/OnboardingTooltip";
 import "./IssuesPage.css";
 
 const IssuesPage: React.FC = () => {
@@ -96,9 +97,15 @@ const IssuesPage: React.FC = () => {
       <div className="issues-header">
         <div style={{ flex: 1 }}></div>
         {(issues.length > 0 || loading) && (
-          <button className="btn primary" onClick={openCreateModal}>
-            Report Issue
-          </button>
+          <OnboardingTooltip
+            tutorialKey="hasSeenFeatureRequest"
+            position="bottom"
+            content="💡 Tip: You can also use this page to submit feature requests!"
+          >
+            <button className="btn primary" onClick={openCreateModal}>
+              Report Issue
+            </button>
+          </OnboardingTooltip>
         )}
       </div>
 
