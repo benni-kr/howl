@@ -101,20 +101,27 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
     const lastClickedVertexRef = useRef<Vertex | null>(null);
 
     const pendingCutRafRef = useRef<number | null>(null);
-    const pendingCutBufferRef = useRef<Vertex[] | null>(null);
+    const pendingCutUpdatersRef = useRef<((prev: Vertex[]) => Vertex[])[]>([]);
 
     const setPendingCutThrottled = useCallback((updater: (prev: Vertex[]) => Vertex[]) => {
-      pendingCutBufferRef.current = updater(pendingCutBufferRef.current ?? pendingCutSet);
+      pendingCutUpdatersRef.current.push(updater);
       if (pendingCutRafRef.current === null) {
         pendingCutRafRef.current = requestAnimationFrame(() => {
           pendingCutRafRef.current = null;
-          if (pendingCutBufferRef.current !== null) {
-            setPendingCutSet(pendingCutBufferRef.current);
-            pendingCutBufferRef.current = null;
+          const updaters = pendingCutUpdatersRef.current;
+          pendingCutUpdatersRef.current = [];
+          if (updaters.length > 0) {
+            setPendingCutSet(prev => {
+              let state = prev;
+              for (const u of updaters) {
+                state = u(state);
+              }
+              return state;
+            });
           }
         });
       }
-    }, [pendingCutSet]);
+    }, []);
 
     const onNodePointerDown = useCallback((vertex: Vertex, graphIndex: number, shiftKey: boolean) => {
       if (displayGraphs.length > 1 || splitView) {

@@ -60,6 +60,9 @@ export class PixiEngine {
   _panStart: { x: number, y: number } = { x: 0, y: 0 };
   _stageStart: { x: number, y: number } = { x: 0, y: 0 };
   _minScale: number = 0.05;
+  _activePointers: Map<number, { x: number, y: number }> = new Map();
+  _initialPinchDistance: number = 0;
+  _initialPinchScale: number = 0;
   onCameraManualOverride?: (isManual: boolean) => void;
 
   constructor(container: HTMLDivElement) {
@@ -119,8 +122,19 @@ export class PixiEngine {
     this.stage.hitArea = new PIXI.Rectangle(-10000, -10000, 20000, 20000);
 
     this.stage.on("pointerdown", (e) => {
-      // Initiate pan only if cmd/ctrl is held
-      if (e.metaKey || e.ctrlKey) {
+      this._activePointers.set(e.pointerId, { x: e.global.x, y: e.global.y });
+
+      // Two-finger touch for mobile pan/zoom
+      if (this._activePointers.size === 2) {
+        this._isPanning = true;
+        const pts = Array.from(this._activePointers.values());
+        this._initialPinchDistance = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        this._initialPinchScale = this.stage.scale.x;
+        this._panStart = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+        this._stageStart = { x: this.stage.position.x, y: this.stage.position.y };
+      } 
+      // Initiate pan on desktop only if cmd/ctrl is held
+      else if (e.metaKey || e.ctrlKey) {
         this._isPanning = true;
         this._panStart = { x: e.global.x, y: e.global.y };
         this._stageStart = { x: this.stage.position.x, y: this.stage.position.y };
@@ -128,6 +142,10 @@ export class PixiEngine {
     });
 
     this.stage.on("globalpointermove", (e) => {
+      if (this._activePointers.has(e.pointerId)) {
+        this._activePointers.set(e.pointerId, { x: e.global.x, y: e.global.y });
+      }
+
       if (this._isPanning) {
         if (!this._isManualCamera) {
           this._isManualCamera = true;
@@ -135,14 +153,57 @@ export class PixiEngine {
           gsap.killTweensOf(this.stage.position);
           gsap.killTweensOf(this.stage.scale);
         }
-        const dx = e.global.x - this._panStart.x;
-        const dy = e.global.y - this._panStart.y;
-        this.stage.position.set(this._stageStart.x + dx, this._stageStart.y + dy);
+
+        if (this._activePointers.size === 2) {
+          // Pinch-to-zoom + pan
+          const pts = Array.from(this._activePointers.values());
+          const currentDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+          const currentCenter = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+
+          if (this._initialPinchDistance > 0) {
+            let zoomScale = currentDist / this._initialPinchDistance;
+            
+            // Limit scale
+            const newScaleRaw = this._initialPinchScale * zoomScale;
+            let newScale = newScaleRaw;
+            if (newScale > 10) newScale = 10;
+            if (newScale < this._minScale) newScale = this._minScale;
+
+            this.stage.scale.set(newScale);
+
+            // Pan offset
+            const dx = currentCenter.x - this._panStart.x;
+            const dy = currentCenter.y - this._panStart.y;
+            
+            // Adjust position so that the zoom is centered around the initial pinch point
+            // This requires calculating where the original center would be at the new scale
+            const scaleRatio = newScale / this._initialPinchScale;
+            const scaledStageStartX = this._panStart.x - (this._panStart.x - this._stageStart.x) * scaleRatio;
+            const scaledStageStartY = this._panStart.y - (this._panStart.y - this._stageStart.y) * scaleRatio;
+
+            this.stage.position.set(scaledStageStartX + dx, scaledStageStartY + dy);
+          }
+        } else {
+          // Single-finger (with Cmd/Ctrl) or single-mouse pan
+          const dx = e.global.x - this._panStart.x;
+          const dy = e.global.y - this._panStart.y;
+          this.stage.position.set(this._stageStart.x + dx, this._stageStart.y + dy);
+        }
       }
     });
 
-    const pointerUpHandler = () => {
-      this._isPanning = false;
+    const pointerUpHandler = (e: PIXI.FederatedPointerEvent) => {
+      this._activePointers.delete(e.pointerId);
+      if (this._activePointers.size < 2) {
+        if (this._isPanning && this._activePointers.size === 1) {
+          // If we lift one finger during a pinch, reset pan anchor to the remaining finger to avoid jumping
+          const remainingPt = Array.from(this._activePointers.values())[0];
+          this._panStart = { x: remainingPt.x, y: remainingPt.y };
+          this._stageStart = { x: this.stage.position.x, y: this.stage.position.y };
+        } else if (this._activePointers.size === 0) {
+          this._isPanning = false;
+        }
+      }
       this.onPointerUp?.();
     };
 
@@ -766,18 +827,23 @@ export class PixiEngine {
           node.glowGraphics.y = targetY;
           node.graphics.eventMode = "static";
           node!.graphics.cursor = "pointer";
+          
           node!.graphics.on("pointerdown", (e) => {
-            e.stopPropagation();
+            this._activePointers.set(e.pointerId, { x: e.global.x, y: e.global.y });
+
             if (e.pointerId !== undefined && (node!.graphics as any).hasPointerCapture?.(e.pointerId)) {
               (node!.graphics as any).releasePointerCapture(e.pointerId);
             }
             
             if (e.metaKey || e.ctrlKey) {
-              this._isPanning = true;
-              this._panStart = { x: e.global.x, y: e.global.y };
-              this._stageStart = { x: this.stage.position.x, y: this.stage.position.y };
-              return;
+              return; // Let stage handle desktop panning
             }
+
+            if (this._activePointers.size >= 2) {
+              return; // Let stage handle multi-touch panning
+            }
+
+            e.stopPropagation();
 
             if (this.isDestroyed) return;
             const currentGraphIndex = node!.graphIndex;
@@ -787,15 +853,15 @@ export class PixiEngine {
               }
               return;
             }
-            if (!this.splitView) {
-              this.onNodePointerDown?.(vertex, currentGraphIndex, e.shiftKey);
-            } else {
-              this.onGraphClick?.(currentGraphIndex);
+
+            if (!splitView || currentGraphIndex === selectedGraphIndex) {
+              onNodePointerDown?.(vertex, currentGraphIndex, e.shiftKey);
             }
           });
+
           node!.graphics.on("pointerenter", () => {
-            if (readOnly || this.splitView || this.isDestroyed || this._isPanning) return;
-            this.onNodePointerEnter?.(vertex, node!.graphIndex);
+            if (readOnly || splitView || this.isDestroyed || this._isPanning) return;
+            onNodePointerEnter?.(vertex, node!.graphIndex);
           });
           this.nodeContainer.addChild(node.graphics);
           this.glowContainer.addChild(node.glowGraphics);
