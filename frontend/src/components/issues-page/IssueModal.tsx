@@ -190,6 +190,7 @@ export const IssueModal: React.FC<IssueModalProps> = ({ isOpen, onClose, onSubmi
                   placeholder="e.g. 5x5 by Wolf, all even grids, etc."
                   value={runs}
                   onChange={(e) => setRuns(e.target.value)}
+                  maxLength={100}
                 />
               </div>
 
