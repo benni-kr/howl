@@ -85,6 +85,8 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const engineRef = useRef<PixiEngine | null>(null);
     const [pendingCutSet, setPendingCutSet] = useState<Vertex[]>([]);
+    const [isManualCamera, setIsManualCamera] = useState(false);
+    const [resetTrigger, setResetTrigger] = useState(0);
 
     const displayGraphs = useMemo(() => {
       if (recentCutGraphs.length > 0) {
@@ -211,6 +213,9 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
       if (!containerRef.current) return;
       let isMounted = true;
       const engine = new PixiEngine(containerRef.current);
+      engine.onCameraManualOverride = (isManual) => {
+        if (isMounted) setIsManualCamera(isManual);
+      };
       engine.init(width, height).then(() => {
         if (!isMounted) return;
         engineRef.current = engine;
@@ -274,7 +279,8 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           isExecuting,
           hasCutsApplied,
           readOnly,
-          palette: selectActivePalette({ settings })?.tileA // proxy for palette change
+          palette: selectActivePalette({ settings })?.tileA, // proxy for palette change
+          resetTrigger
         };
         const currentParamsStr = JSON.stringify(currentParams);
         if (prevSyncParamsRef.current === currentParamsStr) {
@@ -309,7 +315,7 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
           settings.showGridLines
         );
       }
-    }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, vaporizeActionType, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, isExecuting, hasCutsApplied, readOnly]);
+    }, [width, height, displayGraphs, pendingCutSet, overridePendingCutSet, vaporizeActionType, splitView, selectedGraphIndex, bankedGraphs, settings, optimalRanks, isExecuting, hasCutsApplied, readOnly, resetTrigger]);
 
     // Callback updates
     useEffect(() => {
@@ -342,6 +348,31 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
       }
     }, [splitView]);
 
+    const prevDisplayGraphsRef = useRef<Graph[]>(displayGraphs);
+
+    useEffect(() => {
+      const prev = prevDisplayGraphsRef.current;
+      const current = displayGraphs;
+      
+      let shouldReset = false;
+      if (current.length === 1) {
+        if (prev.length > 1) {
+          shouldReset = true;
+        } else if (prev.length === 1 && prev[0] !== current[0]) {
+          shouldReset = true;
+        }
+      }
+
+      if (shouldReset && isManualCamera && engineRef.current) {
+        engineRef.current.resetCamera();
+        setResetTrigger(prevVal => prevVal + 1);
+        prevSyncParamsRef.current = null;
+        setIsManualCamera(false);
+      }
+
+      prevDisplayGraphsRef.current = current;
+    }, [displayGraphs, isManualCamera]);
+
 
 
     useImperativeHandle(
@@ -364,16 +395,48 @@ const PixiVisualizer = forwardRef<PixiVisualizerHandle, PixiVisualizerProps>(
     );
 
     return (
-      <div 
-        ref={containerRef} 
-        style={{ 
-          width, 
-          height, 
-          background: "transparent", 
-          overflow: "hidden", 
-          touchAction: "none" 
-        }} 
-      />
+      <div style={{ position: "relative", width, height }}>
+        <div 
+          ref={containerRef} 
+          style={{ 
+            width: "100%", 
+            height: "100%", 
+            background: "transparent", 
+            overflow: "hidden", 
+            touchAction: "none" 
+          }} 
+        />
+        {isManualCamera && (
+          <button
+            onClick={() => {
+              if (engineRef.current) {
+                if (engineRef.current.resetCamera()) {
+                  // Force a re-layout by changing the trigger
+                  setResetTrigger(prev => prev + 1);
+                  prevSyncParamsRef.current = null;
+                  setIsManualCamera(false);
+                }
+              }
+            }}
+            style={{
+              position: "absolute",
+              top: 16,
+              right: 16,
+              padding: "6px 12px",
+              background: "var(--bg-card)",
+              color: "var(--text-main)",
+              border: "1px solid var(--border)",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontSize: "12px",
+              zIndex: 10,
+              boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
+            }}
+          >
+            Reset View
+          </button>
+        )}
+      </div>
     );
   }
 );

@@ -55,6 +55,13 @@ export class PixiEngine {
   _activeExplosions: number = 0;
   _edgesDirty: boolean = true;
 
+  _isManualCamera: boolean = false;
+  _isPanning: boolean = false;
+  _panStart: { x: number, y: number } = { x: 0, y: 0 };
+  _stageStart: { x: number, y: number } = { x: 0, y: 0 };
+  _minScale: number = 0.05;
+  onCameraManualOverride?: (isManual: boolean) => void;
+
   constructor(container: HTMLDivElement) {
     this.container = container;
     this.app = new PIXI.Application();
@@ -106,8 +113,75 @@ export class PixiEngine {
 
     this.stage.eventMode = "static";
     this.stage.hitArea = new PIXI.Rectangle(-10000, -10000, 20000, 20000);
-    this.stage.on("pointerup", () => this.onPointerUp?.());
-    this.stage.on("pointerupoutside", () => this.onPointerUp?.());
+
+    this.stage.on("pointerdown", (e) => {
+      // Initiate pan only if cmd/ctrl is held
+      if (e.metaKey || e.ctrlKey) {
+        this._isPanning = true;
+        this._panStart = { x: e.global.x, y: e.global.y };
+        this._stageStart = { x: this.stage.position.x, y: this.stage.position.y };
+      }
+    });
+
+    this.stage.on("globalpointermove", (e) => {
+      if (this._isPanning) {
+        if (!this._isManualCamera) {
+          this._isManualCamera = true;
+          this.onCameraManualOverride?.(true);
+          gsap.killTweensOf(this.stage.position);
+          gsap.killTweensOf(this.stage.scale);
+        }
+        const dx = e.global.x - this._panStart.x;
+        const dy = e.global.y - this._panStart.y;
+        this.stage.position.set(this._stageStart.x + dx, this._stageStart.y + dy);
+      }
+    });
+
+    const pointerUpHandler = () => {
+      this._isPanning = false;
+      this.onPointerUp?.();
+    };
+
+    this.stage.on("pointerup", pointerUpHandler);
+    this.stage.on("pointerupoutside", pointerUpHandler);
+
+    this.app.canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      
+      if (!this._isManualCamera) {
+        this._isManualCamera = true;
+        this.onCameraManualOverride?.(true);
+        gsap.killTweensOf(this.stage.position);
+        gsap.killTweensOf(this.stage.scale);
+      }
+
+      const point = new PIXI.Point(e.offsetX, e.offsetY);
+      const localPoint = this.stage.toLocal(point);
+
+      // Scroll up/down controls zoom in/out
+      let zoomScale = e.deltaY > 0 ? 0.9 : 1.1;
+      
+      // Limit scale to avoid extreme zooms
+      const currentScale = this.stage.scale.x;
+      if (currentScale * zoomScale > 10) zoomScale = 10 / currentScale;
+      if (currentScale * zoomScale < this._minScale) zoomScale = this._minScale / currentScale;
+
+      const newScaleX = this.stage.scale.x * zoomScale;
+      const newScaleY = this.stage.scale.y * zoomScale;
+      
+      this.stage.scale.set(newScaleX, newScaleY);
+      
+      const newLocalPoint = this.stage.toGlobal(localPoint);
+      this.stage.position.x += point.x - newLocalPoint.x;
+      this.stage.position.y += point.y - newLocalPoint.y;
+    }, { passive: false });
+  }
+
+  resetCamera() {
+    this._isManualCamera = false;
+    this.onCameraManualOverride?.(false);
+    // Returning true tells the caller we successfully reset state, they should re-sync
+    return true;
   }
 
   resize(width: number, height: number) {
@@ -293,12 +367,15 @@ export class PixiEngine {
       const scaleX = width / vWidth;
       const scaleY = height / vHeight;
       targetScale = Math.min(scaleX, scaleY);
+      this._minScale = targetScale;
       const offsetX = -minX * targetScale + (width - vWidth * targetScale) / 2;
       const offsetY = -minY * targetScale + (height - vHeight * targetScale) / 2;
 
       if (!isExecuting) {
-        gsap.to(this.stage.position, { x: offsetX, y: offsetY, duration: 0.6, delay: layoutDelay, ease: "power2.out" });
-        gsap.to(this.stage.scale, { x: targetScale, y: targetScale, duration: 0.6, delay: layoutDelay, ease: "power2.out" });
+        if (!this._isManualCamera) {
+          gsap.to(this.stage.position, { x: offsetX, y: offsetY, duration: 0.6, delay: layoutDelay, ease: "power2.out" });
+          gsap.to(this.stage.scale, { x: targetScale, y: targetScale, duration: 0.6, delay: layoutDelay, ease: "power2.out" });
+        }
       }
     }
 
@@ -690,6 +767,14 @@ export class PixiEngine {
             if (e.pointerId !== undefined && (node!.graphics as any).hasPointerCapture?.(e.pointerId)) {
               (node!.graphics as any).releasePointerCapture(e.pointerId);
             }
+            
+            if (e.metaKey || e.ctrlKey) {
+              this._isPanning = true;
+              this._panStart = { x: e.global.x, y: e.global.y };
+              this._stageStart = { x: this.stage.position.x, y: this.stage.position.y };
+              return;
+            }
+
             if (this.isDestroyed) return;
             const currentGraphIndex = node!.graphIndex;
             if (readOnly) {
@@ -705,7 +790,7 @@ export class PixiEngine {
             }
           });
           node!.graphics.on("pointerenter", () => {
-            if (readOnly || this.splitView || this.isDestroyed) return;
+            if (readOnly || this.splitView || this.isDestroyed || this._isPanning) return;
             this.onNodePointerEnter?.(vertex, node!.graphIndex);
           });
           this.nodeContainer.addChild(node.graphics);
