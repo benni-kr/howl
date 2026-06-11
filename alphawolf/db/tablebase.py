@@ -79,7 +79,7 @@ def insert_or_update_rank4_induction(shape_hash: str, rank: int, sequence: list)
     finally:
         conn.close()
 
-def upsert_subgraph(shape_hash: str, best_rank: int, best_cut_sequence: list, discovered_by="alphawolf"):
+def upsert_subgraph(shape_hash: str, shape_str: str, best_rank: int, best_cut_sequence: list, discovered_by="alphawolf"):
     """
     Inserts or updates a subgraph ranking discovery.
     """
@@ -99,22 +99,32 @@ def upsert_subgraph(shape_hash: str, best_rank: int, best_cut_sequence: list, di
             # Insert new
             cursor.execute(
                 """
-                INSERT INTO subgraph_dictionary (hash, best_rank, is_optimal, best_cut_sequence, discovered_by, last_updated)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO subgraph_dictionary (hash, shape_str, best_rank, is_optimal, best_cut_sequence, discovered_by, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """,
-                (shape_hash, best_rank, is_optimal, sequence_json, discovered_by)
+                (shape_hash, shape_str, best_rank, is_optimal, sequence_json, discovered_by)
             )
         else:
             existing_rank = row[0]
             if best_rank < existing_rank:
-                # Update better rank
+                # Update better rank and shape_str
                 cursor.execute(
                     """
                     UPDATE subgraph_dictionary 
-                    SET best_rank = ?, is_optimal = ?, best_cut_sequence = ?, discovered_by = ?, last_updated = CURRENT_TIMESTAMP
+                    SET shape_str = COALESCE(shape_str, ?), best_rank = ?, is_optimal = ?, best_cut_sequence = ?, discovered_by = ?, last_updated = CURRENT_TIMESTAMP
                     WHERE hash = ?
                     """,
-                    (best_rank, is_optimal, sequence_json, discovered_by, shape_hash)
+                    (shape_str, best_rank, is_optimal, sequence_json, discovered_by, shape_hash)
+                )
+            else:
+                # Rank is same or worse, but we might still need to backfill shape_str
+                cursor.execute(
+                    """
+                    UPDATE subgraph_dictionary 
+                    SET shape_str = ?
+                    WHERE hash = ? AND shape_str IS NULL
+                    """,
+                    (shape_str, shape_hash)
                 )
         conn.commit()
     finally:

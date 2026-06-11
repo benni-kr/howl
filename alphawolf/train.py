@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from models.net import AlphaWolfNet
 from envs.howl_env import HowlEnv
 from db.tablebase import query_tablebase, insert_or_update_rank4_induction, upsert_subgraph, upsert_grid_solution
-from core_engine.hashing import generate_canonical_hash
+from core_engine.hashing import generate_canonical_hash, generate_canonical_data
 from core_engine.graph_logic import GridGraph
 
 C_PUCT = 1.0
@@ -294,8 +294,8 @@ def self_play(net, m, n, num_games=10, num_simulations=50):
         for state, rank, seq in discoveries:
             active_coords = np.argwhere(state == 1)
             verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
-            can_hash = generate_canonical_hash(verts)
-            upsert_subgraph(can_hash, rank, seq)
+            can_data = generate_canonical_data(verts)
+            upsert_subgraph(can_data["hash"], can_data["shape_str"], rank, seq)
             
         if discoveries:
             final_sequence = discoveries[0][2]
