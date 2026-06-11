@@ -3,7 +3,7 @@ import { MatrixCellData } from '../../api/api';
 import { useAlias } from '../../hooks/useAlias';
 import * as math from 'mathjs';
 
-export type MatrixMode = 'min_rank' | 'top_solver' | 'perfection_gap' | 'density_linear' | 'rank_jump' | 'custom_formula';
+export type MatrixMode = 'min_rank' | 'top_solver' | 'perfection_gap' | 'density_linear' | 'rank_jump' | 'diagonal_jump' | 'custom_formula';
 
 interface MatrixViewProps {
   data: MatrixCellData[];
@@ -201,6 +201,43 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
           bgColor = '#fef08a'; // yellow-200
           color = '#854d0e';
         } else if (targetDiff === 2) {
+          bgColor = '#f97316'; // orange-500
+          color = '#ffffff';
+        } else {
+          bgColor = '#ef4444'; // red-500
+          color = '#ffffff';
+        }
+      } else {
+        content = '/';
+        bgColor = '#4b5563'; // gray-600
+        border = '1px solid rgba(255,255,255,0.05)';
+        opacity = 0.6;
+      }
+    } else if (mode === 'diagonal_jump') {
+      const currentRank = cellData.min_rank;
+      let targetDiff = -Infinity;
+      
+      if (m > 1 && n > 1) {
+        const diagData = dataMap.get(`${m-1}-${n-1}`) || dataMap.get(`${n-1}-${m-1}`);
+        if (diagData) {
+          targetDiff = currentRank - diagData.min_rank;
+        }
+      }
+
+      if (targetDiff !== -Infinity) {
+        content = targetDiff;
+        metricValue = targetDiff;
+        
+        if (targetDiff < 0) {
+          bgColor = '#14532d'; // dark green (green-900)
+          color = '#ffffff';
+        } else if (targetDiff === 0 || targetDiff === 1) {
+          bgColor = '#22c55e'; // green (green-500)
+          color = '#ffffff';
+        } else if (targetDiff === 2) {
+          bgColor = '#fef08a'; // yellow-200
+          color = '#854d0e';
+        } else if (targetDiff === 3) {
           bgColor = '#f97316'; // orange-500
           color = '#ffffff';
         } else {

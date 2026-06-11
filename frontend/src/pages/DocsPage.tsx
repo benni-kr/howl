@@ -135,6 +135,9 @@ const DocsPage: React.FC = () => {
             <strong>Rank Jump:</strong> <code>min(rank - rank_above, rank - rank_left)</code>. Measures how much a cell's rank exceeds its smaller neighbors. A difference of 3+ strongly suggests the solution is suboptimal.
           </li>
           <li>
+            <strong>Diag. Jump:</strong> <code>rank - rank_top_left</code>. Shows the rank difference to the (m-1, n-1) grid.
+          </li>
+          <li>
             <strong>Custom Formula:</strong> An interactive metric where you can write a valid Math.js expression using: <code>m</code>, <code>n</code>, <code>min_edge</code>, <code>max_edge</code>, and <code>rank</code>.
           </li>
         </ul>
