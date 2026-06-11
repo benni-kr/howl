@@ -227,7 +227,12 @@ export default function ReplayPage() {
               onPendingCutSetChange={() => { }}
               resetToken={0}
               bankedGraphs={engine.boardState.bankedGraphs}
-              settings={settings}
+              settings={{
+                ...settings,
+                showCoordinateSystem: false,
+                showGridLines: false,
+                showGridIndices: false
+              }}
               overrideState={engine.boardState}
               readOnly={true}
               onDeepDiveRequest={handleDeepDiveRequest}
