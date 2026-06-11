@@ -34,11 +34,13 @@ def update_subgraph_dictionary(db: Session, m: int, n: int, cut_sequence: object
         for canonical_hash, data in ranks_dict.items():
             rank = data["rank"]
             sequence = data["sequence"]
+            shape_str = data.get("shape_str")
             sub_entry = existing_map.get(canonical_hash)
 
             if sub_entry is None:
                 sub_entry = SubgraphDictionary(
                     hash=canonical_hash,
+                    shape_str=shape_str,
                     best_rank=rank,
                     best_cut_sequence=sequence,
                     is_optimal=False,
@@ -47,6 +49,8 @@ def update_subgraph_dictionary(db: Session, m: int, n: int, cut_sequence: object
                 )
                 db.add(sub_entry)
             else:
+                if not sub_entry.shape_str and shape_str:
+                    sub_entry.shape_str = shape_str
                 if rank < sub_entry.best_rank:
                     sub_entry.best_rank = rank
                     sub_entry.best_cut_sequence = sequence
