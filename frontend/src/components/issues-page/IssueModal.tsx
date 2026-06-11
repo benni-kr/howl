@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Issue } from "../../api/api";
 import "./IssueModal.css";
 // Need these for the tags in view mode
