@@ -127,7 +127,7 @@ def export_to_sqlite(G, canonical_data, rank):
     # 5. Output the SQL
     sql = (
         f"INSERT INTO subgraph_dictionary (hash, best_rank, is_optimal, best_cut_sequence, discovered_by, last_updated) "
-        f"VALUES ('{hash_str}', {rank}, True, '{cut_seq_json}', 'computer', '{timestamp}') "
+        f"VALUES ('{hash_str}', {rank}, True, '{cut_seq_json}'::json, 'computer', '{timestamp}') "
         f"ON CONFLICT (hash) DO UPDATE SET "
         f"best_rank = EXCLUDED.best_rank, is_optimal = EXCLUDED.is_optimal, "
         f"best_cut_sequence = EXCLUDED.best_cut_sequence, discovered_by = EXCLUDED.discovered_by, "

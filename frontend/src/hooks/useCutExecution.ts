@@ -13,7 +13,6 @@ export function useCutExecution() {
     activeGraph: Graph | null,
     pendingCutSet: Vertex[],
     setPendingCutSet: (set: Vertex[]) => void,
-    setSplitView: (val: boolean) => void,
     setSelectedGraphIndex: (val: number | null) => void,
     setResetToken: React.Dispatch<React.SetStateAction<number>>
   ) => {
@@ -42,7 +41,6 @@ export function useCutExecution() {
 
           const stateAfter = store.getState().game;
           if (stateAfter.recentCutGraphs.length > 0) {
-            setSplitView(true);
             setSelectedGraphIndex(null);
           }
 

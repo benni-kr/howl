@@ -15,7 +15,6 @@ type BatchActionBarProps = {
   optimalRanks: OptimalRankMap;
   isExecuting: boolean;
   rankColorHex: string;
-  setSplitView: (val: boolean) => void;
   setSelectedGraphIndex: (val: number | null) => void;
   setResetToken: React.Dispatch<React.SetStateAction<number>>;
 };
@@ -29,7 +28,6 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
   optimalRanks,
   isExecuting,
   rankColorHex,
-  setSplitView,
   setSelectedGraphIndex,
   setResetToken,
 }) => {
@@ -135,10 +133,7 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
             dispatch(ignoreMultipleGraphs({ targets: duplicateTargets }));
             const stateAfter = store.getState().game;
             if (stateAfter.recentCutGraphs.length > 0) {
-              setSplitView(true);
               setSelectedGraphIndex(null);
-            } else {
-              setSplitView(false);
             }
             setResetToken((v) => v + 1);
           }}
@@ -154,10 +149,7 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
             dispatch(ignoreMultipleGraphs({ targets: subgraphTargets, actionType: 'subgraph' }));
             const stateAfter = store.getState().game;
             if (stateAfter.recentCutGraphs.length > 0) {
-              setSplitView(true);
               setSelectedGraphIndex(null);
-            } else {
-              setSplitView(false);
             }
             setResetToken((v) => v + 1);
           }}
@@ -173,10 +165,7 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
             dispatch(autoSolveMultipleGraphs({ targets: solvableTargets }));
             const stateAfterSolve = store.getState().game;
             if (stateAfterSolve.recentCutGraphs.length > 0) {
-              setSplitView(true);
               setSelectedGraphIndex(null);
-            } else {
-              setSplitView(false);
             }
             setResetToken((v) => v + 1);
           }}

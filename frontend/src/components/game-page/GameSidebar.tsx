@@ -15,7 +15,6 @@ interface GameSidebarProps {
   topScore: { rank: number } | null;
   isExecuting: boolean;
   splitView: boolean;
-  setSplitView: (split: boolean) => void;
 }
 
 export const GameSidebar: React.FC<GameSidebarProps> = ({
@@ -23,7 +22,6 @@ export const GameSidebar: React.FC<GameSidebarProps> = ({
   topScore,
   isExecuting,
   splitView,
-  setSplitView,
 }) => {
   const dispatch = useDispatch();
   const { gridSize, bankedGraphs, recentCutGraphs } = useSelector((state: RootState) => state.game);
@@ -70,7 +68,6 @@ export const GameSidebar: React.FC<GameSidebarProps> = ({
                 graph={graph}
                 palette={activePalette}
                 onClick={() => {
-                  setSplitView(false);
                   dispatch(switchActiveGraph(index + recentCutGraphs.length));
                 }}
                 disabled={isExecuting || splitView}

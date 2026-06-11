@@ -8,7 +8,7 @@ import PixiVisualizer, {
   PixiVisualizerHandle,
 } from "../components/game-page/PixiVisualizer";
 import VictoryModal from "../components/game-page/VictoryModal";
-import { fetchTopScore, submitScore } from "../api/api";
+import { fetchTopScore } from "../api/api";
 
 import { isSubgraphOf } from "../utils/subgraphUtils";
 import { useShapeCache } from "../hooks/useShapeCache";
@@ -93,11 +93,9 @@ const GamePage: React.FC = () => {
   }, [activeGraph, recentCutGraphs, bankedGraphs]);
 
   const { alias: solverName } = useAlias();
-  const gridM = gridSize?.m;
-  const gridN = gridSize?.n;
 
   const { isExecuting, errorMessage, handleCut: execCut } = useCutExecution();
-  const [splitView, setSplitView] = useState(() => recentCutGraphs.length > 0);
+  const splitView = recentCutGraphs.length > 0 && !isExecuting;
   const [selectedGraphIndex, setSelectedGraphIndex] = useState<number | null>(null);
   const [isNewGameModalOpen, setIsNewGameModalOpen] = useState(false);
 
@@ -148,19 +146,8 @@ const GamePage: React.FC = () => {
     }
   }, [isGameWon, hasSolved, isExecuting, isNewGameModalOpen]);
 
-  // Sync split view and reset selection when graph counts or execution state changes
-  useEffect(() => {
-    if (recentCutGraphs.length === 0) {
-      setSplitView(false);
-      setSelectedGraphIndex(null);
-    } else if (!isExecuting) {
-      setSplitView(true);
-      setSelectedGraphIndex(null);
-    }
-  }, [recentCutGraphs.length, isExecuting]);
-
   const handleCut = async () => {
-    execCut(activeGraph, pendingCutSet, setPendingCutSet, setSplitView, setSelectedGraphIndex, setResetToken);
+    execCut(activeGraph, pendingCutSet, setPendingCutSet, setSelectedGraphIndex, setResetToken);
   };
 
   const handleSelectGraph = useCallback((index: number) => {
@@ -170,7 +157,6 @@ const GamePage: React.FC = () => {
   const handleConfirmSelection = useCallback(() => {
     if (selectedGraphIndex !== null) {
       dispatch(confirmGraphSelection(selectedGraphIndex));
-      setSplitView(false);
       setSelectedGraphIndex(null);
       setResetToken((value) => value + 1);
     }
@@ -183,7 +169,6 @@ const GamePage: React.FC = () => {
         topScore={topScore}
         isExecuting={isExecuting}
         splitView={splitView}
-        setSplitView={setSplitView}
       />
 
       <main className="main-stage">
@@ -268,10 +253,7 @@ const GamePage: React.FC = () => {
                 // After vaporizing, check if multiple subgraphs remain — if so, enter split view
                 const stateAfterSolve = store.getState().game;
                 if (stateAfterSolve.recentCutGraphs.length > 0) {
-                  setSplitView(true);
                   setSelectedGraphIndex(null);
-                } else {
-                  setSplitView(false);
                 }
                 setResetToken((v) => v + 1);
               }
@@ -287,7 +269,6 @@ const GamePage: React.FC = () => {
             optimalRanks={optimalRanks}
             isExecuting={isExecuting}
             rankColorHex={rankColorHex}
-            setSplitView={setSplitView}
             setSelectedGraphIndex={setSelectedGraphIndex}
             setResetToken={setResetToken}
           />
