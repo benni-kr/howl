@@ -12,6 +12,7 @@ import SettingsPage from "./pages/SettingsPage";
 import DocsPage from "./pages/DocsPage";
 import LoginPage from "./pages/LoginPage";
 import ReplayPage from "./pages/ReplayPage";
+import IssuesPage from "./pages/IssuesPage";
 
 import "./styles/styles.css";
 
@@ -77,6 +78,7 @@ const App: React.FC = () => {
           <Route path="replay/:m/:n/:solverName" element={<ReplayPage />} />
           <Route path="docs" element={<DocsPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="issues" element={<IssuesPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

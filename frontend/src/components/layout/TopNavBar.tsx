@@ -39,6 +39,7 @@ const TopNavBar: React.FC<TopNavBarProps> = ({
               {location.pathname.startsWith('/leaderboard') && "Leaderboards"}
               {location.pathname.startsWith('/settings') && "Settings"}
               {location.pathname.startsWith('/docs') && "Documentation"}
+              {location.pathname.startsWith('/issues') && "Known Issues"}
             </div>
           )}
         </div>
@@ -64,6 +65,13 @@ const TopNavBar: React.FC<TopNavBarProps> = ({
 
         <Link to="/leaderboard" className="btn ghost nav-link icon-btn" title="Leaderboard" style={{ textDecoration: 'none' }}>
           🏆
+        </Link>
+        <Link to="/issues" className="btn ghost nav-link icon-btn" title="Known Issues" style={{ textDecoration: 'none' }}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+            <path d="M12 9v4"/>
+            <path d="M12 17h.01"/>
+          </svg>
         </Link>
         <Link to="/docs" className="btn ghost nav-link icon-btn" title="Docs" style={{ textDecoration: 'none' }}>
           📖
