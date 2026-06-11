@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { useDispatch } from "react-redux";
 import { store } from "../../state/store";
 import { Graph, getLocalGraphFingerprint, ignoreMultipleGraphs, autoSolveMultipleGraphs } from "../../state/gameSlice";
@@ -33,89 +33,99 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
 }) => {
   const dispatch = useDispatch();
 
-  const solvableTargets: { location: 'active' | 'recent', index?: number, optimalRank: number }[] = [];
-  const duplicateTargets: { location: 'active' | 'recent' | 'banked', index?: number }[] = [];
-  let maxResultingRank = maxRank;
-  let allStrictlyOptimal = true;
+  const { solvableTargets, duplicateTargets, subgraphTargets, maxResultingRank, allStrictlyOptimal } = useMemo(() => {
+    const solvable: { location: 'active' | 'recent', index?: number, optimalRank: number }[] = [];
+    const duplicates: { location: 'active' | 'recent' | 'banked', index?: number }[] = [];
+    let currentMaxRank = maxRank;
+    let strictlyOptimal = true;
 
-  const seenHashes = new Set<string>();
+    const seenHashes = new Set<string>();
 
-  // 1. Process active graph first (highest priority to KEEP)
-  if (activeGraph) {
-    const fp = getLocalGraphFingerprint(activeGraph);
-    const opt = optimalRanks.get(fp);
-    const hashToUse = opt?.hash || fp;
-    
-    seenHashes.add(hashToUse);
-
-    if (opt && cutsApplied.length > 0) {
-      if (opt.best_rank !== 999999) {
-        solvableTargets.push({ location: 'active', optimalRank: opt.best_rank });
-        maxResultingRank = Math.max(maxResultingRank, activeGraph.baseRank + opt.best_rank);
-        if (!opt.is_optimal) allStrictlyOptimal = false;
-      }
-    }
-  }
-
-  // 2. Process recent cut graphs (second priority to KEEP)
-  recentCutGraphs.forEach((graph, index) => {
-    const fp = getLocalGraphFingerprint(graph);
-    const opt = optimalRanks.get(fp);
-    const hashToUse = opt?.hash || fp;
-
-    if (seenHashes.has(hashToUse)) {
-      duplicateTargets.push({ location: 'recent', index });
-    } else {
+    // 1. Process active graph first (highest priority to KEEP)
+    if (activeGraph) {
+      const fp = getLocalGraphFingerprint(activeGraph);
+      const opt = optimalRanks.get(fp);
+      const hashToUse = opt?.hash || fp;
+      
       seenHashes.add(hashToUse);
-    }
 
-    if (opt && cutsApplied.length > 0) {
-      if (opt.best_rank !== 999999) {
-        solvableTargets.push({ location: 'recent', index, optimalRank: opt.best_rank });
-        maxResultingRank = Math.max(maxResultingRank, graph.baseRank + opt.best_rank);
-        if (!opt.is_optimal) allStrictlyOptimal = false;
-      }
-    }
-  });
-
-  // 3. Process banked graphs (highest priority to DELETE)
-  bankedGraphs.forEach((graph, index) => {
-    const fp = getLocalGraphFingerprint(graph);
-    const opt = optimalRanks.get(fp);
-    const hashToUse = opt?.hash || fp;
-
-    if (seenHashes.has(hashToUse)) {
-      duplicateTargets.push({ location: 'banked', index });
-    } else {
-      seenHashes.add(hashToUse);
-    }
-  });
-
-  // 4. Subgraph detection
-  const subgraphTargets: { location: 'active' | 'recent', index?: number }[] = [];
-  if (cutsApplied.length > 0) {
-    const candidates: { graph: Graph, location: 'active' | 'recent', index?: number }[] = [];
-    if (activeGraph) candidates.push({ graph: activeGraph, location: 'active' });
-    recentCutGraphs.forEach((g, i) => candidates.push({ graph: g, location: 'recent', index: i }));
-
-    const duplicateKeys = new Set(duplicateTargets.map(d => `${d.location}:${d.index ?? 'active'}`));
-
-    for (let i = 0; i < candidates.length; i++) {
-      const small = candidates[i];
-      for (let j = 0; j < candidates.length; j++) {
-        if (i === j) continue;
-        const large = candidates[j];
-        const largeKey = `${large.location}:${large.index ?? 'active'}`;
-        if (duplicateKeys.has(largeKey)) continue;
-
-        if (small.graph.vertices.length < large.graph.vertices.length &&
-            isSubgraphOf(small.graph.vertices, large.graph.vertices)) {
-          subgraphTargets.push({ location: small.location, index: small.index });
-          break;
+      if (opt && cutsApplied.length > 0) {
+        if (opt.best_rank !== 999999) {
+          solvable.push({ location: 'active', optimalRank: opt.best_rank });
+          currentMaxRank = Math.max(currentMaxRank, activeGraph.baseRank + opt.best_rank);
+          if (!opt.is_optimal) strictlyOptimal = false;
         }
       }
     }
-  }
+
+    // 2. Process recent cut graphs (second priority to KEEP)
+    recentCutGraphs.forEach((graph, index) => {
+      const fp = getLocalGraphFingerprint(graph);
+      const opt = optimalRanks.get(fp);
+      const hashToUse = opt?.hash || fp;
+
+      if (seenHashes.has(hashToUse)) {
+        duplicates.push({ location: 'recent', index });
+      } else {
+        seenHashes.add(hashToUse);
+      }
+
+      if (opt && cutsApplied.length > 0) {
+        if (opt.best_rank !== 999999) {
+          solvable.push({ location: 'recent', index, optimalRank: opt.best_rank });
+          currentMaxRank = Math.max(currentMaxRank, graph.baseRank + opt.best_rank);
+          if (!opt.is_optimal) strictlyOptimal = false;
+        }
+      }
+    });
+
+    // 3. Process banked graphs (highest priority to DELETE)
+    bankedGraphs.forEach((graph, index) => {
+      const fp = getLocalGraphFingerprint(graph);
+      const opt = optimalRanks.get(fp);
+      const hashToUse = opt?.hash || fp;
+
+      if (seenHashes.has(hashToUse)) {
+        duplicates.push({ location: 'banked', index });
+      } else {
+        seenHashes.add(hashToUse);
+      }
+    });
+
+    // 4. Subgraph detection
+    const subgraphs: { location: 'active' | 'recent', index?: number }[] = [];
+    if (cutsApplied.length > 0) {
+      const candidates: { graph: Graph, location: 'active' | 'recent', index?: number }[] = [];
+      if (activeGraph) candidates.push({ graph: activeGraph, location: 'active' });
+      recentCutGraphs.forEach((g, i) => candidates.push({ graph: g, location: 'recent', index: i }));
+
+      const duplicateKeys = new Set(duplicates.map(d => `${d.location}:${d.index ?? 'active'}`));
+
+      for (let i = 0; i < candidates.length; i++) {
+        const small = candidates[i];
+        for (let j = 0; j < candidates.length; j++) {
+          if (i === j) continue;
+          const large = candidates[j];
+          const largeKey = `${large.location}:${large.index ?? 'active'}`;
+          if (duplicateKeys.has(largeKey)) continue;
+
+          if (small.graph.vertices.length < large.graph.vertices.length &&
+              isSubgraphOf(small.graph.vertices, large.graph.vertices)) {
+            subgraphs.push({ location: small.location, index: small.index });
+            break;
+          }
+        }
+      }
+    }
+
+    return {
+      solvableTargets: solvable,
+      duplicateTargets: duplicates,
+      subgraphTargets: subgraphs,
+      maxResultingRank: currentMaxRank,
+      allStrictlyOptimal: strictlyOptimal
+    };
+  }, [activeGraph, recentCutGraphs, bankedGraphs, optimalRanks, cutsApplied.length, maxRank]);
 
   const icon = allStrictlyOptimal ? '🧮' : '🪄';
 

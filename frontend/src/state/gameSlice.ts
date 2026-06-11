@@ -25,9 +25,16 @@ export interface Graph {
  * within a single React render to correlate graphs with their checkShapes
  * results.  Never compare this value against the backend's canonical hash.
  */
+const _fingerprintCache = new WeakMap<readonly Vertex[], string>();
+
 export const getLocalGraphFingerprint = (graph: Graph) => {
+  const cached = _fingerprintCache.get(graph.vertices);
+  if (cached !== undefined) return cached;
+
   const sorted = [...graph.vertices].sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
-  return sorted.map((v) => `${v.x},${v.y}`).join("|");
+  const fp = sorted.map((v) => `${v.x},${v.y}`).join("|");
+  _fingerprintCache.set(graph.vertices, fp);
+  return fp;
 };
 
 export type CutHistoryAction =
