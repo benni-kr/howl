@@ -27,6 +27,8 @@ export class PixiEngine {
   activeEdges: Set<string>;
   particles: Particle[];
   dyingGraphics: Set<PIXI.Graphics>;
+  _blurFilter: PIXI.BlurFilter;
+  _textCache: Map<string, PIXI.Text>;
 
   onNodePointerDown?: (vertex: Vertex, graphIndex: number, shiftKey: boolean) => void;
   onNodePointerEnter?: (vertex: Vertex, graphIndex: number) => void;
@@ -55,11 +57,11 @@ export class PixiEngine {
     this.textContainer = new PIXI.Container();
     this.gridLinesContainer = new PIXI.Container();
 
-    const blurFilter = new PIXI.BlurFilter();
-    blurFilter.blur = 12;
-    blurFilter.quality = 4;
-    blurFilter.padding = 100;
-    this.glowContainer.filters = [blurFilter];
+    this._blurFilter = new PIXI.BlurFilter();
+    this._blurFilter.blur = 12;
+    this._blurFilter.quality = 4;
+    this._blurFilter.padding = 100;
+    this.glowContainer.filters = [this._blurFilter];
 
     this.stage.addChild(this.glowContainer);
     this.stage.addChild(this.edgeGraphics);
@@ -73,6 +75,7 @@ export class PixiEngine {
     this.activeEdges = new Set();
     this.particles = [];
     this.dyingGraphics = new Set();
+    this._textCache = new Map();
   }
 
   async init(width: number, height: number) {
@@ -263,10 +266,11 @@ export class PixiEngine {
     }
 
     this.wandContainer.removeChildren();
-    this.textContainer.removeChildren();
+    // We pool text objects now, so don't clear textContainer here.
     this.gridLinesContainer.removeChildren();
 
     const seenHashes = new Set<string>();
+    const usedTextKeys = new Set<string>();
     if (splitView && optimalRanks) {
       bankedGraphs.forEach(bg => {
         const h = optimalRanks.get(getLocalGraphFingerprint(bg))?.hash;
@@ -472,25 +476,33 @@ export class PixiEngine {
         }
       }
 
-      if (showGridIndices && graphs.length === 1) {
+      if (showGridIndices && graphs.length === 1 && totalVertexCount <= 2500) {
         const gridColor = document.documentElement.dataset.theme === 'light' ? 0x1f2937 : 0xffffff;
         const textScale = Math.max(5, this.cellSize * 0.25) / 32;
         graph.vertices.forEach(vertex => {
-          const text = new PIXI.Text({
-             text: `${vertex.x},${vertex.y}`,
-             style: { fontFamily: "sans-serif", fontSize: 32, fill: gridColor }
-          });
+          const key = `${vertex.x},${vertex.y}`;
+          usedTextKeys.add(key);
+          let text = this._textCache.get(key);
+          if (!text) {
+            text = new PIXI.Text({
+               text: key,
+               style: { fontFamily: "sans-serif", fontSize: 32, fill: gridColor }
+            });
+            this._textCache.set(key, text);
+            this.textContainer.addChild(text);
+          } else {
+            text.style.fill = gridColor;
+          }
           text.scale.set(textScale);
           text.alpha = 0.4;
           const targetX = layout.offsetX + (vertex.x - meta.minX) * this.cellSize + this.cellSize / 2;
           const targetY = layout.offsetY + (vertex.y - meta.minY) * this.cellSize + this.cellSize / 2;
           text.x = targetX - text.width / 2;
           text.y = targetY - text.height / 2;
-          this.textContainer.addChild(text);
         });
       }
 
-      if (optRank && optRank.best_rank !== 999999 && !isExecuting && pendingCutSet.length === 0 && !isUntouchedFirstGraph) {
+      if (optRank && optRank.best_rank !== 999999 && !isExecuting && pendingCutSet.length === 0 && !isUntouchedFirstGraph && totalVertexCount <= 2500) {
         const wandScale = 1 / targetScale;
 
         const wandBg = new PIXI.Graphics();
@@ -686,6 +698,14 @@ export class PixiEngine {
 
     });
 
+    for (const [key, text] of this._textCache.entries()) {
+      if (!usedTextKeys.has(key)) {
+        this.textContainer.removeChild(text);
+        text.destroy();
+        this._textCache.delete(key);
+      }
+    }
+
     this.activeEdges = activeEdges;
 
     for (const [key, node] of this.nodes.entries()) {
@@ -726,7 +746,7 @@ export class PixiEngine {
             onUpdate: () => this.markEdgesDirty(),
             onComplete: () => {
               const shardColors = this.palette ? [this.palette.select, this.palette.selectBorder] : [node.color, 0xdcfce7];
-              spawnExplosion(this.particleContainer, this.particles, this.dyingGraphics.size / 2, node.graphics.x, node.graphics.y, shardColors, readOnly);
+              spawnExplosion(this.particleContainer, this.particles, this.dyingGraphics.size / 2, node.graphics.x, node.graphics.y, shardColors, readOnly, totalVertexCount);
               this.nodeContainer.removeChild(node.graphics);
               this.glowContainer.removeChild(node.glowGraphics);
               gsap.killTweensOf(node.graphics);
