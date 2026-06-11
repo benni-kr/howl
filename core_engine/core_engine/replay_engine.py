@@ -215,7 +215,8 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
                 transformed_seq = transform_sequence(local_seq, node.canonical_data)
                 ranks_dict[node.canonical_hash] = {
                     "rank": rank,
-                    "sequence": transformed_seq
+                    "sequence": transformed_seq,
+                    "shape_str": node.canonical_data["shape_str"]
                 }
 
         return rank

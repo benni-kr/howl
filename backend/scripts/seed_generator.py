@@ -121,14 +121,17 @@ def export_to_sqlite(G, canonical_data, rank):
     # 3. Use the canonical hash string
     hash_str = canonical_data["hash"]
 
+    shape_str = canonical_data.get("shape_str")
+
     # 4. Generate timestamp
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
 
     # 5. Output the SQL
     sql = (
-        f"INSERT INTO subgraph_dictionary (hash, best_rank, is_optimal, best_cut_sequence, discovered_by, last_updated) "
-        f"VALUES ('{hash_str}', {rank}, True, '{cut_seq_json}'::json, 'computer', '{timestamp}') "
+        f"INSERT INTO subgraph_dictionary (hash, shape_str, best_rank, is_optimal, best_cut_sequence, discovered_by, last_updated) "
+        f"VALUES ('{hash_str}', '{shape_str}', {rank}, True, '{cut_seq_json}'::json, 'computer', '{timestamp}') "
         f"ON CONFLICT (hash) DO UPDATE SET "
+        f"shape_str = EXCLUDED.shape_str, "
         f"best_rank = EXCLUDED.best_rank, is_optimal = EXCLUDED.is_optimal, "
         f"best_cut_sequence = EXCLUDED.best_cut_sequence, discovered_by = EXCLUDED.discovered_by, "
         f"last_updated = EXCLUDED.last_updated;"
