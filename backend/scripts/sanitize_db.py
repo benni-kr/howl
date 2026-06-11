@@ -1,6 +1,8 @@
 import os
 import sys
+import json
 import logging
+import argparse
 
 # Setup imports to work from scripts directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -9,13 +11,6 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import GridSolution, SubgraphDictionary
 from core_engine.replay_engine import replay_and_extract_subgraphs, TreeNode, _normalize_sequence, _to_tuples
-from core_engine.graph_logic import GridGraph
-from core_engine.hashing import generate_canonical_data
-
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-logger = logging.getLogger(__name__)
-
-from core_engine.replay_engine import TreeNode, _normalize_sequence, _to_tuples
 from core_engine.graph_logic import GridGraph
 from core_engine.hashing import generate_canonical_data, get_transformations
 
@@ -47,12 +42,14 @@ def replay_subgraph_sequence(graph: GridGraph, sequence: list) -> int:
                     if vap_tuples[0] in node.graph.vertices:
                         target_node = node
                         break
-            if target_node:
-                active_nodes.remove(target_node)
-                if action_type == "v":
-                    target_node.vaporized_rank = action.get("r", 999999)
-                else:
-                    target_node.ignored = True
+            if not target_node:
+                raise ValueError(f"Invalid vaporize target: {vap_tuples}")
+
+            active_nodes.remove(target_node)
+            if action_type == "v":
+                target_node.vaporized_rank = action.get("r", 999999)
+            else:
+                target_node.ignored = True
             continue
 
         cut_tuples = _to_tuples(raw_vertices)
@@ -63,7 +60,8 @@ def replay_subgraph_sequence(graph: GridGraph, sequence: list) -> int:
             if cut_set.issubset(node.graph.vertices):
                 target_node = node
                 break
-        if not target_node: continue
+        if not target_node:
+            raise ValueError(f"Invalid cut target: {cut_tuples}")
 
         active_nodes.remove(target_node)
         target_node.cut_size = len(cut_tuples)
@@ -109,12 +107,14 @@ def replay_and_collect_graphs(m: int, n: int, flat_cut_sequence: list, hash_to_g
                     if vap_tuples[0] in node.graph.vertices:
                         target_node = node
                         break
-            if target_node:
-                active_nodes.remove(target_node)
-                if action_type == "v":
-                    target_node.vaporized_rank = action.get("r", 999999)
-                else:
-                    target_node.ignored = True
+            if not target_node:
+                raise ValueError(f"Invalid vaporize target: {vap_tuples}")
+
+            active_nodes.remove(target_node)
+            if action_type == "v":
+                target_node.vaporized_rank = action.get("r", 999999)
+            else:
+                target_node.ignored = True
             continue
 
         cut_tuples = _to_tuples(raw_vertices)
@@ -125,7 +125,8 @@ def replay_and_collect_graphs(m: int, n: int, flat_cut_sequence: list, hash_to_g
             if cut_set.issubset(node.graph.vertices):
                 target_node = node
                 break
-        if not target_node: continue
+        if not target_node:
+            raise ValueError(f"Invalid cut target: {cut_tuples}")
 
         active_nodes.remove(target_node)
         target_node.cut_size = len(cut_tuples)
@@ -168,7 +169,7 @@ def replay_and_collect_graphs(m: int, n: int, flat_cut_sequence: list, hash_to_g
 
     return calc_intrinsic_rank(root)
 
-def verify_grid_solutions(db: Session):
+def verify_grid_solutions(db: Session, destructive: bool):
     logger.info("=== Verifying GridSolutions ===")
     solutions = db.query(GridSolution).all()
     corrupt_count = 0
@@ -183,22 +184,27 @@ def verify_grid_solutions(db: Session):
                              f"Claimed rank: {sol.rank}, True rank: INCOMPLETE.")
                 corrupt_count += 1
             elif root_rank != sol.rank:
+                action_str = "DELETING" if destructive else "WOULD DELETE"
                 logger.warning(f"MISMATCH: GridSolution ID={sol.id} ({sol.m}x{sol.n}) by {sol.solver_name}. "
-                               f"Claimed rank: {sol.rank}, True rank: {root_rank}. DELETING.")
-                db.delete(sol)
+                               f"Claimed rank: {sol.rank}, True rank: {root_rank}. {action_str}.")
+                if destructive:
+                    db.delete(sol)
                 corrupt_count += 1
             else:
                 logger.debug(f"OK: GridSolution ID={sol.id} ({sol.m}x{sol.n}) by {sol.solver_name}")
                 
         except Exception as e:
+            action_str = "DELETED" if destructive else "WOULD DELETE"
             logger.error(f"CORRUPT (Exception): GridSolution ID={sol.id} ({sol.m}x{sol.n}) by {sol.solver_name}. "
-                         f"Error: {e}")
+                         f"Error: {e}. {action_str}.")
+            if destructive:
+                db.delete(sol)
             corrupt_count += 1
 
     logger.info(f"GridSolutions Verification Complete. Found {corrupt_count} corrupt/mismatched entries out of {len(solutions)}.")
     return hash_to_graph
 
-def verify_subgraph_dictionary(db: Session, hash_to_graph: dict):
+def verify_subgraph_dictionary(db: Session, hash_to_graph: dict, destructive: bool):
     logger.info("=== Verifying SubgraphDictionary ===")
     subgraphs = db.query(SubgraphDictionary).all()
     corrupt_count = 0
@@ -227,13 +233,18 @@ def verify_subgraph_dictionary(db: Session, hash_to_graph: dict):
                     corrupt_by_alias[alias] = corrupt_by_alias.get(alias, 0) + 1
                     corrupt_count += 1
                 elif true_rank != sg.best_rank:
-                    logger.warning(f"MISMATCH: Subgraph {sg.hash[:8]}... Claimed rank: {sg.best_rank}, True rank: {true_rank}. DELETING.")
-                    db.delete(sg)
+                    action_str = "DELETING" if destructive else "WOULD DELETE"
+                    logger.warning(f"MISMATCH: Subgraph {sg.hash[:8]}... Claimed rank: {sg.best_rank}, True rank: {true_rank}. {action_str}.")
+                    if destructive:
+                        db.delete(sg)
                     alias = sg.discovered_by or "unknown"
                     corrupt_by_alias[alias] = corrupt_by_alias.get(alias, 0) + 1
                     corrupt_count += 1
             except Exception as e:
-                logger.error(f"CORRUPT (Exception): Subgraph {sg.hash[:8]}... Error: {e}")
+                action_str = "DELETED" if destructive else "WOULD DELETE"
+                logger.error(f"CORRUPT (Exception): Subgraph {sg.hash[:8]}... Error: {e}. {action_str}.")
+                if destructive:
+                    db.delete(sg)
                 alias = sg.discovered_by or "unknown"
                 corrupt_by_alias[alias] = corrupt_by_alias.get(alias, 0) + 1
                 corrupt_count += 1
@@ -249,7 +260,7 @@ def verify_subgraph_dictionary(db: Session, hash_to_graph: dict):
         for alias, count in corrupt_by_alias.items():
             logger.info(f"Alias: {alias}, Corrupt Count: {count}")
 
-def sanitize():
+def sanitize(destructive: bool):
     db: Session = SessionLocal()
     try:
         # First, let's query the counts by alias to inform the user
@@ -259,14 +270,23 @@ def sanitize():
         for alias, count in alias_counts:
             logger.info(f"Alias: {alias}, Count: {count}")
 
-        hash_to_graph = verify_grid_solutions(db)
-        db.commit() # commit deleted grid solutions
+        hash_to_graph = verify_grid_solutions(db, destructive)
+        if destructive:
+            db.commit() # commit deleted grid solutions
         
-        verify_subgraph_dictionary(db, hash_to_graph)
-        db.commit() # commit deleted subgraphs
+        verify_subgraph_dictionary(db, hash_to_graph, destructive)
+        if destructive:
+            db.commit() # commit deleted subgraphs
         
     finally:
         db.close()
 
 if __name__ == "__main__":
-    sanitize()
+    parser = argparse.ArgumentParser(description="Sanitize Howl database")
+    parser.add_argument("--destructive", action="store_true", help="Actually delete mismatched records from the database")
+    args = parser.parse_args()
+    
+    if not args.destructive:
+        logger.info("Running in DRY-RUN mode. Use --destructive to apply deletions.")
+    
+    sanitize(args.destructive)

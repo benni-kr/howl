@@ -124,18 +124,19 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
                     target_node = node
                     break
                     
-            if target_node is None:
+            if not target_node:
                 for node in active_nodes:
                     if vap_tuples[0] in node.graph.vertices:
                         target_node = node
                         break
-                        
-            if target_node:
-                active_nodes.remove(target_node)
-                if action_type == "v":
-                    target_node.vaporized_rank = action.get("r", 999999)
-                else:
-                    target_node.ignored = True
+            if not target_node:
+                raise ValueError(f"Invalid vaporize target: {vap_tuples}")
+
+            active_nodes.remove(target_node)
+            if action_type == "v":
+                target_node.vaporized_rank = action.get("r", 999999)
+            else:
+                target_node.ignored = True
             continue
 
         cut_tuples = _to_tuples(raw_vertices)
@@ -150,7 +151,7 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
                 break
 
         if not target_node:
-            continue
+            raise ValueError(f"Invalid cut target: {cut_tuples}")
 
         active_nodes.remove(target_node)
         target_node.cut_size = len(cut_tuples)

@@ -56,8 +56,10 @@ Manages the Just-In-Time (JIT) onboarding tutorial state.
 
 The frontend implements several graph algorithms to provide instant UI feedback without waiting for network requests.
 
-### Connected Components (BFS)
+### Connected Components (BFS) & Strict Validation
 When a player makes a cut, the frontend needs to know immediately how the board fragments. `executeCutLocal` in `graphUtils.ts` implements an optimized **Breadth-First Search (BFS)** using an index-based queue (to ensure $O(1)$ dequeues instead of $O(n)$ array shifts). This BFS traverses the remaining vertices to identify all distinct connected components and rebuilds their valid edges locally.
+
+To protect against UI-state desyncs (e.g. "Phantom Nodes" remaining selected across graph swaps), `executeCutLocal` enforces **strict validation** by asserting that every vertex in the proposed `pendingCutSet` explicitly exists within the `activeGraph`. If a mismatch is detected, it throws a localized error to block the dispatch, safeguarding the integrity of the Redux state and preventing corrupted game sequences.
 
 ### Subgraph Isomorphism (Subset Containment)
 To power the "Subset Vaporize" batch action, the frontend must check if a smaller graph $A$ can fit entirely inside a larger graph $B$. `isSubgraphOf` in `subgraphUtils.ts` solves this 2D subgraph isomorphism problem by:
@@ -112,6 +114,9 @@ To handle large grids (e.g., $100 \times 100$) efficiently over the network, the
 1. **In-Memory (Verbose)**: The frontend stores cut history in Redux using a verbose, human-readable format (`{ type: "cut", vertices: [{x: 0, y: 0}] }`). This ensures React components and Redux logic remain clean.
 2. **Network/Storage (Compact)**: When submitting a score via `submitScore`, `api.ts` compacts the payload into a highly minimal format (`{ t: "c", v: [[0, 0]] }`). This reduces network payload size significantly.
 3. **Rehydration**: When fetching replays via `fetchSolution`, `api.ts` automatically decompacts the payload back into the verbose format, keeping the Replay engine UI completely decoupled from the transport schema.
+
+### Preventing Double-Submission (React Strict Mode)
+During development, React 18's Strict Mode intentionally double-fires `useEffect` hooks. To prevent this from triggering concurrent duplicate POST requests (which would crash against backend database UNIQUE constraints), API submission hooks in modals (like `VictoryModal`) cache the resulting Promise using a `useRef`. If a second effect fires before the first finishes, it simply `await`s the exact same cached Promise, completely neutralizing the race condition.
 
 ---
 

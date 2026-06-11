@@ -52,7 +52,12 @@ const GamePage: React.FC = () => {
   const { width, height } = useStageSize({ hasSidebar: true });
 
   const [pendingCutSet, setPendingCutSet] = useState<Vertex[]>([]);
-  const [resetToken, setResetToken] = useState(0);
+  const [resetTokenRaw, setResetTokenRaw] = useState(0);
+
+  const setResetToken = useCallback((value: React.SetStateAction<number>) => {
+    setPendingCutSet([]);
+    setResetTokenRaw(value);
+  }, []);
 
   const [optimalRanks, setOptimalRanks] = useState<Map<string, { best_rank: number, is_optimal: boolean, discovered_by?: string | null, hash: string }>>(new Map());
 
@@ -235,7 +240,7 @@ const GamePage: React.FC = () => {
             selectedGraphIndex={selectedGraphIndex}
             onSelectGraph={handleSelectGraph}
             onPendingCutSetChange={setPendingCutSet}
-            resetToken={resetToken}
+            resetToken={resetTokenRaw}
             bankedGraphs={bankedGraphs}
             settings={settings}
             isExecuting={isExecuting}

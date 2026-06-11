@@ -9,6 +9,14 @@ const getVertexKey = (v: Vertex) => `${v.x},${v.y}`;
  */
 export const executeCutLocal = (activeGraph: Graph, cutSet: Vertex[]): Graph[] => {
   const cutKeys = new Set(cutSet.map(getVertexKey));
+  const activeKeys = new Set(activeGraph.vertices.map(getVertexKey));
+
+  // Validate that all cut vertices are in the active graph
+  for (const cutV of cutSet) {
+    if (!activeKeys.has(getVertexKey(cutV))) {
+      throw new Error(`Vertex (${cutV.x}, ${cutV.y}) is not in the active graph.`);
+    }
+  }
   
   // Filter out the cut vertices to get the remaining board
   const remainingVertices = activeGraph.vertices.filter(
