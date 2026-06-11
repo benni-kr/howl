@@ -72,7 +72,11 @@ export class PixiEngine {
     this.glowContainer = new PIXI.Container();
     this.wandContainer = new PIXI.Container();
     this.textContainer = new PIXI.Container();
+    this.textContainer.eventMode = "none";
+    this.textContainer.interactiveChildren = false;
     this.gridLinesContainer = new PIXI.Container();
+    this.gridLinesContainer.eventMode = "none";
+    this.gridLinesContainer.interactiveChildren = false;
 
     this._blurFilter = new PIXI.BlurFilter();
     this._blurFilter.blur = 12;
