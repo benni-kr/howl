@@ -23,7 +23,17 @@ export class PixiEngine {
   textContainer: PIXI.Container;
   gridLinesContainer: PIXI.Container;
 
-  nodes: Map<string, { x: number; y: number; vertex: Vertex; graphics: PIXI.Graphics; glowGraphics: PIXI.Graphics; isPendingCut: boolean; color: number }>;
+  nodes: Map<string, {
+    x: number; y: number; vertex: Vertex;
+    graphics: PIXI.Graphics; glowGraphics: PIXI.Graphics;
+    isPendingCut: boolean; color: number;
+    graphIndex: number;
+    _drawnPendingCut: boolean;
+    _drawnSelected: boolean;
+    _drawnVaporizeType: string | null;
+    _drawnCellSize: number;
+    _drawnPaletteId: number;
+  }>;
   activeEdges: Set<string>;
   particles: Particle[];
   dyingGraphics: Set<PIXI.Graphics>;
@@ -108,6 +118,7 @@ export class PixiEngine {
     if (this._edgesDirty) {
       this.edgeGraphics.clear();
       const edgeColor = this.palette?.border ?? 0x334155;
+      let hasEdges = false;
       for (const edgeKey of this.activeEdges) {
         const [fromKey, toKey] = edgeKey.split('-');
         const fromNode = this.nodes.get(fromKey);
@@ -117,9 +128,12 @@ export class PixiEngine {
           if (scaleAlpha > 0.01) {
             this.edgeGraphics.moveTo(fromNode.graphics.x, fromNode.graphics.y);
             this.edgeGraphics.lineTo(toNode.graphics.x, toNode.graphics.y);
-            this.edgeGraphics.stroke({ color: edgeColor, width: 2, alpha: 0.4 * scaleAlpha });
+            hasEdges = true;
           }
         }
+      }
+      if (hasEdges) {
+        this.edgeGraphics.stroke({ color: edgeColor, width: 2, alpha: 0.4 });
       }
       this._edgesDirty = false;
     }
@@ -172,6 +186,29 @@ export class PixiEngine {
     this.onAutoSolve = onAutoSolve;
     this.onIgnoreDuplicate = onIgnoreDuplicate;
     this.onDeepDiveRequest = onDeepDiveRequest;
+
+    let totalVertexCount = 0;
+    graphs.forEach(g => totalVertexCount += g.vertices.length);
+    bankedGraphs.forEach(g => totalVertexCount += g.vertices.length);
+
+    if (totalVertexCount > 2500) {
+      this.glowContainer.filters = [];
+    } else {
+      if (totalVertexCount > 900) {
+        this._blurFilter.quality = 1;
+        this._blurFilter.blur = 6;
+        this._blurFilter.padding = 10;
+      } else if (totalVertexCount > 200) {
+        this._blurFilter.quality = 2;
+        this._blurFilter.blur = 8;
+        this._blurFilter.padding = 20;
+      } else {
+        this._blurFilter.quality = 3;
+        this._blurFilter.blur = 10;
+        this._blurFilter.padding = 40;
+      }
+      this.glowContainer.filters = [this._blurFilter];
+    }
 
     const graphMetas = graphs.map((graph) => {
       let minX = Infinity, maxX = -Infinity;
@@ -271,6 +308,14 @@ export class PixiEngine {
 
     const seenHashes = new Set<string>();
     const usedTextKeys = new Set<string>();
+    
+    const pendingCutKeys = new Set<string>();
+    pendingCutSet.forEach(v => pendingCutKeys.add(`${v.x},${v.y}`));
+    
+    const bankedVertexKeys = new Set<string>();
+    bankedGraphs.forEach(g => {
+      g.vertices.forEach(v => bankedVertexKeys.add(`${v.x},${v.y}`));
+    });
     if (splitView && optimalRanks) {
       bankedGraphs.forEach(bg => {
         const h = optimalRanks.get(getLocalGraphFingerprint(bg))?.hash;
@@ -615,7 +660,7 @@ export class PixiEngine {
 
         const targetX = layout.offsetX + (vertex.x - meta.minX) * this.cellSize + this.cellSize / 2;
         const targetY = layout.offsetY + (vertex.y - meta.minY) * this.cellSize + this.cellSize / 2;
-        const isPendingCut = pendingCutSet.some((v) => isSameVertex(v, vertex));
+        const isPendingCut = pendingCutKeys.has(key);
 
         let node = this.nodes.get(key);
         if (!node) {
@@ -627,6 +672,12 @@ export class PixiEngine {
             glowGraphics: new PIXI.Graphics(),
             isPendingCut,
             color: 0,
+            graphIndex,
+            _drawnPendingCut: !isPendingCut,
+            _drawnSelected: !isSelected,
+            _drawnVaporizeType: "none",
+            _drawnCellSize: -1,
+            _drawnPaletteId: -1,
           };
           node.graphics.x = targetX;
           node.graphics.y = targetY;
@@ -639,21 +690,23 @@ export class PixiEngine {
             if (e.pointerId !== undefined && (node!.graphics as any).hasPointerCapture?.(e.pointerId)) {
               (node!.graphics as any).releasePointerCapture(e.pointerId);
             }
+            if (this.isDestroyed) return;
+            const currentGraphIndex = node!.graphIndex;
             if (readOnly) {
               if (node!.isPendingCut && this.onDeepDiveRequest) {
-                this.onDeepDiveRequest(graphIndex);
+                this.onDeepDiveRequest(currentGraphIndex);
               }
               return;
             }
             if (!this.splitView) {
-              this.onNodePointerDown?.(vertex, graphIndex, e.shiftKey);
+              this.onNodePointerDown?.(vertex, currentGraphIndex, e.shiftKey);
             } else {
-              this.onGraphClick?.(graphIndex);
+              this.onGraphClick?.(currentGraphIndex);
             }
           });
           node!.graphics.on("pointerenter", () => {
-            if (readOnly || this.splitView) return;
-            this.onNodePointerEnter?.(vertex, graphIndex);
+            if (readOnly || this.splitView || this.isDestroyed) return;
+            this.onNodePointerEnter?.(vertex, node!.graphIndex);
           });
           this.nodeContainer.addChild(node.graphics);
           this.glowContainer.addChild(node.glowGraphics);
@@ -663,37 +716,30 @@ export class PixiEngine {
           node.glowGraphics.scale.set(0);
           gsap.to([node.graphics.scale, node.glowGraphics.scale], { x: 1, y: 1, duration: 0.4, delay: layoutDelay, ease: "back.out(1.7)", onUpdate: () => this.markEdgesDirty() });
         } else {
+          node.graphIndex = graphIndex;
           if (!isExecuting) {
             gsap.to([node.graphics, node.glowGraphics], { x: targetX, y: targetY, duration: 0.6, ease: "power2.out", onUpdate: () => this.markEdgesDirty() });
           }
-
-          node!.graphics.off("pointerdown");
-          node!.graphics.on("pointerdown", (e) => {
-            e.stopPropagation();
-            if (e.pointerId !== undefined && (node!.graphics as any).hasPointerCapture?.(e.pointerId)) {
-              (node!.graphics as any).releasePointerCapture(e.pointerId);
-            }
-            if (readOnly) {
-              if (node!.isPendingCut && this.onDeepDiveRequest) {
-                this.onDeepDiveRequest(graphIndex);
-              }
-              return;
-            }
-            if (!this.splitView) {
-              this.onNodePointerDown?.(vertex, graphIndex, e.shiftKey);
-            } else {
-              this.onGraphClick?.(graphIndex);
-            }
-          });
-          node!.graphics.off("pointerenter");
-          node!.graphics.on("pointerenter", () => {
-            if (readOnly || this.splitView) return;
-            this.onNodePointerEnter?.(vertex, graphIndex);
-          });
         }
 
         node.isPendingCut = isPendingCut;
-        drawNode(node, this.cellSize, this.palette, isSelected, vaporizeActionType);
+        
+        const paletteId = this.palette?.tileA ?? 0;
+        const needsRedraw = 
+          node._drawnPendingCut !== isPendingCut ||
+          node._drawnSelected !== isSelected ||
+          node._drawnVaporizeType !== vaporizeActionType ||
+          node._drawnCellSize !== this.cellSize ||
+          node._drawnPaletteId !== paletteId;
+
+        if (needsRedraw) {
+          drawNode(node, this.cellSize, this.palette, isSelected, vaporizeActionType);
+          node._drawnPendingCut = isPendingCut;
+          node._drawnSelected = isSelected;
+          node._drawnVaporizeType = vaporizeActionType;
+          node._drawnCellSize = this.cellSize;
+          node._drawnPaletteId = paletteId;
+        }
       });
 
     });
@@ -710,7 +756,7 @@ export class PixiEngine {
 
     for (const [key, node] of this.nodes.entries()) {
       if (!activeKeys.has(key)) {
-        const isBanked = bankedGraphs.some((g) => g.vertices.some((v) => isSameVertex(v, node.vertex)));
+        const isBanked = bankedVertexKeys.has(key);
 
         this.dyingGraphics.add(node.graphics);
         this.dyingGraphics.add(node.glowGraphics);
