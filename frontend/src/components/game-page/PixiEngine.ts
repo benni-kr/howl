@@ -428,25 +428,25 @@ export class PixiEngine {
 
           for (let x = meta.minX; x <= meta.maxX; x++) {
             const text = new PIXI.Text({
-               text: x.toString(),
+               text: (x - meta.minX).toString(),
                style: { fontFamily: "sans-serif", fontSize: 32, fill: gridColor }
             });
             text.scale.set(textScale);
             text.alpha = 0.6;
             text.x = layout.offsetX + (x - meta.minX) * this.cellSize + this.cellSize / 2 - text.width / 2;
             text.y = originY - text.height - 4;
-            this.textContainer.addChild(text);
+            this.gridLinesContainer.addChild(text);
           }
           for (let y = meta.minY; y <= meta.maxY; y++) {
             const text = new PIXI.Text({
-               text: y.toString(),
+               text: (y - meta.minY).toString(),
                style: { fontFamily: "sans-serif", fontSize: 32, fill: gridColor }
             });
             text.scale.set(textScale);
             text.alpha = 0.6;
             text.x = originX - text.width - 6;
             text.y = layout.offsetY + (y - meta.minY) * this.cellSize + this.cellSize / 2 - text.height / 2;
-            this.textContainer.addChild(text);
+            this.gridLinesContainer.addChild(text);
           }
 
           const gridGfx = new PIXI.Graphics();
