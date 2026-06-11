@@ -763,7 +763,14 @@ export class PixiEngine {
         gsap.killTweensOf(node.graphics);
         gsap.killTweensOf(node.glowGraphics);
 
-        if (isBanked) {
+        if (totalVertexCount > 2500) {
+          this.nodeContainer.removeChild(node.graphics);
+          this.glowContainer.removeChild(node.glowGraphics);
+          this.dyingGraphics.delete(node.graphics);
+          this.dyingGraphics.delete(node.glowGraphics);
+          node.graphics.destroy();
+          node.glowGraphics.destroy();
+        } else if (isBanked) {
           gsap.to([node.graphics.scale, node.glowGraphics.scale], {
             x: 0,
             y: 0,
@@ -815,7 +822,7 @@ export class PixiEngine {
             onUpdate: () => this.markEdgesDirty(),
             onComplete: () => {
               const shardColors = this.palette ? [this.palette.tileA, this.palette.tileB] : [0x10b981, 0x34d399, 0xfcd34d];
-              spawnExplosion(this.particleContainer, this.particles, this.dyingGraphics.size / 2, node.graphics.x, node.graphics.y, shardColors, readOnly);
+              spawnExplosion(this.particleContainer, this.particles, this.dyingGraphics.size / 2, node.graphics.x, node.graphics.y, shardColors, readOnly, totalVertexCount);
               this.nodeContainer.removeChild(node.graphics);
               this.glowContainer.removeChild(node.glowGraphics);
               gsap.killTweensOf(node.graphics);
