@@ -16,23 +16,9 @@ The backend has two primary persistence tables.
 
 ### `grid_solutions`
 Purpose: Best-known rank per $(m, n)$ grid, per solver.
-- `id` (Integer, Primary Key)
-- `m` (Integer): Grid width
-- `n` (Integer): Grid height
-- `rank` (Integer): Total computed cuts required to solve the grid
-- `solver_name` (String): Player or AI alias that achieved this rank
-- `cut_sequence` (JSON): The compact chronological list of actions to replay
-- `created_at` (DateTime)
 
 ### `subgraph_dictionary`
 Purpose: Persistent repository of intermediate shapes and their mathematically verified lower bounds.
-- `hash` (String, Primary Key): MD5 digest of the `shape_str`
-- `shape_str` (String, Nullable): Canonical, origin-normalized `"x,y|x,y"` representation of the geometry
-- `best_rank` (Integer): Fewest cuts required to solve this shape
-- `is_optimal` (Boolean): True if proven mathematically optimal
-- `best_cut_sequence` (JSON, Nullable): The sequence to achieve `best_rank`
-- `discovered_by` (String): Player or AI alias
-- `last_updated` (DateTime)
 
 ---
 
@@ -134,6 +120,7 @@ Only entries with `rank < 999999` and non-obliterated nodes are written to the `
 
 Every subgraph shape is identified by a **canonical hash** that is invariant under translation, rotation ($0^\circ/90^\circ/180^\circ/270^\circ$), and reflection.
 
+```python
 def generate_canonical_hash(vertices):
     # 1. Generate all 8 orientations (4 rotations × 2 reflections)
     # 2. Normalize each to the origin (min_x, min_y) = (0, 0)
@@ -141,6 +128,7 @@ def generate_canonical_hash(vertices):
     # 4. Build string: "x,y|x,y|..." (This becomes the `shape_str`)
     # 5. Return the `shape_str` and its MD5 digest (the `hash`)
 ```
+
 Example: A $2 \times 2$ square at any position always results in the `shape_str` `"0,0|0,1|1,0|1,1"` and its corresponding hash.
 
 The `shape_str` is explicitly stored in the `subgraph_dictionary` database table alongside the hash. This allows the backend to retain the exact normalized geometry of every discovered subgraph, enabling features like visualization grids without requiring the frontend to re-calculate geometries from raw game replays.
@@ -193,11 +181,15 @@ These theoretical bounds are used on the Leaderboard Matrix to calculate the "Pe
 
 ### `subgraph_dictionary`
 
-| Column    | Type    | Description                                    |
-|-----------|---------|------------------------------------------------|
-| hash      | TEXT    | Canonical hash (primary key)                   |
-| best_rank | INTEGER | Best known intrinsic rank for this shape        |
-| is_optimal| BOOLEAN | Theoretically optimal flag (reserved for future/leaderboard math) |
+| Column            | Type     | Description                                    |
+|-------------------|----------|------------------------------------------------|
+| hash              | TEXT     | Canonical hash (primary key)                   |
+| shape_str         | TEXT     | Origin-normalized representation of geometry   |
+| best_rank         | INTEGER  | Best known intrinsic rank for this shape        |
+| is_optimal        | BOOLEAN  | Theoretically optimal flag                     |
+| best_cut_sequence | JSON     | The sequence to achieve best_rank              |
+| discovered_by     | TEXT     | Player or AI alias                             |
+| last_updated      | DATETIME | Timestamp of last modification                 |
 
 ---
 
