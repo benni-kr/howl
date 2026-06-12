@@ -1,6 +1,7 @@
 import os
 import json
 import urllib.request
+import ssl
 from models import Issue
 
 def send_discord_notification(issue: Issue):
@@ -17,7 +18,6 @@ def send_discord_notification(issue: Issue):
         color = 16711680 if issue.type == "bug" else 5814783
         
         data = {
-            "content": None,
             "embeds": [
                 {
                     "title": f"New Issue Reported: {issue.type}",
@@ -47,6 +47,11 @@ def send_discord_notification(issue: Issue):
                 'User-Agent': 'HowlBot'
             }
         )
-        urllib.request.urlopen(req, timeout=5)
+        
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
+        urllib.request.urlopen(req, timeout=5, context=ctx)
     except Exception as e:
         print(f"Failed to send Discord webhook: {e}")
