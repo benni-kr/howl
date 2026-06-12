@@ -23,11 +23,11 @@
 .empty-state h2 {
   margin: 0 0 12px 0;
   font-size: 1.5rem;
-  color: var(--text-primary, #fff);
+  color: var(--text-main);
 }
 
 .empty-state p {
-  color: var(--text-muted, #a1a1aa);
+  color: var(--text-muted);
   font-size: 1.05rem;
   line-height: 1.6;
   margin: 0 0 32px 0;

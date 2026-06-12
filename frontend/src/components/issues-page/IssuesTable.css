@@ -20,7 +20,7 @@
   font-size: 0.9rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-sidebar);
 }
 
 .issues-table tr:last-child td {
@@ -33,7 +33,7 @@
 }
 
 .clickable-row:hover {
-  background-color: var(--bg-hover, rgba(255, 255, 255, 0.05)) !important;
+  background-color: var(--bg-sidebar) !important;
 }
 
 .issue-type {
@@ -62,6 +62,15 @@
 .status-open { background: rgba(234, 179, 8, 0.15); color: #fde047; }
 .status-in_progress { background: rgba(59, 130, 246, 0.15); color: #93c5fd; }
 .status-closed { background: rgba(34, 197, 94, 0.15); color: #86efac; }
+
+[data-theme="light"] .type-bug { color: #dc2626; }
+[data-theme="light"] .type-featurerequest { color: #2563eb; }
+[data-theme="light"] .type-uiuxissue { color: #9333ea; }
+[data-theme="light"] .type-mathlogicerror { color: #d97706; }
+[data-theme="light"] .type-other { color: #4b5563; }
+[data-theme="light"] .status-open { color: #d97706; }
+[data-theme="light"] .status-in_progress { color: #2563eb; }
+[data-theme="light"] .status-closed { color: #16a34a; }
 
 .issue-date {
   color: var(--text-muted);

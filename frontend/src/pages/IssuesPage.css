@@ -12,7 +12,7 @@
 }
 
 .issues-content {
-  background: var(--bg-surface);
+  background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   overflow: hidden;

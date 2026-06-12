@@ -51,10 +51,10 @@
 .form-group textarea,
 .form-group select {
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  background: var(--btn-primary);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
-  color: var(--text-primary, #fff);
+  color: var(--text-main);
   font-family: inherit;
   font-size: 1rem;
 }
@@ -63,8 +63,8 @@
 .form-group textarea:focus,
 .form-group select:focus {
   outline: none;
-  border-color: var(--color-primary, #3b82f6);
-  background: rgba(255, 255, 255, 0.08);
+  border-color: #3b82f6;
+  background: var(--btn-primary-hover);
 }
 
 .form-row {
@@ -115,7 +115,7 @@
   margin: 0;
   font-size: 1.6rem;
   font-weight: 600;
-  color: var(--text-primary, #fff);
+  color: var(--text-main);
   line-height: 1.2;
 }
 
@@ -133,8 +133,8 @@
 
 .modal-actions-top .icon-btn {
   background: transparent;
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
-  color: var(--text-muted, #a1a1aa);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
   cursor: pointer;
   padding: 8px;
   border-radius: 8px !important;
@@ -145,9 +145,9 @@
 }
 
 .modal-actions-top .icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
-  color: var(--text-primary, #fff);
+  background: var(--btn-primary-hover);
+  border-color: var(--text-muted);
+  color: var(--text-main);
 }
 
 .modal-actions-top .icon-btn.delete-icon-btn:hover {
@@ -173,7 +173,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-muted, #a1a1aa);
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -181,12 +181,12 @@
 
 .view-box-content {
   padding: 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  background: var(--btn-primary);
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
   font-size: 1.05rem;
   line-height: 1.7;
-  color: var(--text-primary, #e2e8f0);
+  color: var(--text-main);
   white-space: pre-wrap;
   overflow-wrap: break-word;
   word-wrap: break-word;
@@ -227,7 +227,7 @@
 .issue-view-footer {
   margin-top: 40px;
   padding-top: 20px;
-  border-top: 1px dashed var(--border-subtle, rgba(255, 255, 255, 0.1));
+  border-top: 1px dashed var(--border-subtle);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -235,7 +235,7 @@
 
 .meta-text {
   font-size: 0.85rem;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -269,12 +269,12 @@
 
 .delete-confirm-view h2 {
   margin: 0;
-  color: var(--text-primary, #fff);
+  color: var(--text-main);
   font-size: 1.5rem;
 }
 
 .delete-confirm-view p {
-  color: var(--text-muted, #a1a1aa);
+  color: var(--text-muted);
   line-height: 1.6;
   margin: 0;
   font-size: 0.95rem;

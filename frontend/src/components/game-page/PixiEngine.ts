@@ -50,6 +50,7 @@ export class PixiEngine {
 
   cellSize: number = BASE_CELL_SIZE;
   splitView: boolean = false;
+  selectedGraphIndex: number | null = null;
   isDestroyed: boolean = false;
   palette: Palette | null = null;
   _activeExplosions: number = 0;
@@ -318,6 +319,7 @@ export class PixiEngine {
   ) {
     this.palette = palette;
     this.splitView = splitView;
+    this.selectedGraphIndex = selectedGraphIndex;
     this.onNodePointerDown = onNodePointerDown;
     this.onNodePointerEnter = onNodePointerEnter;
     this.onPointerUp = onPointerUp;
@@ -854,14 +856,16 @@ export class PixiEngine {
               return;
             }
 
-            if (!splitView || currentGraphIndex === selectedGraphIndex) {
-              onNodePointerDown?.(vertex, currentGraphIndex, e.shiftKey);
+            if (!this.splitView || currentGraphIndex === this.selectedGraphIndex) {
+              this.onNodePointerDown?.(vertex, currentGraphIndex, e.shiftKey);
+            } else {
+              this.onGraphClick?.(currentGraphIndex);
             }
           });
 
           node!.graphics.on("pointerenter", () => {
-            if (readOnly || splitView || this.isDestroyed || this._isPanning) return;
-            onNodePointerEnter?.(vertex, node!.graphIndex);
+            if (readOnly || this.splitView || this.isDestroyed || this._isPanning) return;
+            this.onNodePointerEnter?.(vertex, node!.graphIndex);
           });
           this.nodeContainer.addChild(node.graphics);
           this.glowContainer.addChild(node.glowGraphics);
