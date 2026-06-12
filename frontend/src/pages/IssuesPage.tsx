@@ -92,6 +92,16 @@ const IssuesPage: React.FC = () => {
     setTimeout(() => setSelectedIssue(null), 200); // Wait for transition
   };
 
+  const sortedIssues = [...issues].sort((a, b) => {
+    const statusOrder: Record<string, number> = { "open": 1, "in_progress": 2, "closed": 3 };
+    const orderA = statusOrder[a.status] || 4;
+    const orderB = statusOrder[b.status] || 4;
+    if (orderA !== orderB) {
+      return orderA - orderB;
+    }
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
   return (
     <div className="issues-page">
       <div className="issues-header">
@@ -117,7 +127,7 @@ const IssuesPage: React.FC = () => {
         ) : issues.length === 0 ? (
           <EmptyState onReport={openCreateModal} />
         ) : (
-          <IssuesTable issues={issues} onRowClick={openEditModal} />
+          <IssuesTable issues={sortedIssues} onRowClick={openEditModal} />
         )}
       </div>
 

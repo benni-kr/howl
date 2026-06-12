@@ -1,12 +1,13 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import case
 
 from database import get_db
 from models import Issue
 from schemas import IssueCreate, IssueResponse, IssueUpdate
+from services.notification_service import send_discord_notification
 
 router = APIRouter()
 
@@ -21,7 +22,7 @@ def get_issues(db: Session = Depends(get_db)):
     return db.query(Issue).order_by(status_order, Issue.created_at.desc()).all()
 
 @router.post("/", response_model=IssueResponse)
-def create_issue(issue_in: IssueCreate, db: Session = Depends(get_db)):
+def create_issue(issue_in: IssueCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     new_issue = Issue(
         type=issue_in.type,
         description=issue_in.description,
@@ -31,13 +32,18 @@ def create_issue(issue_in: IssueCreate, db: Session = Depends(get_db)):
     db.add(new_issue)
     db.commit()
     db.refresh(new_issue)
+    
+    background_tasks.add_task(send_discord_notification, new_issue)
+    
     return new_issue
 
 @router.patch("/{issue_id}", response_model=IssueResponse)
-def update_issue(issue_id: int, issue_in: IssueUpdate, db: Session = Depends(get_db)):
+def update_issue(issue_id: int, issue_in: IssueUpdate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     issue = db.query(Issue).filter(Issue.id == issue_id).first()
     if not issue:
         raise HTTPException(status_code=404, detail="Issue not found")
+    
+    is_reopened = False
     
     if issue_in.type is not None:
         issue.type = issue_in.type
@@ -46,12 +52,18 @@ def update_issue(issue_id: int, issue_in: IssueUpdate, db: Session = Depends(get
     if issue_in.influenced_runs is not None:
         issue.influenced_runs = issue_in.influenced_runs
     if issue_in.status is not None:
+        if issue.status == 'closed' and issue_in.status == 'open':
+            is_reopened = True
         issue.status = issue_in.status
         
     issue.last_changed_by = issue_in.last_changed_by
     
     db.commit()
     db.refresh(issue)
+    
+    if is_reopened:
+        background_tasks.add_task(send_discord_notification, issue, is_reopen=True)
+        
     return issue
 
 @router.delete("/{issue_id}", response_model=dict)
