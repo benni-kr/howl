@@ -1,12 +1,13 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import case
 
 from database import get_db
 from models import Issue
 from schemas import IssueCreate, IssueResponse, IssueUpdate
+from services.notification_service import send_discord_notification
 
 router = APIRouter()
 
@@ -21,7 +22,7 @@ def get_issues(db: Session = Depends(get_db)):
     return db.query(Issue).order_by(status_order, Issue.created_at.desc()).all()
 
 @router.post("/", response_model=IssueResponse)
-def create_issue(issue_in: IssueCreate, db: Session = Depends(get_db)):
+def create_issue(issue_in: IssueCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     new_issue = Issue(
         type=issue_in.type,
         description=issue_in.description,
@@ -31,6 +32,9 @@ def create_issue(issue_in: IssueCreate, db: Session = Depends(get_db)):
     db.add(new_issue)
     db.commit()
     db.refresh(new_issue)
+    
+    background_tasks.add_task(send_discord_notification, new_issue)
+    
     return new_issue
 
 @router.patch("/{issue_id}", response_model=IssueResponse)
