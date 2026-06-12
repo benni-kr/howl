@@ -38,10 +38,12 @@ def create_issue(issue_in: IssueCreate, background_tasks: BackgroundTasks, db: S
     return new_issue
 
 @router.patch("/{issue_id}", response_model=IssueResponse)
-def update_issue(issue_id: int, issue_in: IssueUpdate, db: Session = Depends(get_db)):
+def update_issue(issue_id: int, issue_in: IssueUpdate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     issue = db.query(Issue).filter(Issue.id == issue_id).first()
     if not issue:
         raise HTTPException(status_code=404, detail="Issue not found")
+    
+    is_reopened = False
     
     if issue_in.type is not None:
         issue.type = issue_in.type
@@ -50,12 +52,18 @@ def update_issue(issue_id: int, issue_in: IssueUpdate, db: Session = Depends(get
     if issue_in.influenced_runs is not None:
         issue.influenced_runs = issue_in.influenced_runs
     if issue_in.status is not None:
+        if issue.status == 'closed' and issue_in.status == 'open':
+            is_reopened = True
         issue.status = issue_in.status
         
     issue.last_changed_by = issue_in.last_changed_by
     
     db.commit()
     db.refresh(issue)
+    
+    if is_reopened:
+        background_tasks.add_task(send_discord_notification, issue, is_reopen=True)
+        
     return issue
 
 @router.delete("/{issue_id}", response_model=dict)

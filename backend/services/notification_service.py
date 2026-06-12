@@ -4,7 +4,7 @@ import urllib.request
 import ssl
 from models import Issue
 
-def send_discord_notification(issue: Issue):
+def send_discord_notification(issue: Issue, is_reopen: bool = False):
     """
     Sends a Discord webhook notification when a new issue is created.
     Uses the DISCORD_WEBHOOK_URL environment variable.
@@ -17,10 +17,12 @@ def send_discord_notification(issue: Issue):
         # 16711680 = Red (for bugs), 5814783 = Blue (for everything else)
         color = 16711680 if issue.type == "bug" else 5814783
         
+        title_prefix = "Issue Reopened" if is_reopen else "New Issue Reported"
+        
         data = {
             "embeds": [
                 {
-                    "title": f"New Issue Reported: {issue.type}",
+                    "title": f"{title_prefix}: {issue.type}",
                     "description": issue.description,
                     "color": color,
                     "fields": [
