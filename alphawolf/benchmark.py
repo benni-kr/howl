@@ -15,19 +15,12 @@ def create_gauntlet():
     import os
     import random
     
-    config_path = os.path.join(os.path.dirname(__file__), "config.json")
-    try:
-        with open(config_path, "r") as f:
-            config = json.load(f)
-        unlocked_tiers = config.get("unlocked_tiers", [[4, 4], [5, 5], [6, 6]])
-        fractured_per_tier = config.get("gauntlet_fractured_per_tier", 2)
-        fracture_min = config.get("gauntlet_fracture_min", 0.1)
-        fracture_max = config.get("gauntlet_fracture_max", 0.2)
-    except Exception:
-        unlocked_tiers = [[4, 4], [5, 5], [6, 6]]
-        fractured_per_tier = 2
-        fracture_min = 0.1
-        fracture_max = 0.2
+    fractured_per_tier = 2
+    fracture_min = 0.1
+    fracture_max = 0.2
+    
+    # Generate all grids from 4x4 up to 7x7 to match the V1.1 training distribution
+    unlocked_tiers = [(i, j) for i in range(4, 8) for j in range(4, 8) if i <= j]
         
     gauntlet = []
     
@@ -70,9 +63,10 @@ def evaluate_model(model_path, gauntlet_boards, num_simulations=100):
         
         # Carve out the pre-shattered missing vertices
         for (x, y) in missing:
-            obs[x, y] = 0
             if (x, y) in env.graph.vertices:
                 env.graph.apply_cut_set([(x, y)])
+        
+        obs = env._get_obs()
                 
         # Run deterministic evaluation (add_exploration_noise=False)
         traj, rank, _ = play_episode(net, env, obs, num_simulations=num_simulations, add_exploration_noise=False)

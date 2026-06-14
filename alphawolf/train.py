@@ -18,7 +18,7 @@ C_PUCT = 1.0
 def clone_env_from_obs(obs, m, n, current_cuts=0):
     sim_env = HowlEnv(m, n)
     sim_env.graph = GridGraph(m, n, generate=False)
-    active_coords = np.argwhere(obs == 1)
+    active_coords = np.argwhere(obs[0] == 1)
     for x, y in active_coords:
         sim_env.graph._add_vertex((int(x), int(y)))
         
@@ -39,12 +39,12 @@ def evaluate_fragment_rank(frag, m, n, net):
     if db_res and (db_res['is_optimal'] or db_res['best_rank'] <= 3):
         return float(db_res['best_rank'])
         
-    frag_obs = np.zeros((10, 10), dtype=np.int8)
-    for x, y in frag.vertices:
-        frag_obs[x, y] = 1
+    frag_env = HowlEnv(m, n)
+    frag_env.graph = frag
+    frag_obs = frag_env._get_obs()
         
     with torch.no_grad():
-        state_tensor = torch.tensor(frag_obs, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+        state_tensor = torch.tensor(frag_obs, dtype=torch.float32).unsqueeze(0)
         _, v = net(state_tensor)
         nn_val = v.item()
         
@@ -86,11 +86,11 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
     
     net.eval()
     with torch.no_grad():
-        state_tensor = torch.tensor(root_state, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+        state_tensor = torch.tensor(root_state, dtype=torch.float32).unsqueeze(0)
         p_logits, v = net(state_tensor)
         
         # Action Masking
-        mask = (state_tensor == 0).flatten()
+        mask = (state_tensor[:, 0, :, :] == 0).flatten()
         p_logits_flat = p_logits.flatten()
         p_logits_flat[mask] = -1e9
         p_probs = F.softmax(p_logits_flat, dim=0).numpy()
@@ -99,7 +99,7 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
         root.visit_count = 1
         root.is_expanded = True
         
-        valid_actions = np.where(root_state.flatten() == 1)[0]
+        valid_actions = np.where(root_state[0].flatten() == 1)[0]
         
         if add_exploration_noise and len(valid_actions) > 0:
             epsilon = 0.25
@@ -144,7 +144,7 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
             obs = sim_env._get_obs()
             node.state = obs
             
-            active_coords = np.argwhere(obs == 1)
+            active_coords = np.argwhere(obs[0] == 1)
             verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
             can_hash = generate_canonical_hash(verts)
             db_res_dict = query_tablebase([can_hash])
@@ -156,11 +156,11 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                 node.terminal_rank = value
             else:
                 with torch.no_grad():
-                    state_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+                    state_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
                     p_logits, v = net(state_tensor)
                     
                     # Action Masking
-                    mask = (state_tensor == 0).flatten()
+                    mask = (state_tensor[:, 0, :, :] == 0).flatten()
                     p_logits_flat = p_logits.flatten()
                     p_logits_flat[mask] = -1e9
                     p_probs = F.softmax(p_logits_flat, dim=0).numpy()
@@ -175,7 +175,7 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                 value = nn_val + sim_env.cuts_made
                 
                 node.is_expanded = True
-                valid_actions = np.where(obs.flatten() == 1)[0]
+                valid_actions = np.where(obs[0].flatten() == 1)[0]
                 for a in valid_actions:
                     node.children[a] = MCTSNode(state=None, parent=node, prior=p_probs[a])
                 
@@ -187,16 +187,16 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
     return root
 
 def get_symmetries(state, pi):
-    m, n = state.shape
+    c, m, n = state.shape
     pi_2d = pi.reshape((m, n))
     symmetries = []
     
     for i in range(4):
-        rot_state = np.rot90(state, k=i)
+        rot_state = np.rot90(state, k=i, axes=(1, 2))
         rot_pi = np.rot90(pi_2d, k=i)
         symmetries.append((rot_state.copy(), rot_pi.flatten()))
         
-        flip_state = np.fliplr(rot_state)
+        flip_state = np.flip(rot_state, axis=2)
         flip_pi = np.fliplr(rot_pi)
         symmetries.append((flip_state.copy(), flip_pi.flatten()))
         
@@ -214,7 +214,7 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
         if total_visits == 0:
             return [], env.cuts_made, []
             
-        pi = np.zeros(obs.size)
+        pi = np.zeros(100)
         for a, visits in action_visits.items():
             pi[a] = visits / total_visits
             
@@ -248,7 +248,7 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
                     frag_env.cuts_made = 0
                     frag_obs = frag_env._get_obs()
                     
-                    active_coords = np.argwhere(frag_obs == 1)
+                    active_coords = np.argwhere(frag_obs[0] == 1)
                     verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
                     can_hash = generate_canonical_hash(verts)
                     db_res_dict = query_tablebase([can_hash])
@@ -282,7 +282,7 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
                     
             return local_trajectory + recursive_trajectories, total_rank, local_discoveries + recursive_discoveries
 
-def self_play(net, m, n, num_games=10, num_simulations=50):
+def self_play(net, m, n, num_games=10, num_simulations=50, game_id=None):
     replay_buffer = []
     for game in range(num_games):
         env = HowlEnv(m, n)
@@ -292,7 +292,7 @@ def self_play(net, m, n, num_games=10, num_simulations=50):
         
         # Upsert all intermediate board sequences discovered
         for state, rank, seq in discoveries:
-            active_coords = np.argwhere(state == 1)
+            active_coords = np.argwhere(state[0] == 1)
             verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
             can_data = generate_canonical_data(verts)
             upsert_subgraph(can_data["hash"], can_data["shape_str"], rank, seq)
@@ -301,14 +301,14 @@ def self_play(net, m, n, num_games=10, num_simulations=50):
             final_sequence = discoveries[0][2]
             upsert_grid_solution(m, n, final_rank, final_sequence)
         
-        print(f"Game {game+1} finished with True Total Rank {final_rank}")
+        print(f"[{m}x{n}: {final_rank}]", end=" ", flush=True)
     return replay_buffer
 
 def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
     net.train()
     
     buffer_list = list(replay_buffer)
-    states = torch.tensor(np.array([item[0] for item in buffer_list]), dtype=torch.float32).unsqueeze(1)
+    states = torch.tensor(np.array([item[0] for item in buffer_list]), dtype=torch.float32)
     policies = torch.tensor(np.array([item[1] for item in buffer_list]), dtype=torch.float32)
     values = torch.tensor(np.array([item[2] for item in buffer_list]), dtype=torch.float32).unsqueeze(1)
     
@@ -324,8 +324,9 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
             p_logits, v_pred = net(batch_s)
             p_loss = F.cross_entropy(p_logits.view(p_logits.size(0), -1), batch_p)
             v_loss = F.mse_loss(v_pred, batch_v)
-            loss = p_loss + v_loss
+            loss = p_loss + 0.5 * v_loss
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
             optimizer.step()
             total_p_loss += p_loss.item()
             total_v_loss += v_loss.item()
@@ -334,7 +335,8 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
 
 def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simulations=200, unlocked_tiers=None):
     net = AlphaWolfNet(m, n)
-    optimizer = optim.Adam(net.parameters(), lr=1e-3)
+    optimizer = optim.Adam(net.parameters(), lr=1e-3, weight_decay=1e-4)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_generations, eta_min=1e-5)
     
     replay_buffer = collections.deque(maxlen=30000)
     
@@ -345,27 +347,22 @@ def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simul
     
     for gen in range(1, num_generations + 1):
         print(f"\n--- Generation {gen} ---")
-        print("Starting Mixed Curriculum Self-Play Phase...")
-        new_trajectories = []
         import random
+        new_trajectories = []
         
-        # 70% current frontier
-        current_games = max(1, int(games_per_generation * 0.7))
-        mixed_games = games_per_generation - current_games
+        print(f"Self-Play ({games_per_generation} games on 4x4-7x7): ", end="", flush=True)
+        all_grids = [(i, j) for i in range(4, 8) for j in range(4, 8) if i <= j]
+        for game_idx in range(games_per_generation):
+            gm, gn = random.choice(all_grids)
+            new_trajectories.extend(self_play(net, gm, gn, num_games=1, num_simulations=num_simulations, game_id=game_idx+1))
+        print() # Add trailing newline after the compact output
         
-        print(f"Playing {current_games} games on current {m}x{n} frontier...")
-        new_trajectories.extend(self_play(net, m, n, num_games=current_games, num_simulations=num_simulations))
-        
-        if mixed_games > 0 and unlocked_tiers and len(unlocked_tiers) > 0:
-            print(f"Playing {mixed_games} historical games to prevent Catastrophic Forgetting...")
-            for _ in range(mixed_games):
-                hist_m, hist_n = random.choice(unlocked_tiers)
-                new_trajectories.extend(self_play(net, hist_m, hist_n, num_games=1, num_simulations=num_simulations))
         
         replay_buffer.extend(new_trajectories)
         
         print(f"Training Phase ({len(replay_buffer)} samples in buffer)...")
         train_network(net, replay_buffer, optimizer, epochs=5)
+        scheduler.step()
         
         ckpt_path = f"models/checkpoints/alphawolf_gen_{gen}.pt"
         torch.save(net.state_dict(), ckpt_path)

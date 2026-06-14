@@ -17,8 +17,8 @@ class HowlEnv(gym.Env):
         self.m = m
         self.n = n
         
-        # Observation space: 2D array of the padded grid (1 = active vertex, 0 = removed/padded)
-        self.observation_space = spaces.Box(low=0, high=1, shape=(MAX_ROWS, MAX_COLS), dtype=np.int8)
+        # Observation space: 5-channel 2D array of the padded grid
+        self.observation_space = spaces.Box(low=0, high=1, shape=(5, MAX_ROWS, MAX_COLS), dtype=np.float32)
         
         # Action space: Flattened 1D discrete selection across the full 10x10 canvas
         self.action_space = spaces.Discrete(MAX_ROWS * MAX_COLS)
@@ -34,9 +34,51 @@ class HowlEnv(gym.Env):
         return self._get_obs(), {}
 
     def _get_obs(self):
-        obs = np.zeros((MAX_ROWS, MAX_COLS), dtype=np.int8)
-        for (x, y) in self.graph.vertices:
-            obs[x, y] = 1
+        obs = np.zeros((5, MAX_ROWS, MAX_COLS), dtype=np.float32)
+        
+        fragments = self.graph.get_disconnected_subgraphs()
+        
+        for comp_idx, fragment in enumerate(fragments):
+            comp_id_val = (comp_idx + 1) / max(1, len(fragments))
+            
+            for vertex in fragment.vertices:
+                x, y = vertex
+                
+                # Ch 0: Binary Mask
+                obs[0, x, y] = 1.0
+                
+                # Ch 1: Degree Map
+                neighbors = self.graph.adjacency[vertex]
+                degree = len(neighbors)
+                obs[1, x, y] = degree / 4.0
+                
+                # Ch 2: Border Mask
+                obs[2, x, y] = 1.0 if degree < 4 else 0.0
+                
+                # Ch 3: Component ID
+                obs[3, x, y] = comp_id_val
+                
+                # Ch 4: Articulation Points
+                if degree > 1:
+                    neighbors_list = list(neighbors)
+                    start = neighbors_list[0]
+                    visited = {vertex} # Mask out the current vertex
+                    queue = [start]
+                    visited.add(start)
+                    reachable_neighbors = 1
+                    
+                    while queue:
+                        curr = queue.pop(0)
+                        for nxt in self.graph.adjacency[curr]:
+                            if nxt not in visited:
+                                visited.add(nxt)
+                                queue.append(nxt)
+                                if nxt in neighbors_list:
+                                    reachable_neighbors += 1
+                                    
+                    if reachable_neighbors < len(neighbors_list):
+                        obs[4, x, y] = 1.0
+                        
         return obs
 
     def step(self, action: int):

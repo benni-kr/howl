@@ -19,14 +19,14 @@ class ResBlock(nn.Module):
         return out
 
 class AlphaWolfNet(nn.Module):
-    def __init__(self, m=None, n=None, hidden_channels=64, num_res_blocks=3):
+    def __init__(self, m=None, n=None, hidden_channels=128, num_res_blocks=6):
         super().__init__()
         # Force 10x10 zero-padded architecture
         self.m = 10
         self.n = 10
         
-        # Input: 1 channel (the 2D grid)
-        self.conv_in = nn.Conv2d(1, hidden_channels, kernel_size=3, padding=1)
+        # Input: 5 channels (binary mask, degree, border, component ID, articulation points)
+        self.conv_in = nn.Conv2d(5, hidden_channels, kernel_size=3, padding=1)
         self.bn_in = nn.BatchNorm2d(hidden_channels)
         
         self.res_blocks = nn.ModuleList([
