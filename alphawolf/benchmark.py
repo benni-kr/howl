@@ -52,7 +52,12 @@ def evaluate_model(model_path, gauntlet_boards, num_simulations=100):
     
     # Instantiate the network. Currently locked to 4x4 due to Linear layer dimensions.
     net = AlphaWolfNet() # Defaults to 10x10 zero-padded format
-    net.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+    try:
+        net.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+    except RuntimeError as e:
+        print(f"Warning: Architecture mismatch for {model_path}. Yielding invalid scores.")
+        return float('inf'), float('inf'), 0.0
+        
     net.eval()
 
     for board in gauntlet_boards:

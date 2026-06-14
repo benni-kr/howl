@@ -5,9 +5,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 
-from models.net import AlphaWolfNet
+from models.net import AlphaWolfNet, grid_tensor_to_pyg_data
 from envs.howl_env import HowlEnv
 from db.tablebase import query_tablebase, insert_or_update_rank4_induction, upsert_subgraph, upsert_grid_solution
 from core_engine.hashing import generate_canonical_hash, generate_canonical_data
@@ -186,21 +186,7 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
 
     return root
 
-def get_symmetries(state, pi):
-    c, m, n = state.shape
-    pi_2d = pi.reshape((m, n))
-    symmetries = []
-    
-    for i in range(4):
-        rot_state = np.rot90(state, k=i, axes=(1, 2))
-        rot_pi = np.rot90(pi_2d, k=i)
-        symmetries.append((rot_state.copy(), rot_pi.flatten()))
-        
-        flip_state = np.flip(rot_state, axis=2)
-        flip_pi = np.fliplr(rot_pi)
-        symmetries.append((flip_state.copy(), flip_pi.flatten()))
-        
-    return symmetries
+
 
 def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
     state_history = []
@@ -276,9 +262,10 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
                 intrinsic_rank = total_rank - cuts_at_state
                 local_discoveries.append((state.copy(), intrinsic_rank, final_sequence[seq_idx:]))
                 
-                syms = get_symmetries(state, policy)
-                for s, p in syms:
-                    local_trajectory.append((s, p, intrinsic_rank))
+                pyg_data = grid_tensor_to_pyg_data(torch.tensor(state, dtype=torch.float32))
+                pyg_data.pi = torch.tensor(policy, dtype=torch.float32).unsqueeze(0)
+                pyg_data.v = torch.tensor([intrinsic_rank], dtype=torch.float32).unsqueeze(0)
+                local_trajectory.append(pyg_data)
                     
             return local_trajectory + recursive_trajectories, total_rank, local_discoveries + recursive_discoveries
 
@@ -301,29 +288,30 @@ def self_play(net, m, n, num_games=10, num_simulations=50, game_id=None):
             final_sequence = discoveries[0][2]
             upsert_grid_solution(m, n, final_rank, final_sequence)
         
-        print(f"[{m}x{n}: {final_rank}]", end=" ", flush=True)
+        # Nicer Terminal Output
+        game_label = f"Game {game+1}/{num_games}"
+        print(f"  | {game_label:<12} | Grid: {m}x{n:<4} | Final Rank: {final_rank:<3} | Traj. Length: {len(traj)}")
     return replay_buffer
 
 def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
     net.train()
     
+    from torch_geometric.loader import DataLoader as PyGDataLoader
     buffer_list = list(replay_buffer)
-    states = torch.tensor(np.array([item[0] for item in buffer_list]), dtype=torch.float32)
-    policies = torch.tensor(np.array([item[1] for item in buffer_list]), dtype=torch.float32)
-    values = torch.tensor(np.array([item[2] for item in buffer_list]), dtype=torch.float32).unsqueeze(1)
     
-    dataset = TensorDataset(states, policies, values)
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    loader = PyGDataLoader(buffer_list, batch_size=batch_size, shuffle=True)
     
     for epoch in range(epochs):
         total_p_loss = 0
         total_v_loss = 0
         
-        for batch_s, batch_p, batch_v in loader:
+        for batch in loader:
             optimizer.zero_grad()
-            p_logits, v_pred = net(batch_s)
-            p_loss = F.cross_entropy(p_logits.view(p_logits.size(0), -1), batch_p)
-            v_loss = F.mse_loss(v_pred, batch_v)
+            batch = batch.to(next(net.parameters()).device)
+            p_logits, v_pred = net(batch)
+            
+            p_loss = F.cross_entropy(p_logits, batch.pi)
+            v_loss = F.mse_loss(v_pred.squeeze(-1), batch.v.squeeze(-1))
             loss = p_loss + 0.5 * v_loss
             loss.backward()
             torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
@@ -331,7 +319,9 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
             total_p_loss += p_loss.item()
             total_v_loss += v_loss.item()
             
-        print(f"Epoch {epoch+1}/{epochs} | P_Loss: {total_p_loss/len(loader):.4f} | V_Loss: {total_v_loss/len(loader):.4f}")
+        avg_p_loss = total_p_loss / len(loader)
+        avg_v_loss = total_v_loss / len(loader)
+        print(f"  | Epoch {epoch+1:<2}/{epochs:<2} | P_Loss: {avg_p_loss:8.4f} | V_Loss: {avg_v_loss:8.4f}")
 
 def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simulations=200, unlocked_tiers=None):
     net = AlphaWolfNet(m, n)
@@ -346,22 +336,23 @@ def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simul
     print(f"Replay Buffer Capacity: {replay_buffer.maxlen} samples")
     
     for gen in range(1, num_generations + 1):
-        print(f"\n--- Generation {gen} ---")
+        print(f"\n{'='*40}")
+        print(f"          GENERATION {gen}/{num_generations}")
+        print(f"{'='*40}")
+        
         import random
+        # Collect games symmetrically (all combination between 4x4 and 7x7 as per request)
+        print(f"\n--- 1. Self-Play Phase ({games_per_generation} games) ---")
         new_trajectories = []
-        
-        print(f"Self-Play ({games_per_generation} games on 4x4-7x7): ", end="", flush=True)
-        all_grids = [(i, j) for i in range(4, 8) for j in range(4, 8) if i <= j]
         for game_idx in range(games_per_generation):
-            gm, gn = random.choice(all_grids)
+            gm = random.randint(4, 7)
+            gn = random.randint(4, 7)
             new_trajectories.extend(self_play(net, gm, gn, num_games=1, num_simulations=num_simulations, game_id=game_idx+1))
-        print() # Add trailing newline after the compact output
-        
-        
+            
         replay_buffer.extend(new_trajectories)
         
-        print(f"Training Phase ({len(replay_buffer)} samples in buffer)...")
-        train_network(net, replay_buffer, optimizer, epochs=5)
+        print(f"\n--- 2. Training Phase ({len(replay_buffer)} samples in buffer) ---")
+        train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32)
         scheduler.step()
         
         ckpt_path = f"models/checkpoints/alphawolf_gen_{gen}.pt"
