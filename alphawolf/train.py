@@ -45,6 +45,7 @@ def evaluate_fragment_rank(frag, m, n, net):
         
     with torch.no_grad():
         state_tensor = torch.tensor(frag_obs, dtype=torch.float32).unsqueeze(0)
+        state_tensor = state_tensor.to(next(net.parameters()).device)
         _, v = net(state_tensor)
         nn_val = v.item()
         
@@ -87,13 +88,14 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
     net.eval()
     with torch.no_grad():
         state_tensor = torch.tensor(root_state, dtype=torch.float32).unsqueeze(0)
+        state_tensor = state_tensor.to(next(net.parameters()).device)
         p_logits, v = net(state_tensor)
         
         # Action Masking
         mask = (state_tensor[:, 0, :, :] == 0).flatten()
         p_logits_flat = p_logits.flatten()
         p_logits_flat[mask] = -1e9
-        p_probs = F.softmax(p_logits_flat, dim=0).numpy()
+        p_probs = F.softmax(p_logits_flat, dim=0).cpu().numpy()
         
         root.value_sum = v.item()
         root.visit_count = 1
@@ -157,13 +159,14 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
             else:
                 with torch.no_grad():
                     state_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
+                    state_tensor = state_tensor.to(next(net.parameters()).device)
                     p_logits, v = net(state_tensor)
                     
                     # Action Masking
                     mask = (state_tensor[:, 0, :, :] == 0).flatten()
                     p_logits_flat = p_logits.flatten()
                     p_logits_flat[mask] = -1e9
-                    p_probs = F.softmax(p_logits_flat, dim=0).numpy()
+                    p_probs = F.softmax(p_logits_flat, dim=0).cpu().numpy()
                     
                     nn_val = v.item()
                 
@@ -269,31 +272,90 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
                     
             return local_trajectory + recursive_trajectories, total_rank, local_discoveries + recursive_discoveries
 
-def self_play(net, m, n, num_games=10, num_simulations=50, game_id=None):
+def simulate_game_worker(worker_args):
+    m, n, model_state_dict, num_simulations, game_id = worker_args
+    
+    local_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    torch.set_num_threads(1) # Prevent OpenMP deadlocks in multiprocessing
+    net = AlphaWolfNet(m, n)
+    net.load_state_dict(model_state_dict)
+    net.to(local_device)
+    net.eval()
+    
+    env = HowlEnv(m, n)
+    obs, _ = env.reset()
+    traj, final_rank, discoveries = play_episode(net, env, obs, num_simulations)
+    
+    # We must move PyG tensors back to CPU before pickling them back to the main process
+    # to avoid CUDA IPC memory issues across process boundaries
+    for data in traj:
+        data = data.to('cpu')
+        
+    return game_id, m, n, traj, final_rank, discoveries
+
+def self_play(net, gm_gn_list, num_simulations=50, num_workers=5):
+    import concurrent.futures
+    import time
+    
     replay_buffer = []
-    for game in range(num_games):
-        env = HowlEnv(m, n)
-        obs, _ = env.reset()
-        traj, final_rank, discoveries = play_episode(net, env, obs, num_simulations)
-        replay_buffer.extend(traj)
+    
+    # Extract state dict on CPU to send to workers
+    model_state_dict = {k: v.cpu() for k, v in net.state_dict().items()}
+    
+    worker_args_list = []
+    for game_id, (m, n) in enumerate(gm_gn_list):
+        worker_args_list.append((m, n, model_state_dict, num_simulations, game_id + 1))
         
-        # Upsert all intermediate board sequences discovered
-        for state, rank, seq in discoveries:
-            active_coords = np.argwhere(state[0] == 1)
-            verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
-            can_data = generate_canonical_data(verts)
-            upsert_subgraph(can_data["hash"], can_data["shape_str"], rank, seq)
+    num_games = len(gm_gn_list)
+    print(f"\n[PHASE 1] Self-Play ({num_games} games | {num_workers} workers)")
+    print("-" * 60)
+    
+    start_time = time.time()
+    ranks = []
+    lengths = []
+    completed = 0
+    
+    import multiprocessing as mp
+    with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers, mp_context=mp.get_context('spawn')) as executor:
+        futures = [executor.submit(simulate_game_worker, args) for args in worker_args_list]
+        
+        for future in concurrent.futures.as_completed(futures):
+            game_id, m, n, traj, final_rank, discoveries = future.result()
+            replay_buffer.extend(traj)
             
-        if discoveries:
-            final_sequence = discoveries[0][2]
-            upsert_grid_solution(m, n, final_rank, final_sequence)
-        
-        # Nicer Terminal Output
-        game_label = f"Game {game+1}/{num_games}"
-        print(f"  | {game_label:<12} | Grid: {m}x{n:<4} | Final Rank: {final_rank:<3} | Traj. Length: {len(traj)}")
+            ranks.append(final_rank)
+            lengths.append(len(traj))
+            completed += 1
+            
+            # Main Thread Gatekeeping: Sequential SQLite Writes to avoid locking
+            for state, rank, seq in discoveries:
+                active_coords = np.argwhere(state[0] == 1)
+                verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
+                can_data = generate_canonical_data(verts)
+                upsert_subgraph(can_data["hash"], can_data["shape_str"], rank, seq)
+                
+            if discoveries:
+                final_sequence = discoveries[0][2]
+                upsert_grid_solution(m, n, final_rank, final_sequence)
+            
+            # Nicer Terminal Output
+            progress = f"[{completed}/{num_games}]"
+            grid_str = f"{m}x{n}"
+            print(f"  {progress:<9} Grid: {grid_str:<5} | Rank: {final_rank:<3} | Nodes: {len(traj):<3} | Worker Game: #{game_id}")
+            
+    elapsed = time.time() - start_time
+    avg_rank = sum(ranks) / len(ranks) if ranks else 0
+    avg_len = sum(lengths) / len(lengths) if lengths else 0
+    print("-" * 60)
+    print(f"  Self-Play Summary: {elapsed:.1f}s | Avg Rank: {avg_rank:.1f} | Avg Nodes: {avg_len:.1f} | Total Data: +{len(replay_buffer)}")
+    
     return replay_buffer
 
 def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
+    import time
+    print(f"\n[PHASE 2] Network Training ({len(replay_buffer)} total samples in buffer)")
+    print("-" * 60)
+    
     net.train()
     
     from torch_geometric.loader import DataLoader as PyGDataLoader
@@ -301,6 +363,7 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
     
     loader = PyGDataLoader(buffer_list, batch_size=batch_size, shuffle=True)
     
+    start_time = time.time()
     for epoch in range(epochs):
         total_p_loss = 0
         total_v_loss = 0
@@ -321,17 +384,24 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
             
         avg_p_loss = total_p_loss / len(loader)
         avg_v_loss = total_v_loss / len(loader)
-        print(f"  | Epoch {epoch+1:<2}/{epochs:<2} | P_Loss: {avg_p_loss:8.4f} | V_Loss: {avg_v_loss:8.4f}")
+        print(f"  Epoch {epoch+1:<2}/{epochs:<2} | Policy Loss: {avg_p_loss:8.4f} | Value Loss: {avg_v_loss:8.4f}")
+        
+    elapsed = time.time() - start_time
+    print("-" * 60)
+    print(f"  Training Summary: {elapsed:.1f}s | Final P_Loss: {avg_p_loss:8.4f} | Final V_Loss: {avg_v_loss:8.4f}")
 
-def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simulations=200, unlocked_tiers=None):
-    net = AlphaWolfNet(m, n)
+def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simulations=200, unlocked_tiers=None, num_workers=5):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Main Process using device: {device}")
+    
+    net = AlphaWolfNet(m, n).to(device)
     optimizer = optim.Adam(net.parameters(), lr=1e-3, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_generations, eta_min=1e-5)
     
     replay_buffer = collections.deque(maxlen=30000)
     
     os.makedirs("models/checkpoints", exist_ok=True)
-    print(f"Initialized AlphaWolf V1 [{m}x{n}] - Strict Single-Threaded Mode")
+    print(f"Initialized AlphaWolf V1 [{m}x{n}] - Multi-Process Worker Mode")
     print(f"MCTS Simulations per move: {num_simulations}")
     print(f"Replay Buffer Capacity: {replay_buffer.maxlen} samples")
     
@@ -342,22 +412,26 @@ def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simul
         
         import random
         # Collect games symmetrically (all combination between 4x4 and 9x9)
-        print(f"\n--- 1. Self-Play Phase ({games_per_generation} games) ---")
-        new_trajectories = []
+        gm_gn_list = []
         for game_idx in range(games_per_generation):
             gm = random.randint(4, 9)
             gn = random.randint(4, 9)
-            new_trajectories.extend(self_play(net, gm, gn, num_games=1, num_simulations=num_simulations, game_id=game_idx+1))
+            gm_gn_list.append((gm, gn))
+            
+        num_workers = config.get("num_workers", 5) if 'config' in globals() else 5
+        new_trajectories = self_play(net, gm_gn_list, num_simulations=num_simulations, num_workers=num_workers)
             
         replay_buffer.extend(new_trajectories)
         
-        print(f"\n--- 2. Training Phase ({len(replay_buffer)} samples in buffer) ---")
         train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32)
         scheduler.step()
         
         ckpt_path = f"models/checkpoints/alphawolf_gen_{gen}.pt"
         torch.save(net.state_dict(), ckpt_path)
-        print(f"Saved Checkpoint: {ckpt_path}")
+        
+        print(f"\n[PHASE 3] Validation & Checkpointing")
+        print("-" * 60)
+        print(f"  Saved Checkpoint: {ckpt_path}")
         
         # Benchmark Suite Promotion Check
         from benchmark import promote_model
@@ -377,5 +451,6 @@ if __name__ == "__main__":
     games_per_gen = config.get("games_per_generation", 15)
     simulations = config.get("mcts_simulations", 200)
     unlocked_tiers = config.get("unlocked_tiers", [[m, n]])
+    num_workers = config.get("num_workers", 5)
     
-    alpha_zero_loop(m, n, num_generations=num_generations, games_per_generation=games_per_gen, num_simulations=simulations, unlocked_tiers=unlocked_tiers)
+    alpha_zero_loop(m, n, num_generations=num_generations, games_per_generation=games_per_gen, num_simulations=simulations, unlocked_tiers=unlocked_tiers, num_workers=num_workers)
