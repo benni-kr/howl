@@ -9,18 +9,14 @@ from core_engine.graph_logic import GridGraph
 from models.net import AlphaWolfNet
 from train import play_episode
 
-def create_gauntlet():
+def create_gauntlet(fractured_per_tier=2, fracture_min=0.1, fracture_max=0.3):
     """Returns a list of dicts defining the benchmark boards."""
     import json
     import os
     import random
     
-    fractured_per_tier = 2
-    fracture_min = 0.1
-    fracture_max = 0.2
-    
-    # Generate all grids from 4x4 up to 7x7 to match the V1.1 training distribution
-    unlocked_tiers = [(i, j) for i in range(4, 8) for j in range(4, 8) if i <= j]
+    # We care about grids between 4x4 and 9x9
+    unlocked_tiers = [(i, j) for i in range(4, 10) for j in range(4, 10) if i <= j]
         
     gauntlet = []
     

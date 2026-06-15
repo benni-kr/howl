@@ -341,12 +341,12 @@ def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simul
         print(f"{'='*40}")
         
         import random
-        # Collect games symmetrically (all combination between 4x4 and 7x7 as per request)
+        # Collect games symmetrically (all combination between 4x4 and 9x9)
         print(f"\n--- 1. Self-Play Phase ({games_per_generation} games) ---")
         new_trajectories = []
         for game_idx in range(games_per_generation):
-            gm = random.randint(4, 7)
-            gn = random.randint(4, 7)
+            gm = random.randint(4, 9)
+            gn = random.randint(4, 9)
             new_trajectories.extend(self_play(net, gm, gn, num_games=1, num_simulations=num_simulations, game_id=game_idx+1))
             
         replay_buffer.extend(new_trajectories)
