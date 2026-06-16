@@ -691,7 +691,7 @@ export class PixiEngine {
         });
       }
 
-      if (optRank && optRank.best_rank !== 999999 && !isExecuting && pendingCutSet.length === 0 && !isUntouchedFirstGraph && totalVertexCount <= 2500) {
+      if (optRank && optRank.best_rank !== 999999 && !isExecuting && pendingCutSet.length === 0 && !isUntouchedFirstGraph) {
         const wandScale = 1 / targetScale;
 
         const wandBg = new PIXI.Graphics();
