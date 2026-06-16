@@ -125,11 +125,32 @@ export default function ReplayPage() {
   };
 
   const handleFork = () => {
-    // Dump the current calculated boardState into Redux
+    // Combine all current open graphs
+    const allGraphs = [
+      ...(engine.boardState.activeGraph ? [engine.boardState.activeGraph] : []),
+      ...engine.boardState.recentCutGraphs,
+      ...engine.boardState.bankedGraphs
+    ];
+
+    let selectedIndex = 0;
+    const pendingAction = engine.activeContext.sequence[engine.currentStep];
+    if (pendingAction && pendingAction.vertices && pendingAction.vertices.length > 0) {
+      const firstVertexKey = `${pendingAction.vertices[0].x},${pendingAction.vertices[0].y}`;
+      const foundIndex = allGraphs.findIndex(g => 
+        g.vertices.some(v => `${v.x},${v.y}` === firstVertexKey)
+      );
+      if (foundIndex !== -1) {
+        selectedIndex = foundIndex;
+      }
+    }
+
+    const newActive = allGraphs[selectedIndex] || null;
+    const newBanked = allGraphs.filter((_, i) => i !== selectedIndex);
+
     const forkedState: GameState = {
-      activeGraph: engine.boardState.activeGraph,
-      bankedGraphs: engine.boardState.bankedGraphs,
-      recentCutGraphs: engine.boardState.recentCutGraphs,
+      activeGraph: newActive,
+      bankedGraphs: newBanked,
+      recentCutGraphs: [], // Cleared to bypass the select screen
       maxRank: engine.boardState.maxRank,
       gridSize: engine.boardState.gridSize,
       cutsApplied: engine.boardState.cutsApplied,
