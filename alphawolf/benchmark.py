@@ -38,7 +38,10 @@ def create_gauntlet(fractured_per_tier=2, fracture_min=0.1, fracture_max=0.3):
             
     return gauntlet
 
-def evaluate_model(model_path, gauntlet_boards, num_simulations=100):
+def evaluate_model(model_path, gauntlet_boards, num_simulations=100, mcts_batch_size=1):
+    # mcts_batch_size=1 keeps the gauntlet on the exact sequential search:
+    # leaf batching trades ~4% cumulative rank for ~35% speed (measured on the
+    # <=7x7 gauntlet), which is the wrong trade for a quality benchmark.
     if not os.path.exists(model_path):
         return float('inf'), float('inf'), 0.0
 
@@ -70,7 +73,7 @@ def evaluate_model(model_path, gauntlet_boards, num_simulations=100):
         obs = env._get_obs()
                 
         # Run deterministic evaluation (add_exploration_noise=False)
-        traj, rank, _ = play_episode(net, env, obs, num_simulations=num_simulations, add_exploration_noise=False)
+        traj, rank, _ = play_episode(net, env, obs, num_simulations=num_simulations, add_exploration_noise=False, batch_size=mcts_batch_size)
         
         cumulative_rank += rank
         

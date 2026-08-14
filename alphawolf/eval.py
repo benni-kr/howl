@@ -28,7 +28,9 @@ def evaluate_high_simulations(m, n, num_simulations=1000, num_games=10):
         env = HowlEnv(m, n)
         obs, _ = env.reset()
         
-        traj, final_rank, discoveries = play_episode(net, env, obs, num_simulations=num_simulations, add_exploration_noise=True)
+        # batch_size=1: results are upserted to the tablebase, so solution
+        # quality outranks speed here (leaf batching costs a few % rank).
+        traj, final_rank, discoveries = play_episode(net, env, obs, num_simulations=num_simulations, add_exploration_noise=True, batch_size=1)
         print(f"Game {game+1}/{num_games} - Rank Achieved: {final_rank}")
         
         if final_rank < best_rank:

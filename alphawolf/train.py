@@ -66,6 +66,9 @@ class MCTSNode:
         self.is_terminal = False
         self.terminal_rank = None
         self.is_expanded = False
+        # In-flight simulations traversing this node within the current
+        # evaluation batch (removed again before real backpropagation).
+        self.virtual_loss = 0
 
     @property
     def q_value(self):
@@ -73,15 +76,25 @@ class MCTSNode:
             return 0.0
         return self.value_sum / self.visit_count
 
+# Rank-units penalty a node picks up per in-flight simulation, steering
+# concurrently collected simulations toward different branches (we minimize).
+VIRTUAL_LOSS_PENALTY = 1.0
+
 def ucb_score(parent: MCTSNode, child: MCTSNode) -> float:
-    prior_score = C_PUCT * child.prior * math.sqrt(parent.visit_count) / (1 + child.visit_count)
+    parent_visits = parent.visit_count + parent.virtual_loss
+    child_total = child.visit_count + child.virtual_loss
+    prior_score = C_PUCT * child.prior * math.sqrt(parent_visits) / (1 + child_total)
     if child.visit_count == 0:
-        q = parent.q_value
+        base_q = parent.q_value
     else:
-        q = child.q_value
+        base_q = child.q_value
+    if child.virtual_loss:
+        q = (child.value_sum + child.virtual_loss * (base_q + VIRTUAL_LOSS_PENALTY)) / child_total
+    else:
+        q = base_q
     return q - prior_score
 
-def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise=True):
+def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise=True, batch_size=8):
     root = MCTSNode(root_state)
     
     net.eval()
@@ -114,88 +127,162 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
             prior = (1 - epsilon) * p_probs[a] + epsilon * noise[idx]
             root.children[a] = MCTSNode(state=None, parent=root, prior=prior)
 
-    for _ in range(num_simulations):
-        node = root
-        sim_env = clone_env_from_obs(root_state, env.m, env.n, env.cuts_made)
-        
-        search_path = [node]
-        
-        # 1. Selection
-        while node.is_expanded and not node.is_terminal:
-            best_action, best_child = min(
-                node.children.items(), 
-                key=lambda item: ucb_score(node, item[1])
-            )
-            node = best_child
-            search_path.append(node)
-            _, reward, terminated, _, info = sim_env.step(best_action)
-            if terminated:
-                node.is_terminal = True
-                if "fragments" in info and info["fragments"]:
-                    frag_ranks = [evaluate_fragment_rank(f, env.m, env.n, net) for f in info["fragments"]]
-                    node.terminal_rank = sim_env.cuts_made + max(frag_ranks)
-                else:
-                    node.terminal_rank = sim_env.cuts_made
+    device = next(net.parameters()).device
+    sims_done = 0
 
-        value = 0.0
-        # 2. Expansion and Evaluation
-        if node.is_terminal:
-            value = node.terminal_rank
-        else:
-            obs = sim_env._get_obs()
-            node.state = obs
-            
-            active_coords = np.argwhere(obs[0] == 1)
-            verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
-            can_hash = generate_canonical_hash(verts)
-            db_res_dict = query_tablebase([can_hash])
-            db_res = db_res_dict.get(can_hash)
-            
-            if db_res and (db_res['is_optimal'] or db_res['best_rank'] <= 3):
-                value = db_res['best_rank'] + sim_env.cuts_made
-                node.is_terminal = True
-                node.terminal_rank = value
-            else:
-                with torch.no_grad():
-                    state_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
-                    state_tensor = state_tensor.to(next(net.parameters()).device)
-                    p_logits, v = net(state_tensor)
-                    
-                    # Action Masking
-                    mask = (state_tensor[:, 0, :, :] == 0).flatten()
-                    p_logits_flat = p_logits.flatten()
-                    p_logits_flat[mask] = -1e9
-                    p_probs = F.softmax(p_logits_flat, dim=0).cpu().numpy()
-                    
-                    nn_val = v.item()
-                
+    while sims_done < num_simulations:
+        target = min(batch_size, num_simulations - sims_done)
+        pending = []
+        scheduled = {}  # id(node) -> pending index of the entry expanding it
+
+        # 1. Selection: collect up to `target` leaves under virtual loss
+        for _ in range(target):
+            node = root
+            sim_env = clone_env_from_obs(root_state, env.m, env.n, env.cuts_made)
+            search_path = [node]
+            entry = None
+
+            while node.is_expanded and not node.is_terminal:
+                best_action, best_child = min(
+                    node.children.items(),
+                    key=lambda item: ucb_score(node, item[1])
+                )
+                node = best_child
+                search_path.append(node)
+                _, reward, terminated, _, info = sim_env.step(best_action)
+                if terminated:
+                    node.is_terminal = True
+                    if "fragments" in info and info["fragments"]:
+                        # Fragment NN evaluations are deferred into the batch
+                        entry = {"kind": "fragments", "node": node,
+                                 "fragments": info["fragments"], "cuts": sim_env.cuts_made}
+                    else:
+                        node.terminal_rank = sim_env.cuts_made
+
+            if entry is None:
+                if node.is_terminal:
+                    if node.terminal_rank is not None:
+                        entry = {"kind": "value", "value": node.terminal_rank}
+                    else:
+                        # Fragments node hit again; rank resolves earlier in this batch
+                        entry = {"kind": "await_node", "node": node}
+                else:
+                    obs = sim_env._get_obs()
+                    node.state = obs
+                    if id(node) in scheduled:
+                        entry = {"kind": "dup", "of": scheduled[id(node)]}
+                    else:
+                        active_coords = np.argwhere(obs[0] == 1)
+                        verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
+                        can_hash = generate_canonical_hash(verts)
+                        db_res = query_tablebase([can_hash]).get(can_hash)
+
+                        if db_res and (db_res['is_optimal'] or db_res['best_rank'] <= 3):
+                            value = db_res['best_rank'] + sim_env.cuts_made
+                            node.is_terminal = True
+                            node.terminal_rank = value
+                            entry = {"kind": "value", "value": value}
+                        else:
+                            entry = {"kind": "expand", "node": node, "obs": obs,
+                                     "db_res": db_res, "cuts": sim_env.cuts_made}
+                            scheduled[id(node)] = len(pending)
+
+            entry["path"] = search_path
+            for nd in search_path:
+                nd.virtual_loss += 1
+            pending.append(entry)
+
+        # 2. Evaluation: one forward pass over all leaf and fragment states
+        obs_batch = []
+        slots = []  # (pending index, "leaf" | "frag", fragment index)
+        for i, e in enumerate(pending):
+            if e["kind"] == "expand":
+                slots.append((i, "leaf", None))
+                obs_batch.append(e["obs"])
+            elif e["kind"] == "fragments":
+                e["frag_values"] = [None] * len(e["fragments"])
+                e["frag_db"] = []
+                for j, frag in enumerate(e["fragments"]):
+                    verts = [{"x": x, "y": y} for x, y in frag.vertices]
+                    frag_hash = generate_canonical_hash(verts)
+                    db_res = query_tablebase([frag_hash]).get(frag_hash)
+                    e["frag_db"].append(db_res)
+                    if db_res and (db_res['is_optimal'] or db_res['best_rank'] <= 3):
+                        e["frag_values"][j] = float(db_res['best_rank'])
+                    else:
+                        frag_env = HowlEnv(env.m, env.n, generate=False)
+                        frag_env.graph = frag
+                        slots.append((i, "frag", j))
+                        obs_batch.append(frag_env._get_obs())
+
+        p_probs_batch = v_batch = None
+        if obs_batch:
+            with torch.no_grad():
+                state_tensor = torch.tensor(np.stack(obs_batch), dtype=torch.float32).to(device)
+                p_logits, v = net(state_tensor)
+
+                # Action Masking (per row)
+                mask = state_tensor[:, 0, :, :].reshape(state_tensor.size(0), -1) == 0
+                p_logits = p_logits.masked_fill(mask, -1e9)
+                p_probs_batch = F.softmax(p_logits, dim=1).cpu().numpy()
+                v_batch = v.squeeze(1).cpu().numpy()
+
+        for s_idx, (i, kind, j) in enumerate(slots):
+            e = pending[i]
+            if kind == "leaf":
+                node = e["node"]
+                db_res = e["db_res"]
+                nn_val = float(v_batch[s_idx])
                 if db_res and not db_res['is_optimal']:
                     nn_val = min(nn_val, float(db_res['best_rank']))
                 elif not db_res:
                     nn_val = max(nn_val, 4.0)
-                    
-                value = nn_val + sim_env.cuts_made
-                
+                e["value"] = nn_val + e["cuts"]
+
                 node.is_expanded = True
-                valid_actions = np.where(obs[0].flatten() == 1)[0]
+                valid_actions = np.where(e["obs"][0].flatten() == 1)[0]
                 for a in valid_actions:
-                    node.children[a] = MCTSNode(state=None, parent=node, prior=p_probs[a])
-                
-        # 3. Backpropagation
-        for n in reversed(search_path):
-            n.visit_count += 1
-            n.value_sum += value
+                    node.children[a] = MCTSNode(state=None, parent=node, prior=p_probs_batch[s_idx][a])
+            else:
+                # Same clamping as evaluate_fragment_rank
+                db_res = e["frag_db"][j]
+                nn_val = float(v_batch[s_idx])
+                if db_res and not db_res['is_optimal']:
+                    nn_val = min(nn_val, float(db_res['best_rank']))
+                else:
+                    nn_val = max(nn_val, 4.0)
+                e["frag_values"][j] = nn_val
+
+        # 3. Backpropagation: resolve in collection order, lift virtual loss
+        for e in pending:
+            kind = e["kind"]
+            if kind == "fragments":
+                value = e["cuts"] + max(e["frag_values"])
+                e["node"].terminal_rank = value
+                e["value"] = value
+            elif kind == "await_node":
+                value = e["node"].terminal_rank
+                e["value"] = value
+            elif kind == "dup":
+                e["value"] = pending[e["of"]]["value"]
+
+            for nd in reversed(e["path"]):
+                nd.virtual_loss -= 1
+                nd.visit_count += 1
+                nd.value_sum += e["value"]
+
+        sims_done += len(pending)
 
     return root
 
 
 
-def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
+def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, batch_size=8):
     state_history = []
     local_sequence = []
-    
+
     while True:
-        root = mcts_search(obs, net, env, num_simulations, add_exploration_noise)
+        root = mcts_search(obs, net, env, num_simulations, add_exploration_noise, batch_size=batch_size)
         
         action_visits = {a: child.visit_count for a, child in root.children.items()}
         total_visits = sum(action_visits.values())
@@ -247,7 +334,7 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
                         frag_vertices = [[int(x), int(y)] for x, y in frag.vertices]
                         recursive_cuts.append({"t": "v", "v": frag_vertices, "r": int(db_res['best_rank'])})
                     else:
-                        frag_traj, frag_rank, frag_discoveries = play_episode(net, frag_env, frag_obs, num_simulations, add_exploration_noise)
+                        frag_traj, frag_rank, frag_discoveries = play_episode(net, frag_env, frag_obs, num_simulations, add_exploration_noise, batch_size=batch_size)
                         frag_ranks.append(frag_rank)
                         recursive_trajectories.extend(frag_traj)
                         recursive_cuts.extend(frag_discoveries[0][2] if frag_discoveries else [])
@@ -272,7 +359,7 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
             return local_trajectory + recursive_trajectories, total_rank, local_discoveries + recursive_discoveries
 
 def simulate_game_worker(worker_args):
-    m, n, model_state_dict, num_simulations, game_id = worker_args
+    m, n, model_state_dict, num_simulations, game_id, mcts_batch_size = worker_args
     
     local_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.set_num_threads(1) # Prevent OpenMP deadlocks in multiprocessing
@@ -283,7 +370,7 @@ def simulate_game_worker(worker_args):
     
     env = HowlEnv(m, n)
     obs, _ = env.reset()
-    traj, final_rank, discoveries = play_episode(net, env, obs, num_simulations)
+    traj, final_rank, discoveries = play_episode(net, env, obs, num_simulations, batch_size=mcts_batch_size)
     
     # We must move PyG tensors back to CPU before pickling them back to the main process
     # to avoid CUDA IPC memory issues across process boundaries
@@ -292,7 +379,7 @@ def simulate_game_worker(worker_args):
         
     return game_id, m, n, traj, final_rank, discoveries
 
-def self_play(net, gm_gn_list, num_simulations=50, num_workers=5):
+def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_size=8):
     import concurrent.futures
     import time
     
@@ -303,7 +390,7 @@ def self_play(net, gm_gn_list, num_simulations=50, num_workers=5):
     
     worker_args_list = []
     for game_id, (m, n) in enumerate(gm_gn_list):
-        worker_args_list.append((m, n, model_state_dict, num_simulations, game_id + 1))
+        worker_args_list.append((m, n, model_state_dict, num_simulations, game_id + 1, mcts_batch_size))
         
     num_games = len(gm_gn_list)
     print(f"\n[PHASE 1] Self-Play ({num_games} games | {num_workers} workers)")
@@ -389,7 +476,7 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
     print("-" * 60)
     print(f"  Training Summary: {elapsed:.1f}s | Final P_Loss: {avg_p_loss:8.4f} | Final V_Loss: {avg_v_loss:8.4f}")
 
-def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simulations=200, unlocked_tiers=None, num_workers=5):
+def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simulations=200, unlocked_tiers=None, num_workers=5, mcts_batch_size=8):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Main Process using device: {device}")
     
@@ -418,7 +505,7 @@ def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simul
             gm_gn_list.append((gm, gn))
             
         num_workers = config.get("num_workers", 5) if 'config' in globals() else 5
-        new_trajectories = self_play(net, gm_gn_list, num_simulations=num_simulations, num_workers=num_workers)
+        new_trajectories = self_play(net, gm_gn_list, num_simulations=num_simulations, num_workers=num_workers, mcts_batch_size=mcts_batch_size)
             
         replay_buffer.extend(new_trajectories)
         
@@ -452,4 +539,6 @@ if __name__ == "__main__":
     unlocked_tiers = config.get("unlocked_tiers", [[m, n]])
     num_workers = config.get("num_workers", 5)
     
-    alpha_zero_loop(m, n, num_generations=num_generations, games_per_generation=games_per_gen, num_simulations=simulations, unlocked_tiers=unlocked_tiers, num_workers=num_workers)
+    mcts_batch_size = config.get("mcts_batch_size", 8)
+
+    alpha_zero_loop(m, n, num_generations=num_generations, games_per_generation=games_per_gen, num_simulations=simulations, unlocked_tiers=unlocked_tiers, num_workers=num_workers, mcts_batch_size=mcts_batch_size)
