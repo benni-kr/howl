@@ -39,58 +39,52 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
     let currentMaxRank = maxRank;
     let strictlyOptimal = true;
 
-    const seenHashes = new Set<string>();
+    // 1 & 2 & 3. Gather all candidates for duplicates
+    type Candidate = { graph: Graph; location: 'active' | 'recent' | 'banked'; index?: number };
+    const allCandidates: Candidate[] = [];
+    if (activeGraph) allCandidates.push({ graph: activeGraph, location: 'active' });
+    recentCutGraphs.forEach((g, i) => allCandidates.push({ graph: g, location: 'recent', index: i }));
+    bankedGraphs.forEach((g, i) => allCandidates.push({ graph: g, location: 'banked', index: i }));
 
-    // 1. Process active graph first (highest priority to KEEP)
-    if (activeGraph) {
-      const fp = getLocalGraphFingerprint(activeGraph);
+    const hashGroups = new Map<string, Candidate[]>();
+    allCandidates.forEach(cand => {
+      const fp = getLocalGraphFingerprint(cand.graph);
       const opt = optimalRanks.get(fp);
       const hashToUse = opt?.hash || fp;
-      
-      seenHashes.add(hashToUse);
+      if (!hashGroups.has(hashToUse)) hashGroups.set(hashToUse, []);
+      hashGroups.get(hashToUse)!.push(cand);
+    });
 
-      if (opt && cutsApplied.length > 0) {
-        if (opt.best_rank !== 999999) {
-          solvable.push({ location: 'active', optimalRank: opt.best_rank });
-          currentMaxRank = Math.max(currentMaxRank, activeGraph.baseRank + opt.best_rank);
+    const keptCandidates: Candidate[] = [];
+
+    hashGroups.forEach(group => {
+      if (group.length > 1) {
+        // Sort by baseRank DESCENDING so we KEEP the one with the HIGHEST baseRank (worst).
+        // This ensures we never "cheat" by deleting a duplicate that has a worse penalty.
+        // If baseRank is the same, we preserve the original order (active -> recent -> banked).
+        group.sort((a, b) => b.graph.baseRank - a.graph.baseRank);
+        keptCandidates.push(group[0]);
+        for (let i = 1; i < group.length; i++) {
+          duplicates.push({ location: group[i].location, index: group[i].index });
+        }
+      } else {
+        keptCandidates.push(group[0]);
+      }
+    });
+
+    // Populate solvable targets based ONLY on kept active/recent candidates
+    if (cutsApplied.length > 0) {
+      keptCandidates.forEach(cand => {
+        if (cand.location === 'banked') return;
+        const fp = getLocalGraphFingerprint(cand.graph);
+        const opt = optimalRanks.get(fp);
+        if (opt && opt.best_rank !== 999999) {
+          solvable.push({ location: cand.location, index: cand.index, optimalRank: opt.best_rank });
+          currentMaxRank = Math.max(currentMaxRank, cand.graph.baseRank + opt.best_rank);
           if (!opt.is_optimal) strictlyOptimal = false;
         }
-      }
+      });
     }
-
-    // 2. Process recent cut graphs (second priority to KEEP)
-    recentCutGraphs.forEach((graph, index) => {
-      const fp = getLocalGraphFingerprint(graph);
-      const opt = optimalRanks.get(fp);
-      const hashToUse = opt?.hash || fp;
-
-      if (seenHashes.has(hashToUse)) {
-        duplicates.push({ location: 'recent', index });
-      } else {
-        seenHashes.add(hashToUse);
-      }
-
-      if (opt && cutsApplied.length > 0) {
-        if (opt.best_rank !== 999999) {
-          solvable.push({ location: 'recent', index, optimalRank: opt.best_rank });
-          currentMaxRank = Math.max(currentMaxRank, graph.baseRank + opt.best_rank);
-          if (!opt.is_optimal) strictlyOptimal = false;
-        }
-      }
-    });
-
-    // 3. Process banked graphs (highest priority to DELETE)
-    bankedGraphs.forEach((graph, index) => {
-      const fp = getLocalGraphFingerprint(graph);
-      const opt = optimalRanks.get(fp);
-      const hashToUse = opt?.hash || fp;
-
-      if (seenHashes.has(hashToUse)) {
-        duplicates.push({ location: 'banked', index });
-      } else {
-        seenHashes.add(hashToUse);
-      }
-    });
 
     // 4. Subgraph detection
     const subgraphs: { location: 'active' | 'recent', index?: number }[] = [];
@@ -107,12 +101,17 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
           if (i === j) continue;
           const large = candidates[j];
           const largeKey = `${large.location}:${large.index ?? 'active'}`;
+          // Don't use a duplicate as a supergraph (it's going to be deleted anyway)
           if (duplicateKeys.has(largeKey)) continue;
 
           if (small.graph.vertices.length < large.graph.vertices.length &&
               isSubgraphOf(small.graph.vertices, large.graph.vertices)) {
-            subgraphs.push({ location: small.location, index: small.index });
-            break;
+            // ONLY allow deletion if the subgraph (small) has a baseRank <= the supergraph (large)
+            // This prevents hiding a worse score by deleting a subgraph that was cut more times.
+            if (small.graph.baseRank <= large.graph.baseRank) {
+              subgraphs.push({ location: small.location, index: small.index });
+              break;
+            }
           }
         }
       }

@@ -119,6 +119,19 @@ const IssuesPage: React.FC = () => {
         )}
       </div>
 
+      <div style={{
+        backgroundColor: "rgba(255, 193, 7, 0.1)",
+        color: "#ffc107",
+        padding: "12px",
+        borderRadius: "8px",
+        marginBottom: "16px",
+        border: "1px solid rgba(255, 193, 7, 0.3)",
+        textAlign: "center",
+        fontSize: "0.95rem"
+      }}>
+        🚀 <strong>Notice:</strong> We just migrated our database from Render to Supabase! If you encounter any unexpected errors, please report them here.
+      </div>
+
       {error && <div className="error-message">{error}</div>}
 
       <div className="issues-content">
