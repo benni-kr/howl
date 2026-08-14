@@ -48,9 +48,10 @@ def test_gnn_architecture():
     print("Scatter mapping and Action Masking OK!")
     
     print("\nAll GNN tests passed successfully!")
+    return net, pyg_data1, pyg_data2
 
 if __name__ == "__main__":
-    test_gnn_architecture()
+    net, pyg_data1, pyg_data2 = test_gnn_architecture()
 
     import torch.nn.functional as F
     import torch.optim as optim

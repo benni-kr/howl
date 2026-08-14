@@ -7,9 +7,34 @@ DB_PATH = os.environ.get("DATABASE_URL", "../backend/howl.db")
 if DB_PATH.startswith("sqlite:///"):
     DB_PATH = DB_PATH.replace("sqlite:///", "")
 
+# In-process lookup cache. Positive hits are kept permanently (a best-known
+# rank is always a valid upper bound); misses are kept in a bounded set that
+# is cleared whenever this process upserts, so its own discoveries are seen.
+# Discoveries made concurrently by other processes may be missed until then,
+# which only means falling back to NN evaluation (never unsound).
+_MISS_CACHE_LIMIT = 100_000
+_hit_cache = {}
+_miss_cache = set()
+
+# Persistent read connection, guarded by PID so forked workers reopen their own.
+_read_conn = None
+_read_conn_pid = None
+
 def get_db_connection():
     # If the file doesn't exist relative to alphawolf, try absolute or parent
     return sqlite3.connect(DB_PATH)
+
+def _get_read_connection():
+    global _read_conn, _read_conn_pid
+    pid = os.getpid()
+    if _read_conn is None or _read_conn_pid != pid:
+        _read_conn = sqlite3.connect(DB_PATH)
+        _read_conn_pid = pid
+    return _read_conn
+
+def _invalidate_cache(shape_hash: str):
+    _miss_cache.clear()
+    _hit_cache.pop(shape_hash, None)
 
 def query_tablebase(fragments: list) -> dict:
     """
@@ -29,25 +54,40 @@ def query_tablebase(fragments: list) -> dict:
             verts = [{"x": x, "y": y} for x, y in frag.vertices]
             hashes.append(generate_canonical_hash(verts))
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    placeholders = ",".join(["?"] * len(hashes))
+    missing = []
+    for h in hashes:
+        cached = _hit_cache.get(h)
+        if cached is not None:
+            results[h] = cached
+        elif h not in _miss_cache:
+            missing.append(h)
+
+    if not missing:
+        return results
+
+    cursor = _get_read_connection().cursor()
+
+    placeholders = ",".join(["?"] * len(missing))
     query = f"SELECT hash, best_rank, is_optimal FROM subgraph_dictionary WHERE hash IN ({placeholders})"
-    
+
     try:
-        cursor.execute(query, hashes)
+        cursor.execute(query, missing)
         rows = cursor.fetchall()
+        found = set()
         for r_hash, best_rank, is_optimal in rows:
-            results[r_hash] = {
+            entry = {
                 "best_rank": best_rank,
                 "is_optimal": bool(is_optimal)
             }
+            results[r_hash] = entry
+            _hit_cache[r_hash] = entry
+            found.add(r_hash)
+        if len(_miss_cache) > _MISS_CACHE_LIMIT:
+            _miss_cache.clear()
+        _miss_cache.update(h for h in missing if h not in found)
     except sqlite3.OperationalError:
         # Table might not exist yet if DB is fresh
         pass
-    finally:
-        conn.close()
 
     return results
 
@@ -76,6 +116,7 @@ def insert_or_update_rank4_induction(shape_hash: str, rank: int, sequence: list)
             (shape_hash, rank, True, "alphawolf")
         )
         conn.commit()
+        _invalidate_cache(shape_hash)
     finally:
         conn.close()
 
@@ -127,6 +168,7 @@ def upsert_subgraph(shape_hash: str, shape_str: str, best_rank: int, best_cut_se
                     (shape_str, shape_hash)
                 )
         conn.commit()
+        _invalidate_cache(shape_hash)
     finally:
         conn.close()
 

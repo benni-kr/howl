@@ -41,23 +41,19 @@ def grid_tensor_to_pyg_data(state_tensor):
     # Extract topological node features (Channels 1 to 4) for active vertices
     x = state_tensor[1:, active_indices_2d[:, 0], active_indices_2d[:, 1]].T.clone().detach()
     
-    # Build edge_index (4-way connectivity)
-    edges = []
-    directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-    
-    for v in range(V):
-        r, c = active_indices_2d[v, 0].item(), active_indices_2d[v, 1].item()
-        for dr, dc in directions:
-            nr, nc = r + dr, c + dc
-            if 0 <= nr < m and 0 <= nc < n:
-                n_idx = coord_to_idx[nr, nc].item()
-                if n_idx != -1:
-                    edges.append([v, n_idx])
-                    
-    if edges:
-        edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
-    else:
-        edge_index = torch.zeros((2, 0), dtype=torch.long)
+    # Build edge_index (4-way connectivity) via shifted-mask adjacency
+    mask = state_tensor[0] == 1
+    horiz = mask[:, :-1] & mask[:, 1:]
+    vert = mask[:-1, :] & mask[1:, :]
+
+    h_src = coord_to_idx[:, :-1][horiz]
+    h_dst = coord_to_idx[:, 1:][horiz]
+    v_src = coord_to_idx[:-1, :][vert]
+    v_dst = coord_to_idx[1:, :][vert]
+
+    src = torch.cat([h_src, h_dst, v_src, v_dst])
+    dst = torch.cat([h_dst, h_src, v_dst, v_src])
+    edge_index = torch.stack([src, dst]).contiguous()
         
     return Data(x=x, edge_index=edge_index, flat_indices=flat_indices, m=m, n=n)
 

@@ -11,21 +11,25 @@ class HowlEnv(gym.Env):
     """
     Custom Gymnasium Environment for the Vertex k-Ranking problem on grid graphs.
     """
-    def __init__(self, m: int, n: int):
+    def __init__(self, m: int, n: int, generate: bool = True):
         super().__init__()
         assert m <= MAX_ROWS and n <= MAX_COLS, f"Grid size {m}x{n} exceeds max {MAX_ROWS}x{MAX_COLS}"
         self.m = m
         self.n = n
-        
+
         # Observation space: 5-channel 2D array of the padded grid
         self.observation_space = spaces.Box(low=0, high=1, shape=(5, MAX_ROWS, MAX_COLS), dtype=np.float32)
-        
+
         # Action space: Flattened 1D discrete selection across the full 10x10 canvas
         self.action_space = spaces.Discrete(MAX_ROWS * MAX_COLS)
-        
+
         self.graph = None
         self.cuts_made = 0
-        self.reset()
+        if generate:
+            self.reset()
+        else:
+            # Caller will attach a graph directly (e.g. cloning from an observation)
+            self.graph = GridGraph(m, n, generate=False)
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -35,51 +39,82 @@ class HowlEnv(gym.Env):
 
     def _get_obs(self):
         obs = np.zeros((5, MAX_ROWS, MAX_COLS), dtype=np.float32)
-        
+
+        adjacency = self.graph.adjacency
         fragments = self.graph.get_disconnected_subgraphs()
-        
+
         for comp_idx, fragment in enumerate(fragments):
             comp_id_val = (comp_idx + 1) / max(1, len(fragments))
-            
+
             for vertex in fragment.vertices:
                 x, y = vertex
-                
+                degree = len(adjacency[vertex])
+
                 # Ch 0: Binary Mask
                 obs[0, x, y] = 1.0
-                
+
                 # Ch 1: Degree Map
-                neighbors = self.graph.adjacency[vertex]
-                degree = len(neighbors)
                 obs[1, x, y] = degree / 4.0
-                
+
                 # Ch 2: Border Mask
                 obs[2, x, y] = 1.0 if degree < 4 else 0.0
-                
+
                 # Ch 3: Component ID
                 obs[3, x, y] = comp_id_val
-                
-                # Ch 4: Articulation Points
-                if degree > 1:
-                    neighbors_list = list(neighbors)
-                    start = neighbors_list[0]
-                    visited = {vertex} # Mask out the current vertex
-                    queue = [start]
-                    visited.add(start)
-                    reachable_neighbors = 1
-                    
-                    while queue:
-                        curr = queue.pop(0)
-                        for nxt in self.graph.adjacency[curr]:
-                            if nxt not in visited:
-                                visited.add(nxt)
-                                queue.append(nxt)
-                                if nxt in neighbors_list:
-                                    reachable_neighbors += 1
-                                    
-                    if reachable_neighbors < len(neighbors_list):
-                        obs[4, x, y] = 1.0
-                        
+
+        # Ch 4: Articulation Points (Tarjan, O(V+E) over all components)
+        for x, y in self._articulation_points():
+            obs[4, x, y] = 1.0
+
         return obs
+
+    def _articulation_points(self):
+        """Finds all articulation points via Tarjan's algorithm (iterative DFS)."""
+        adjacency = self.graph.adjacency
+        disc = {}
+        low = {}
+        points = set()
+        counter = 0
+
+        for root in adjacency:
+            if root in disc:
+                continue
+
+            disc[root] = low[root] = counter
+            counter += 1
+            root_children = 0
+            stack = [(root, None, iter(adjacency[root]))]
+
+            while stack:
+                v, parent, neighbors_iter = stack[-1]
+                descended = False
+                for w in neighbors_iter:
+                    if w == parent:
+                        continue
+                    if w in disc:
+                        # Back edge
+                        low[v] = min(low[v], disc[w])
+                    else:
+                        # Tree edge: descend
+                        disc[w] = low[w] = counter
+                        counter += 1
+                        stack.append((w, v, iter(adjacency[w])))
+                        descended = True
+                        break
+
+                if not descended:
+                    stack.pop()
+                    if parent is not None:
+                        low[parent] = min(low[parent], low[v])
+                        if parent == root:
+                            root_children += 1
+                        elif low[v] >= disc[parent]:
+                            points.add(parent)
+
+            if root_children >= 2:
+                points.add(root)
+
+        return points
 
     def step(self, action: int):
         x = action // MAX_COLS

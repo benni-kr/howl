@@ -16,8 +16,7 @@ from core_engine.graph_logic import GridGraph
 C_PUCT = 1.0
 
 def clone_env_from_obs(obs, m, n, current_cuts=0):
-    sim_env = HowlEnv(m, n)
-    sim_env.graph = GridGraph(m, n, generate=False)
+    sim_env = HowlEnv(m, n, generate=False)
     active_coords = np.argwhere(obs[0] == 1)
     for x, y in active_coords:
         sim_env.graph._add_vertex((int(x), int(y)))
@@ -39,7 +38,7 @@ def evaluate_fragment_rank(frag, m, n, net):
     if db_res and (db_res['is_optimal'] or db_res['best_rank'] <= 3):
         return float(db_res['best_rank'])
         
-    frag_env = HowlEnv(m, n)
+    frag_env = HowlEnv(m, n, generate=False)
     frag_env.graph = frag
     frag_obs = frag_env._get_obs()
         
@@ -232,7 +231,7 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True):
             if "fragments" in info and info["fragments"]:
                 for frag in info["fragments"]:
                     # Create an isolated environment for this fragment
-                    frag_env = HowlEnv(env.m, env.n)
+                    frag_env = HowlEnv(env.m, env.n, generate=False)
                     frag_env.graph = frag
                     frag_env.cuts_made = 0
                     frag_obs = frag_env._get_obs()
