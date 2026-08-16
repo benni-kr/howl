@@ -15,7 +15,6 @@ Unlike standard game engines, AlphaWolf is integrated with a globally shared tab
 - **Core Logic**: Interfaces with `core_engine` for grid graph manipulation and hashing
 - **Data Persistence**: `db/tablebase.py` for reading/writing known ranks to the backend database
 
-> **Note:** `requirements.txt` does not yet list `torch_geometric` (required by the GNN) or `pandas` (required by `query_db.py`). Install both manually until that is fixed.
 
 ---
 
@@ -60,7 +59,7 @@ Unlike standard game engines, AlphaWolf is integrated with a globally shared tab
 
 The main training orchestrator runs generations of self-play, network training, and benchmark promotion. Each generation samples `games_per_generation` boards with independently random dimensions in $[4, 9]$, spread across `num_workers` processes via `ProcessPoolExecutor`.
 
-> **Known gap:** `config.json` still carries an `unlocked_tiers` list and `alpha_zero_loop` still accepts it, but the loop never reads it — the grid sizes come from `random.randint(4, 9)`. The documented "curriculum" is currently just uniform sampling. Likewise `num_workers` is re-read from module globals inside the loop, overriding the function argument.
+> **Note:** self-play sizes are sampled uniformly (`self_play_min_grid`..`self_play_max_grid` in `config.json`) — there is currently no curriculum. The former `unlocked_tiers` parameter was dead code (uniform sampling replaced it in `0736757`) and has been removed; a real curriculum with a lower-bound unlock criterion is planned (see `ROADMAP.md`, C2).
 
 Training starts from **randomly initialised weights every run** — `alpha_zero_loop` does not load `best_model.pt`. The existing checkpoint serves only as the benchmark baseline; there is no resume path.
 

@@ -475,7 +475,7 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
     print("-" * 60)
     print(f"  Training Summary: {elapsed:.1f}s | Final P_Loss: {avg_p_loss:8.4f} | Final V_Loss: {avg_v_loss:8.4f}")
 
-def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simulations=200, unlocked_tiers=None, num_workers=5, mcts_batch_size=8, self_play_min_grid=4, self_play_max_grid=9):
+def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simulations=200, num_workers=5, mcts_batch_size=8, self_play_min_grid=4, self_play_max_grid=9):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Main Process using device: {device}")
     
@@ -505,7 +505,6 @@ def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simul
             gn = random.randint(lo, hi)
             gm_gn_list.append((gm, gn))
             
-        num_workers = config.get("num_workers", 5) if 'config' in globals() else 5
         new_trajectories = self_play(net, gm_gn_list, num_simulations=num_simulations, num_workers=num_workers, mcts_batch_size=mcts_batch_size)
             
         replay_buffer.extend(new_trajectories)
@@ -537,11 +536,10 @@ if __name__ == "__main__":
     num_generations = config.get("total_generations", 50)
     games_per_gen = config.get("games_per_generation", 15)
     simulations = config.get("mcts_simulations", 200)
-    unlocked_tiers = config.get("unlocked_tiers", [[m, n]])
     num_workers = config.get("num_workers", 5)
     
     mcts_batch_size = config.get("mcts_batch_size", 8)
     self_play_min_grid = config.get("self_play_min_grid", 4)
     self_play_max_grid = config.get("self_play_max_grid", 9)
 
-    alpha_zero_loop(m, n, num_generations=num_generations, games_per_generation=games_per_gen, num_simulations=simulations, unlocked_tiers=unlocked_tiers, num_workers=num_workers, mcts_batch_size=mcts_batch_size, self_play_min_grid=self_play_min_grid, self_play_max_grid=self_play_max_grid)
+    alpha_zero_loop(m, n, num_generations=num_generations, games_per_generation=games_per_gen, num_simulations=simulations, num_workers=num_workers, mcts_batch_size=mcts_batch_size, self_play_min_grid=self_play_min_grid, self_play_max_grid=self_play_max_grid)
