@@ -9,14 +9,18 @@ from core_engine.graph_logic import GridGraph
 from models.net import AlphaWolfNet
 from train import play_episode
 
-def create_gauntlet(fractured_per_tier=2, fracture_min=0.1, fracture_max=0.3):
-    """Returns a list of dicts defining the benchmark boards."""
+def create_gauntlet(fractured_per_tier=2, fracture_min=0.1, fracture_max=0.3, min_size=4, max_size=9):
+    """Returns a list of dicts defining the benchmark boards.
+
+    NOTE: changing min_size/max_size redefines the gauntlet and breaks
+    comparability with all previously recorded benchmark results. The
+    defaults are the stable metric.
+    """
     import json
     import os
     import random
-    
-    # We care about grids between 4x4 and 9x9
-    unlocked_tiers = [(i, j) for i in range(4, 10) for j in range(4, 10) if i <= j]
+
+    unlocked_tiers = [(i, j) for i in range(min_size, max_size + 1) for j in range(min_size, max_size + 1) if i <= j]
         
     gauntlet = []
     

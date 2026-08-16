@@ -55,4 +55,8 @@ def evaluate_high_simulations(m, n, num_simulations=1000, num_games=10):
         print("Upsert complete.")
 
 if __name__ == "__main__":
-    evaluate_high_simulations(7, 7, num_simulations=1000, num_games=10)
+    import json
+    config_path = os.path.join(os.path.dirname(__file__), "config.json")
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    evaluate_high_simulations(config.get("current_m", 7), config.get("current_n", 7), num_simulations=1000, num_games=10)

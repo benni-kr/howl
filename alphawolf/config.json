@@ -9,5 +9,7 @@
   "gauntlet_fracture_min": 0.1,
   "gauntlet_fracture_max": 0.2,
   "num_workers": 5,
-  "mcts_batch_size": 8
+  "mcts_batch_size": 8,
+  "self_play_min_grid": 4,
+  "self_play_max_grid": 9
 }

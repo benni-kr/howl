@@ -8,7 +8,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from models.net import AlphaWolfNet, grid_tensor_to_pyg_data
-from envs.howl_env import HowlEnv
+from envs.howl_env import HowlEnv, MAX_ROWS, MAX_COLS
 from db.tablebase import query_tablebase, insert_or_update_rank4_induction, upsert_subgraph, upsert_grid_solution
 from core_engine.hashing import generate_canonical_hash, generate_canonical_data
 from core_engine.graph_logic import GridGraph
@@ -289,7 +289,7 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, 
         if total_visits == 0:
             return [], env.cuts_made, []
             
-        pi = np.zeros(100)
+        pi = np.zeros(MAX_ROWS * MAX_COLS)
         for a, visits in action_visits.items():
             pi[a] = visits / total_visits
             
@@ -299,8 +299,7 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, 
         probs = [action_visits[a] / total_visits for a in actions]
         action = np.random.choice(actions, p=probs)
         
-        # Hardcoding 10 since MAX_COLS is 10
-        local_sequence.append({"t": "c", "v": [[int(action // 10), int(action % 10)]]})
+        local_sequence.append({"t": "c", "v": [[int(action // MAX_COLS), int(action % MAX_COLS)]]})
         
         obs, reward, terminated, _, info = env.step(action)
         
@@ -476,7 +475,7 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
     print("-" * 60)
     print(f"  Training Summary: {elapsed:.1f}s | Final P_Loss: {avg_p_loss:8.4f} | Final V_Loss: {avg_v_loss:8.4f}")
 
-def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simulations=200, unlocked_tiers=None, num_workers=5, mcts_batch_size=8):
+def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simulations=200, unlocked_tiers=None, num_workers=5, mcts_batch_size=8, self_play_min_grid=4, self_play_max_grid=9):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Main Process using device: {device}")
     
@@ -497,11 +496,13 @@ def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simul
         print(f"{'='*40}")
         
         import random
-        # Collect games symmetrically (all combination between 4x4 and 9x9)
+        # Collect games symmetrically across the configured size range
+        lo = self_play_min_grid
+        hi = min(self_play_max_grid, MAX_ROWS, MAX_COLS)
         gm_gn_list = []
         for game_idx in range(games_per_generation):
-            gm = random.randint(4, 9)
-            gn = random.randint(4, 9)
+            gm = random.randint(lo, hi)
+            gn = random.randint(lo, hi)
             gm_gn_list.append((gm, gn))
             
         num_workers = config.get("num_workers", 5) if 'config' in globals() else 5
@@ -540,5 +541,7 @@ if __name__ == "__main__":
     num_workers = config.get("num_workers", 5)
     
     mcts_batch_size = config.get("mcts_batch_size", 8)
+    self_play_min_grid = config.get("self_play_min_grid", 4)
+    self_play_max_grid = config.get("self_play_max_grid", 9)
 
-    alpha_zero_loop(m, n, num_generations=num_generations, games_per_generation=games_per_gen, num_simulations=simulations, unlocked_tiers=unlocked_tiers, num_workers=num_workers, mcts_batch_size=mcts_batch_size)
+    alpha_zero_loop(m, n, num_generations=num_generations, games_per_generation=games_per_gen, num_simulations=simulations, unlocked_tiers=unlocked_tiers, num_workers=num_workers, mcts_batch_size=mcts_batch_size, self_play_min_grid=self_play_min_grid, self_play_max_grid=self_play_max_grid)

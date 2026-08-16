@@ -60,9 +60,11 @@ def grid_tensor_to_pyg_data(state_tensor):
 class AlphaWolfGNN(nn.Module):
     def __init__(self, m=None, n=None, in_channels=4, hidden_channels=128, num_layers=6):
         super().__init__()
-        # Ensure compatibility with env.MAX_ROWS and MAX_COLS
-        self.m = 10
-        self.n = 10
+        # Policy scatter target follows the padded canvas size. No weights
+        # depend on these values, so checkpoints stay valid across canvas sizes.
+        from envs.howl_env import MAX_ROWS, MAX_COLS
+        self.m = MAX_ROWS
+        self.n = MAX_COLS
         
         if not HAS_PYG:
             raise ImportError("torch_geometric is required for AlphaWolfGNN.")
