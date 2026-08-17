@@ -37,16 +37,21 @@ class HowlEnv(gym.Env):
         self.cuts_made = 0
         return self._get_obs(), {}
 
-    def _get_obs(self):
+    def _get_obs(self, components=None):
+        """Build the observation. `components` may pass a known component
+        decomposition of self.graph to skip recomputing it (step() uses this:
+        after a non-terminal step the graph is exactly one component)."""
         obs = np.zeros((5, MAX_ROWS, MAX_COLS), dtype=np.float32)
 
         adjacency = self.graph.adjacency
-        fragments = self.graph.get_disconnected_subgraphs()
+        # Only component membership is needed here, so skip building subgraphs
+        if components is None:
+            components = self.graph.get_component_vertex_sets()
 
-        for comp_idx, fragment in enumerate(fragments):
-            comp_id_val = (comp_idx + 1) / max(1, len(fragments))
+        for comp_idx, component in enumerate(components):
+            comp_id_val = (comp_idx + 1) / max(1, len(components))
 
-            for vertex in fragment.vertices:
+            for vertex in component:
                 x, y = vertex
                 degree = len(adjacency[vertex])
 
@@ -116,27 +121,32 @@ class HowlEnv(gym.Env):
 
         return points
 
-    def step(self, action: int):
+    def step(self, action: int, compute_obs: bool = True):
+        """Apply a cut. Pass compute_obs=False when the returned observation is
+        not needed (e.g. during MCTS descent) — building it (BFS + Tarjan) is
+        the most expensive part of a step."""
         x = action // MAX_COLS
         y = action % MAX_COLS
         vertex = (x, y)
-        
+
         # Invalid action (cutting an already cut vertex)
         if vertex not in self.graph.vertices:
-            return self._get_obs(), -1, False, False, {"invalid": True}
-        
+            obs = self._get_obs() if compute_obs else None
+            return obs, -1, False, False, {"invalid": True}
+
         self.graph.apply_cut_set([vertex])
         self.cuts_made += 1
-        
+
         fragments = self.graph.get_disconnected_subgraphs()
         unique_fragments, duplicate_fragments = filter_and_deduplicate(fragments)
-        
+
         reward = -1
         terminated = False
         info = {}
+        components = None
         if duplicate_fragments:
             info["duplicates"] = duplicate_fragments
-        
+
         if len(unique_fragments) == 0:
             # Completely obliterated
             terminated = True
@@ -145,7 +155,9 @@ class HowlEnv(gym.Env):
             terminated = True
             info["fragments"] = unique_fragments
         else:
-            # Still a single component
+            # Still a single component — reuse that knowledge in _get_obs
             self.graph = unique_fragments[0]
-            
-        return self._get_obs(), reward, terminated, False, info
+            components = [self.graph.vertices]
+
+        obs = self._get_obs(components=components) if compute_obs else None
+        return obs, reward, terminated, False, info

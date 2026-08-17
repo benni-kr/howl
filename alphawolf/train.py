@@ -15,6 +15,15 @@ from core_engine.graph_logic import GridGraph
 
 C_PUCT = 1.0
 
+def clone_env(src_env, current_cuts=None):
+    """Copy an env by duplicating its adjacency map. Much cheaper than
+    rebuilding from an observation, and yields an identical graph."""
+    sim_env = HowlEnv(src_env.m, src_env.n, generate=False)
+    sim_env.graph.vertices = set(src_env.graph.vertices)
+    sim_env.graph.adjacency = {v: set(s) for v, s in src_env.graph.adjacency.items()}
+    sim_env.cuts_made = src_env.cuts_made if current_cuts is None else current_cuts
+    return sim_env
+
 def clone_env_from_obs(obs, m, n, current_cuts=0):
     sim_env = HowlEnv(m, n, generate=False)
     active_coords = np.argwhere(obs[0] == 1)
@@ -130,6 +139,9 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
     device = next(net.parameters()).device
     sims_done = 0
 
+    # Parse the root observation once; per-simulation clones are plain copies
+    root_env = clone_env_from_obs(root_state, env.m, env.n, env.cuts_made)
+
     while sims_done < num_simulations:
         target = min(batch_size, num_simulations - sims_done)
         pending = []
@@ -138,7 +150,7 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
         # 1. Selection: collect up to `target` leaves under virtual loss
         for _ in range(target):
             node = root
-            sim_env = clone_env_from_obs(root_state, env.m, env.n, env.cuts_made)
+            sim_env = clone_env(root_env)
             search_path = [node]
             entry = None
 
@@ -149,7 +161,8 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                 )
                 node = best_child
                 search_path.append(node)
-                _, reward, terminated, _, info = sim_env.step(best_action)
+                # Observation is only needed at the leaf, not during descent
+                _, reward, terminated, _, info = sim_env.step(best_action, compute_obs=False)
                 if terminated:
                     node.is_terminal = True
                     if "fragments" in info and info["fragments"]:
@@ -167,7 +180,9 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                         # Fragments node hit again; rank resolves earlier in this batch
                         entry = {"kind": "await_node", "node": node}
                 else:
-                    obs = sim_env._get_obs()
+                    # Reaching here means the last step was non-terminal,
+                    # so the graph is exactly one component
+                    obs = sim_env._get_obs(components=[sim_env.graph.vertices])
                     node.state = obs
                     if id(node) in scheduled:
                         entry = {"kind": "dup", "of": scheduled[id(node)]}
