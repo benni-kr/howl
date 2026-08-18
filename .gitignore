@@ -38,3 +38,6 @@ __pycache__/
 
 # AlphaWolf Checkpoints
 alphawolf/models/checkpoints/alphawolf_gen_*.pt
+
+# Rust build artifacts (exact solver)
+alphawolf/solver_rs/target/
