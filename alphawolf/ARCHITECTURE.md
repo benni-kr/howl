@@ -14,7 +14,6 @@ Unlike standard game engines, AlphaWolf is integrated with a globally shared tab
 - **Environment**: Custom simulation wrapped similarly to OpenAI Gym (`envs/howl_env.py`)
 - **Core Logic**: Interfaces with `core_engine` for grid graph manipulation and hashing
 - **Data Persistence**: `db/tablebase.py` for reading/writing known ranks to the backend database
-- **Optional**: a dependency-free Rust binary (`solver_rs/`) accelerating the exact solver. Not required — the Python fallback runs the same algorithm.
 
 ---
 
@@ -90,51 +89,25 @@ To ensure monotonic improvement, AlphaWolf uses an automated gauntlet:
 This module connects AlphaWolf directly to the shared backend database (`howl.db` / `test.db`).
 - **`query_tablebase`**: Checks if the canonical hashes of current board shapes have known best solutions. If `is_optimal` is true, or the rank is extremely small ($\le 3$), MCTS stops exploring that subgraph and uses the value.
 - **`upsert_subgraph`** / **`upsert_grid_solution`**: Records new discoveries so the React frontend can automatically display Magic Wands and Abacuses for humans who encounter those same states. Both only ever improve an entry (`best_rank <` guard), so a bad run cannot degrade a better human solution. `upsert_subgraph` sets `is_optimal` by the `best_rank <= 4` induction: everything of rank $\le 3$ is in the seed, so a shape absent from it has rank $\ge 4$, and a solution achieving 4 is therefore exact. This is the only optimality any *playing* agent can establish.
-- **`upsert_exact_solution`**: the write path reserved for the exact solver — the only one that may set `is_optimal` for arbitrary ranks. Refuses to overwrite silently if the database claims a rank *below* a proven optimum (reported as `conflict`, indicating corrupt data).
+
+The exact solver writes through its own module (`solver/tablebase_writer.py`) rather than this one, since it is not part of the RL pipeline. It is the only writer allowed to set `is_optimal` for ranks above 4.
 - **Caching**: lookups are served from a per-process cache over a persistent SQLite connection. The connection is PID-guarded so forked self-play workers open their own; positive hits are kept indefinitely (a best-known rank stays a valid upper bound), while the miss set is cleared on every local upsert. Discoveries made concurrently by *other* processes may be missed until then, which only means falling back to network evaluation — never an unsound result.
 
 This module uses raw `sqlite3` and can therefore only ever address a **local file**. It cannot write to the production Postgres/Supabase database; pointing `DATABASE_URL` at a Postgres URL would make it try to open a file by that name. Getting AlphaWolf discoveries into production requires a deliberate export/import step.
 
-### 6. Exact Solver (`exact_solver.py`, `solver_rs/`)
+### 6. Exact Solver — see `solver/`
 
-MCTS and human players both produce only *upper* bounds; the `rank <= 4`
-induction above is as far as optimality can be established by playing. The exact
-solver closes that gap for small shapes by exhaustive treedepth recursion over
-bitboards:
+Optimality beyond the `rank <= 4` induction cannot be established by playing:
+MCTS and human players both produce only upper bounds. That gap is closed by the
+**exact solver**, which lives in the top-level `solver/` component rather than
+here — it shares no code with the RL pipeline (no torch, no MCTS, no
+environment) and is a peer producer of tablebase knowledge alongside AlphaWolf
+and the players.
 
-```text
-rank(disconnected) = max over components          (separator theorem)
-rank(connected)    = 1 + min over v of rank(G - v)
-```
+It writes proven ranks with `is_optimal = True`, which turns those shapes into
+hard MCTS cutoffs instead of mere value clamps, and corrects entries whose
+recorded rank was above the true optimum. Running it periodically after training
+or heavy play is worthwhile: new fragments always enter the tablebase unproven.
 
-Results are provable, so they are written via `upsert_exact_solution` with
-`is_optimal = True`. That converts those shapes into **hard MCTS cutoffs**
-instead of mere value clamps, and gives the game's magic wand a guaranteed-best
-solution. Where the proven optimum beats the stored rank, the entry is corrected
-— on the current tablebase this affected a substantial fraction of mid-size
-shapes, i.e. the solver repairs data as much as it certifies it.
-
-- **Two interchangeable backends.** `exact_solver.py` contains the reference
-  implementation in pure Python; `solver_rs/` is a dependency-free Rust binary
-  running the same algorithm ~130x faster. `--backend auto` (the default) uses
-  the binary when it has been built and falls back to Python otherwise, so
-  **Rust is optional** — no cargo toolchain is required to use the project.
-- **Verification.** Both backends are checked against the base cases from
-  `docs/Problem_Description.md` on every run, and every produced cut sequence is
-  replayed by `replay_rank` (mirroring `core_engine.replay_engine` semantics)
-  before it may be written. The Rust binary is never trusted blindly.
-- **Boundary.** The binary neither hashes nor touches the database; it consumes
-  `shape_str` and returns ranks over a TSV protocol (see `solver_rs/README.md`).
-  `core_engine.hashing` therefore remains the single source of truth for
-  canonical hashing, with no second implementation that could drift.
-- **Reach.** Cost is exponential in shape size. Shapes whose bounding box
-  exceeds a 128-bit board fall back to the Python implementation. Large
-  intermediate shapes (roughly 27+ cells) remain out of reach in either backend
-  — but they also recur too rarely to be worth much as tablebase entries.
-
-### 6. Value Grounding
-
-The value head is never trained on its own predictions. Every state in a finished episode is labelled `intrinsic_rank = total_rank - cuts_at_state`, where `total_rank` is derived from real terminal states (a fully dissolved graph's rank *is* its cut count) and verified tablebase entries. Two hard bounds clamp raw network output before MCTS uses it:
-
-- `max(nn_val, 4.0)` for shapes absent from the tablebase — anything of rank $\le 3$ would already be recorded there, so the true rank must be at least 4.
-- `min(nn_val, best_rank)` for known but not-proven-optimal shapes — a recorded solution is a valid upper bound.
+See `solver/README.md` for usage and `solver/rust/README.md` for the binary's
+protocol.

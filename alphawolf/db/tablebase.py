@@ -130,63 +130,6 @@ def upsert_subgraph(shape_hash: str, shape_str: str, best_rank: int, best_cut_se
     finally:
         conn.close()
 
-def upsert_exact_solution(shape_hash: str, shape_str: str, rank: int, cut_sequence: list) -> str:
-    """
-    Record a provably optimal rank found by the exact solver.
-
-    Unlike upsert_subgraph (whose is_optimal flag is limited to the rank<=4
-    induction), this marks the entry optimal for any rank. Returns one of
-    'inserted', 'improved', 'confirmed' or 'conflict' — the latter meaning the
-    DB claims a better rank than the proven optimum, which indicates corrupt
-    data and is never overwritten silently.
-    """
-    import json
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    sequence_json = json.dumps(cut_sequence)
-
-    try:
-        cursor.execute("SELECT best_rank, is_optimal FROM subgraph_dictionary WHERE hash = ?", (shape_hash,))
-        row = cursor.fetchone()
-
-        if row is None:
-            cursor.execute(
-                """
-                INSERT INTO subgraph_dictionary (hash, shape_str, best_rank, is_optimal, best_cut_sequence, discovered_by, last_updated)
-                VALUES (?, ?, ?, 1, ?, 'solver', CURRENT_TIMESTAMP)
-                """,
-                (shape_hash, shape_str, rank, sequence_json)
-            )
-            status = "inserted"
-        elif rank < row[0]:
-            cursor.execute(
-                """
-                UPDATE subgraph_dictionary
-                SET best_rank = ?, is_optimal = 1, best_cut_sequence = ?, discovered_by = 'solver',
-                    shape_str = COALESCE(shape_str, ?), last_updated = CURRENT_TIMESTAMP
-                WHERE hash = ?
-                """,
-                (rank, sequence_json, shape_str, shape_hash)
-            )
-            status = "improved"
-        elif rank == row[0]:
-            # Existing best-known solution is in fact optimal; keep it, set the flag
-            cursor.execute(
-                "UPDATE subgraph_dictionary SET is_optimal = 1, last_updated = CURRENT_TIMESTAMP WHERE hash = ?",
-                (shape_hash,)
-            )
-            status = "confirmed"
-        else:
-            # DB rank below the proven optimum: impossible unless data is corrupt
-            status = "conflict"
-
-        conn.commit()
-        _invalidate_cache(shape_hash)
-    finally:
-        conn.close()
-
-    return status
-
 def upsert_grid_solution(m: int, n: int, rank: int, cut_sequence: list, solver_name: str = "alphawolf"):
     """
     Inserts or updates a full grid solution in the leaderboard table.

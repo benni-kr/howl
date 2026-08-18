@@ -8,10 +8,10 @@ Solves shapes by exhaustive treedepth recursion on bitboards:
 Every result is provably optimal, so entries get is_optimal=True — something
 neither players nor the network can produce beyond the rank<=4 induction.
 
-Usage (from the alphawolf directory):
-    python exact_solver.py --dry-run              # solve, report, write nothing
-    python exact_solver.py                        # verify/repair the tablebase
-    python exact_solver.py --max-cells 22 --budget 600
+Usage (no virtualenv needed — standard library only):
+    python3 solver/verify_tablebase.py --dry-run          # solve, report, write nothing
+    python3 solver/verify_tablebase.py                    # verify/repair the tablebase
+    python3 solver/verify_tablebase.py --max-cells 22 --budget 600
 
 The solver only processes shapes already present in the DB (is_optimal=0),
 keyed by their stored hash — it never computes canonical hashes itself, so
@@ -19,15 +19,13 @@ there is no risk of drifting from core_engine's hashing.
 """
 import argparse
 import os
-import shutil
-import sqlite3
 import subprocess
 import time
 
-DB_PATH = "../backend/howl.db"
+from tablebase_writer import fetch_unproven_shapes, resolve_db_path, upsert_exact_solution
 
 RUST_BINARY = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           "solver_rs", "target", "release", "howl_solver")
+                           "rust", "target", "release", "howl_solver")
 
 # Bit-row stride: shapes are origin-normalized, so any shape with <= STRIDE
 # rows/cols fits. Coordinates beyond it are skipped defensively.
@@ -203,25 +201,16 @@ def self_test() -> None:
 
 def run(max_cells: int, limit: int | None, budget: float | None,
         per_shape_timeout: float, dry_run: bool, backend: str = "auto",
-        threads: int | None = None) -> None:
-    conn = sqlite3.connect(DB_PATH)
-    rows = conn.execute(
-        """
-        SELECT hash, shape_str, best_rank,
-               LENGTH(shape_str) - LENGTH(REPLACE(shape_str, '|', '')) + 1 AS cells
-        FROM subgraph_dictionary
-        WHERE is_optimal = 0 AND shape_str IS NOT NULL AND cells BETWEEN 2 AND ?
-        ORDER BY cells ASC
-        """,
-        (max_cells,),
-    ).fetchall()
-    conn.close()
+        threads: int | None = None, db: str | None = None) -> None:
+    db_path = resolve_db_path(db)
+    rows = fetch_unproven_shapes(db_path, max_cells)
     if limit:
         rows = rows[:limit]
 
     if backend == "auto":
         backend = "rust" if os.access(RUST_BINARY, os.X_OK) else "python"
 
+    print(f"database: {db_path}")
     print(f"{len(rows)} non-optimal shapes with 2..{max_cells} cells"
           f" [backend: {backend}]" + (" (dry run)" if dry_run else ""))
 
@@ -229,9 +218,6 @@ def run(max_cells: int, limit: int | None, budget: float | None,
              "timeout": 0, "skipped": 0}
     start = time.monotonic()
     run_deadline = start + budget if budget else None
-
-    if not dry_run:
-        from db.tablebase import upsert_exact_solution
 
     rust_results = {}
     if backend == "rust" and rows:
@@ -277,7 +263,7 @@ def run(max_cells: int, limit: int | None, budget: float | None,
             if key == "improved":
                 print(f"  [{cells:>2} cells] {db_rank} -> {exact}")
         else:
-            status = upsert_exact_solution(shape_hash, shape_str, exact, seq)
+            status = upsert_exact_solution(db_path, shape_hash, shape_str, exact, seq)
             stats[status] += 1
             if status == "improved":
                 print(f"  [{cells:>2} cells] {db_rank} -> {exact}")
@@ -304,8 +290,9 @@ if __name__ == "__main__":
     parser.add_argument("--backend", choices=["auto", "rust", "python"], default="auto",
                         help="auto uses the rust binary when built, else python (default auto)")
     parser.add_argument("--threads", type=int, default=None, help="worker threads for the rust backend")
+    parser.add_argument("--db", default=None, help="database file (default: DATABASE_URL, else ../backend/howl.db)")
     args = parser.parse_args()
 
     self_test()
     run(args.max_cells, args.limit, args.budget, args.per_shape_timeout, args.dry_run,
-        args.backend, args.threads)
+        args.backend, args.threads, args.db)

@@ -16,7 +16,7 @@ cargo build --release        # from this directory
 ```
 
 No external crates — `std` only, so the build works offline. Rust is **optional**
-for the project as a whole: `exact_solver.py --backend python` runs the same
+for the project as a whole: `verify_tablebase.py --backend python` runs the same
 algorithm without any Rust toolchain, just ~130x slower.
 
 ## Protocol
@@ -51,16 +51,16 @@ The binary deliberately knows **nothing** about hashing or the database:
   from it.
 - All database writes go through `db.tablebase.upsert_exact_solution` on the
   Python side.
-- Every result is re-verified in Python by `exact_solver.replay_rank`, which
+- Every result is re-verified in Python by `verify_tablebase.replay_rank`, which
   mirrors `core_engine.replay_engine` semantics, before anything is written. The
   binary is never trusted blindly.
 
 ## Correctness
 
-- `exact_solver.py` implements the same algorithm in Python and serves as the
+- `verify_tablebase.py` implements the same algorithm in Python and serves as the
   golden reference. Verified equal on 600 real shapes: 600/600 identical ranks,
   600/600 sequences replaying to the proven rank.
-- `exact_solver.py --self-test` (run automatically on every invocation) checks
+- `verify_tablebase.py`'s self-test (run automatically on every invocation) checks
   the base cases from `docs/Problem_Description.md`: 1x1 = 1, 1x3 = 2, 2x2 = 3,
   1x7 = 3, plus the brute-forced 4x4 = 7.
 
