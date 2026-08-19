@@ -94,6 +94,13 @@ Roughly 232k parameters. `AlphaWolfCNN` and `ResBlock` remain in the file as the
 
 **On $D_4$ symmetry:** this network is structurally invariant to rotation and reflection — its node features (degree, border, component id, articulation point) contain no coordinates, so a rotated board is an isomorphic graph producing bit-identical outputs. Replay buffer augmentation is therefore *not* applied and would add no information. This differs from the archived CNN, where augmentation was essential. Canonical $D_4$ hashing for tablebase lookups remains mandatory and unaffected.
 
+### 2a. Value Grounding
+
+The value head is never trained on its own predictions. Every state in a finished episode is labelled `intrinsic_rank = total_rank - cuts_at_state`, where `total_rank` is derived from real terminal states (a fully dissolved graph's rank *is* its cut count) and verified tablebase entries. Two hard bounds clamp raw network output before MCTS uses it:
+
+- `max(nn_val, 4.0)` for shapes absent from the tablebase — anything of rank $\le 3$ would already be recorded there, so the true rank must be at least 4.
+- `min(nn_val, best_rank)` for known but not-proven-optimal shapes — a recorded solution is a valid upper bound.
+
 ### 3. Environment (`envs/howl_env.py`)
 
 `HowlEnv` is a custom RL environment built around `core_engine.GridGraph`.
@@ -127,14 +134,7 @@ Never overwrite `best_model.pt` by hand — promotion is the only sanctioned pat
 
 This module connects AlphaWolf directly to the shared backend database (`howl.db` / `test.db`).
 - **`query_tablebase`**: Checks if the canonical hashes of current board shapes have known best solutions. If `is_optimal` is true, or the rank is extremely small ($\le 3$), MCTS stops exploring that subgraph and uses the value.
-- **`upsert_subgraph`** / **`upsert_grid_solution`**: Records new discoveries so the React frontend can automatically display Magic Wands and Abacuses for humans who encounter those same states. Both only ever improve an entry (`best_rank <` guard), so a bad run cannot degrade a better human solution.
+- **`upsert_subgraph`** / **`upsert_grid_solution`**: Records new discoveries so the React frontend can automatically display Magic Wands and Abacuses for humans who encounter those same states. Both only ever improve an entry (`best_rank <` guard), so a bad run cannot degrade a better human solution. `upsert_subgraph` sets `is_optimal` by the `best_rank <= 4` induction: everything of rank $\le 3$ is in the seed, so a shape absent from it has rank $\ge 4$, and a solution achieving 4 is therefore exact. This is the only optimality any *playing* agent can establish.
 - **Caching**: lookups are served from a per-process cache over a persistent SQLite connection. The connection is PID-guarded so forked self-play workers open their own; positive hits are kept indefinitely (a best-known rank stays a valid upper bound), while the miss set is cleared on every local upsert. Discoveries made concurrently by *other* processes may be missed until then, which only means falling back to network evaluation — never an unsound result.
 
 This module uses raw `sqlite3` and can therefore only ever address a **local file**. It cannot write to the production Postgres/Supabase database; pointing `DATABASE_URL` at a Postgres URL would make it try to open a file by that name. Getting AlphaWolf discoveries into production requires a deliberate export/import step.
-
-### 6. Value Grounding
-
-The value head is never trained on its own predictions. Every state in a finished episode is labelled `intrinsic_rank = total_rank - cuts_at_state`, where `total_rank` is derived from real terminal states (a fully dissolved graph's rank *is* its cut count) and verified tablebase entries. Two hard bounds clamp raw network output before MCTS uses it:
-
-- `max(nn_val, 4.0)` for shapes absent from the tablebase — anything of rank $\le 3$ would already be recorded there, so the true rank must be at least 4.
-- `min(nn_val, best_rank)` for known but not-proven-optimal shapes — a recorded solution is a valid upper bound.
