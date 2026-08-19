@@ -41,3 +41,4 @@ alphawolf/models/checkpoints/alphawolf_gen_*.pt
 
 # Rust build artifacts (exact solver)
 solver/rust/target/
+alphawolf/ROADMAP.md
