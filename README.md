@@ -65,7 +65,18 @@ howl-project/
 │       ├── App.tsx           # React Router setup
 │       └── main.tsx          # React DOM entry point
 │
-├── Problem_Description.md    # Mathematical foundation of the game
+├── solver/                   # Exact vertex-ranking solver (stdlib Python + optional Rust)
+│   ├── verify_tablebase.py   # Driver + Python reference implementation
+│   ├── tablebase_writer.py   # Tablebase access (stdlib sqlite3 only)
+│   ├── rust/                 # Optional Rust backend binary (~130x faster)
+│   │   ├── src/main.rs       # Bitboard search over u128 boards
+│   │   └── README.md         # Binary protocol & algorithm documentation
+│   └── README.md             # Solver usage and design boundaries
+│
+├── docs/                     # Project documentation and images
+│   ├── images/               # Screenshots used in the READMEs
+│   └── Problem_Description.md  # Mathematical foundation of the game
+│
 └── README.md
 ```
 
@@ -106,3 +117,5 @@ See [`alphawolf/ARCHITECTURE.md`](alphawolf/ARCHITECTURE.md) for a deep dive int
 See [`backend/ARCHITECTURE.md`](backend/ARCHITECTURE.md) for a detailed technical overview of the backend server and its interactions with the shared core engine.
 
 See [`frontend/ARCHITECTURE.md`](frontend/ARCHITECTURE.md) for details on the React/PixiJS rendering loop, Redux state management, and mobile-responsive layout.
+
+See [`solver/README.md`](solver/README.md) for the exact vertex-ranking solver that proves optimal ranks for small shapes and repairs suboptimal tablebase entries.
