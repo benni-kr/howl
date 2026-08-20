@@ -37,14 +37,18 @@ def run_query():
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # 1. Fetch grid solutions
+    # 1. Fetch grid solutions (including all solvers tied for the best rank)
     cursor.execute("""
-        SELECT m, n, MIN(rank) AS best_rank, solver_name
-        FROM grid_solutions
-        GROUP BY m, n
-        ORDER BY m * n ASC, m ASC, n ASC
+        SELECT g.m, g.n, g.rank AS best_rank, g.solver_name
+        FROM grid_solutions g
+        JOIN (
+            SELECT m, n, MIN(rank) AS min_rank
+            FROM grid_solutions
+            GROUP BY m, n
+        ) best ON g.m = best.m AND g.n = best.n AND g.rank = best.min_rank
+        ORDER BY g.m * g.n ASC, g.m ASC, g.n ASC
     """)
-    solutions = cursor.fetchall()
+    solutions_raw = cursor.fetchall()
 
     # 2. Fetch subgraph dictionary stats
     cursor.execute("SELECT COUNT(*), COUNT(DISTINCT hash) FROM subgraph_dictionary")
@@ -56,14 +60,23 @@ def run_query():
 
     conn.close()
 
-    if not solutions:
+    if not solutions_raw:
         print("Database is currently empty.")
         return
 
-    # Map (m, n) -> (rank, solver)
-    grid_map = {(m, n): (rank, solver) for m, n, rank, solver in solutions}
-    solver_counts = Counter(solver for _, _, _, solver in solutions)
-    total_grids = len(solutions)
+    # Map (m, n) -> rank, set(solvers)
+    grid_map = {}
+    solver_counts = Counter()
+    for m, n, rank, solver in solutions_raw:
+        if (m, n) not in grid_map:
+            grid_map[(m, n)] = (rank, [solver])
+        else:
+            if solver not in grid_map[(m, n)][1]:
+                grid_map[(m, n)][1].append(solver)
+        solver_counts[solver] += 1
+
+    total_grids = len(grid_map)
+    solutions = [(m, n, rank, ", ".join(solvers)) for (m, n), (rank, solvers) in grid_map.items()]
 
     # ------------------------------------------------------------------------
     # HEADER & OVERVIEW
@@ -112,21 +125,22 @@ def run_query():
     # ------------------------------------------------------------------------
     # ALPHAWOLF DISCOVERY HIGHLIGHTS (Sorted largest to smallest)
     # ------------------------------------------------------------------------
-    alphawolf_records = [
-        (m, n, rank) for (m, n), (rank, solver) in grid_map.items()
-        if solver.lower() == "alphawolf"
-    ]
+    alphawolf_records = []
+    for (m, n), (rank, solvers) in grid_map.items():
+        matched = [s for s in solvers if "alphawolf" in s.lower()]
+        if matched:
+            alphawolf_records.append((m, n, rank, ", ".join(matched)))
     alphawolf_records.sort(key=lambda x: (x[0] * x[1], max(x[0], x[1])), reverse=True)
 
     print_section(f"AlphaWolf Records Held ({len(alphawolf_records)} Grids — Largest First)")
     if alphawolf_records:
-        print(f"  AlphaWolf holds the best-known rank on {len(alphawolf_records)} boards:")
-        formatted_grids = [f"{m}×{n} (r={rank})" for m, n, rank in alphawolf_records]
+        print(f"  AlphaWolf agents hold the best-known rank on {len(alphawolf_records)} boards:")
+        formatted_grids = [f"{m}×{n} (r={rank} by {solver})" for m, n, rank, solver in alphawolf_records]
         
-        # Display in chunks of 4 per line for clean readability
-        for i in range(0, len(formatted_grids), 4):
-            chunk = formatted_grids[i:i+4]
-            print("    • " + "   ".join(f"{item:<14}" for item in chunk))
+        # Display in chunks of 3 per line for clean readability
+        for i in range(0, len(formatted_grids), 3):
+            chunk = formatted_grids[i:i+3]
+            print("    • " + "   ".join(f"{item:<24}" for item in chunk))
     else:
         print("  No records currently held by AlphaWolf in this database.")
 

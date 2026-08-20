@@ -11,13 +11,13 @@ from train import play_episode
 from core_engine.hashing import generate_canonical_data
 from db.tablebase import validate_and_upsert_solution
 
-def evaluate_high_simulations(m, n, num_simulations=1000, num_games=10):
+def evaluate_high_simulations(m, n, num_simulations=1000, num_games=10, solver_name="alphawolf2"):
     model_path = os.path.join(os.path.dirname(__file__), "models/checkpoints/best_model.pt")
     if not os.path.exists(model_path):
         print(f"Error: {model_path} not found.")
         return
 
-    print(f"Loading {model_path} for {m}x{n} evaluation with {num_simulations} MCTS simulations...")
+    print(f"Loading {model_path} for {m}x{n} evaluation with {num_simulations} MCTS simulations (solver: '{solver_name}')...")
     net = AlphaWolfNet()
     net.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
     net.eval()
@@ -48,7 +48,7 @@ def evaluate_high_simulations(m, n, num_simulations=1000, num_games=10):
     if best_discoveries:
         print("\nValidating and upserting best discoveries to database...")
         final_sequence = best_discoveries[0][2]
-        saved = validate_and_upsert_solution(m, n, best_rank, final_sequence, solver_name="alphawolf")
+        saved = validate_and_upsert_solution(m, n, best_rank, final_sequence, solver_name=solver_name)
         if saved:
             print("Replay validation passed and database upsert complete.")
         else:
@@ -59,4 +59,10 @@ if __name__ == "__main__":
     config_path = os.path.join(os.path.dirname(__file__), "config.json")
     with open(config_path, "r") as f:
         config = json.load(f)
-    evaluate_high_simulations(config.get("current_m", 7), config.get("current_n", 7), num_simulations=1000, num_games=10)
+    evaluate_high_simulations(
+        config.get("current_m", 7),
+        config.get("current_n", 7),
+        num_simulations=1000,
+        num_games=10,
+        solver_name=config.get("solver_name", "alphawolf2")
+    )

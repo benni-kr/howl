@@ -403,7 +403,7 @@ def simulate_game_worker(worker_args):
     
     return game_id, m, n, traj_buf.getvalue(), final_rank, discoveries
 
-def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_size=8):
+def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_size=8, solver_name="alphawolf2"):
     import concurrent.futures
     import io
     import time
@@ -420,7 +420,7 @@ def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_siz
         worker_args_list.append((m, n, model_bytes, num_simulations, game_id + 1, mcts_batch_size))
         
     num_games = len(gm_gn_list)
-    print(f"\n[PHASE 1] Self-Play ({num_games} games | {num_workers} workers)")
+    print(f"\n[PHASE 1] Self-Play ({num_games} games | {num_workers} workers | solver: '{solver_name}')")
     print("-" * 60)
     
     start_time = time.time()
@@ -444,7 +444,7 @@ def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_siz
             # Main Thread Gatekeeping: Replay Engine Validation & Sequential SQLite Writes
             if discoveries:
                 final_sequence = discoveries[0][2]
-                validate_and_upsert_solution(m, n, final_rank, final_sequence, solver_name="alphawolf")
+                validate_and_upsert_solution(m, n, final_rank, final_sequence, solver_name=solver_name)
             
             # Nicer Terminal Output
             progress = f"[{completed}/{num_games}]"
@@ -498,7 +498,7 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
     print("-" * 60)
     print(f"  Training Summary: {elapsed:.1f}s | Final P_Loss: {avg_p_loss:8.4f} | Final V_Loss: {avg_v_loss:8.4f}")
 
-def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simulations=200, num_workers=5, mcts_batch_size=8, self_play_min_grid=4, self_play_max_grid=9):
+def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simulations=200, num_workers=5, mcts_batch_size=8, self_play_min_grid=4, self_play_max_grid=9, solver_name="alphawolf2"):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Main Process using device: {device}")
     
@@ -510,7 +510,7 @@ def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simul
     
     ckpt_dir = os.path.join(os.path.dirname(__file__), "models/checkpoints")
     os.makedirs(ckpt_dir, exist_ok=True)
-    print(f"Initialized AlphaWolf V1 [{m}x{n}] - Multi-Process Worker Mode")
+    print(f"Initialized AlphaWolf V1 [{m}x{n}] - Multi-Process Worker Mode (solver: '{solver_name}')")
     print(f"MCTS Simulations per move: {num_simulations}")
     print(f"Replay Buffer Capacity: {replay_buffer.maxlen} samples")
     
@@ -529,7 +529,7 @@ def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simul
             gn = random.randint(lo, hi)
             gm_gn_list.append((gm, gn))
             
-        new_trajectories = self_play(net, gm_gn_list, num_simulations=num_simulations, num_workers=num_workers, mcts_batch_size=mcts_batch_size)
+        new_trajectories = self_play(net, gm_gn_list, num_simulations=num_simulations, num_workers=num_workers, mcts_batch_size=mcts_batch_size, solver_name=solver_name)
             
         replay_buffer.extend(new_trajectories)
         
@@ -565,5 +565,6 @@ if __name__ == "__main__":
     mcts_batch_size = config.get("mcts_batch_size", 8)
     self_play_min_grid = config.get("self_play_min_grid", 4)
     self_play_max_grid = config.get("self_play_max_grid", 9)
+    solver_name = config.get("solver_name", "alphawolf2")
 
-    alpha_zero_loop(m, n, num_generations=num_generations, games_per_generation=games_per_gen, num_simulations=simulations, num_workers=num_workers, mcts_batch_size=mcts_batch_size, self_play_min_grid=self_play_min_grid, self_play_max_grid=self_play_max_grid)
+    alpha_zero_loop(m, n, num_generations=num_generations, games_per_generation=games_per_gen, num_simulations=simulations, num_workers=num_workers, mcts_batch_size=mcts_batch_size, self_play_min_grid=self_play_min_grid, self_play_max_grid=self_play_max_grid, solver_name=solver_name)
