@@ -1,8 +1,11 @@
 import os
+import sys
 import time
 import shutil
 import torch
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(__file__))
 
 from envs.howl_env import HowlEnv
 from core_engine.graph_logic import GridGraph

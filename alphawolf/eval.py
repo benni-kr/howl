@@ -1,6 +1,9 @@
 import os
+import sys
 import torch
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(__file__))
 
 from envs.howl_env import HowlEnv
 from models.net import AlphaWolfNet
@@ -9,7 +12,7 @@ from core_engine.hashing import generate_canonical_data
 from db.tablebase import validate_and_upsert_solution
 
 def evaluate_high_simulations(m, n, num_simulations=1000, num_games=10):
-    model_path = "models/checkpoints/best_model.pt"
+    model_path = os.path.join(os.path.dirname(__file__), "models/checkpoints/best_model.pt")
     if not os.path.exists(model_path):
         print(f"Error: {model_path} not found.")
         return

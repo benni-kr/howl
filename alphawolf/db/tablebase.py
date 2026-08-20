@@ -1,5 +1,10 @@
 import sqlite3
 import os
+import sys
+
+_CORE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../core_engine"))
+if _CORE_DIR not in sys.path:
+    sys.path.insert(0, _CORE_DIR)
 
 from core_engine.hashing import generate_canonical_hash
 

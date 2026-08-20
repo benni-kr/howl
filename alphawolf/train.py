@@ -1,11 +1,14 @@
 import math
 import os
+import sys
 import collections
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
+
+sys.path.insert(0, os.path.dirname(__file__))
 
 from models.net import AlphaWolfNet, grid_tensor_to_pyg_data
 from envs.howl_env import HowlEnv, MAX_ROWS, MAX_COLS

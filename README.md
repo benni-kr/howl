@@ -73,53 +73,80 @@ howl-project/
 
 ## Setup & Run
 
-### Install & Run Frontend
+The project uses a single shared Python virtual environment (`backend/venv`) for all Python components (`backend`, `alphawolf`, and the editable `core_engine` package).
+
+### 1. Frontend (React / PixiJS)
 
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-
 Runs on `http://localhost:5173` by default (Vite).
 
-### Install & Run Backend
+### 2. Python Environment Setup (Shared for Backend & AlphaWolf)
 
 ```bash
 cd backend
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
+pip install -r ../alphawolf/requirements.txt
 ```
 
+### 3. Run Backend Server (FastAPI)
+
+With the virtual environment activated:
+```bash
+# From the backend/ directory:
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
 Runs on `http://127.0.0.1:8000` by default.
+
+### 4. Run AlphaWolf (RL Engine & CLI Tools)
+
+With the virtual environment activated (`source backend/venv/bin/activate`):
+
+```bash
+cd alphawolf
+
+# Query the database & 10x10 rank matrix:
+python query_db.py
+
+# Run high-simulation discovery rollouts:
+python eval.py
+
+# Start AlphaZero multi-process training loop:
+python train.py
+```
 
 ## Running Tests
 
-HOWL uses `pytest` across both the backend and the AlphaWolf reinforcement learning engine. Run tests using the backend virtual environment:
+Once your virtual environment is activated (`source backend/venv/bin/activate`), run tests directly with `pytest`:
 
 ### Fast AlphaWolf Math & Unit Tests (~5–8s)
-Runs mathematical invariant checks, $D_4$ dihedral hashing, Tarjan cut vertex detection, replay gatekeeper validation, MCTS virtual loss checks, and GNN message passing:
+Verifies $D_4$ hashing, Tarjan cut vertex detection, replay gatekeeper validation, MCTS virtual loss, and GNN message passing:
 ```bash
-PYTHONPATH=.:core_engine backend/venv/bin/pytest alphawolf/tests/ -k "not test_alpha_zero_1_generation_dry_run" -v
+pytest alphawolf/tests/ -k "not test_alpha_zero_1_generation_dry_run" -v
 ```
 
 ### Full AlphaWolf Test Suite (including 1-gen training dry run)
 ```bash
-PYTHONPATH=.:core_engine backend/venv/bin/pytest alphawolf/tests/ -v
+pytest alphawolf/tests/ -v
 ```
 
 ### Backend & API Tests
 Runs hashing, replay engine, and FastAPI endpoint tests:
 ```bash
-PYTHONPATH=backend:core_engine backend/venv/bin/pytest backend/tests/ -v
+pytest backend/tests/ -v
 ```
 
 ### Run All Tests
 ```bash
-PYTHONPATH=.:core_engine backend/venv/bin/pytest alphawolf/tests/ -v && PYTHONPATH=backend:core_engine backend/venv/bin/pytest backend/tests/ -v
+pytest alphawolf/tests/ backend/tests/ -v
 ```
+
+*(Note: If running without activating the virtualenv first, prepend `backend/venv/bin/pytest`)*
 
 ## Deployment
 

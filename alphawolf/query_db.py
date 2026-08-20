@@ -8,18 +8,24 @@ import sys
 import sqlite3
 from collections import Counter
 
-sys.path.insert(0, os.path.dirname(__file__))
+_ALPHAWOLF_DIR = os.path.dirname(os.path.abspath(__file__))
+_CORE_DIR = os.path.abspath(os.path.join(_ALPHAWOLF_DIR, "../core_engine"))
+
+for p in [_ALPHAWOLF_DIR, _CORE_DIR]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
 from db.tablebase import get_db_path
 
 
-def print_header(title: str, width: int = 70):
+def print_header(title: str, width: int = 80):
     print("\n" + "═" * width)
     print(f" {title.center(width - 2)}")
     print("═" * width)
 
 
-def print_section(title: str, width: int = 70):
-    print(f"\n── {title} " + "─" * max(0, width - len(title) - 4))
+def print_section(title: str, width: int = 80):
+    print(f"\n=== {title} " + "=" * max(0, width - len(title) - 5) + "\n")
 
 
 def run_query():
@@ -77,7 +83,7 @@ def run_query():
     # Header row (columns n = 1..10)
     col_headers = "".join(f"{n:>4}" for n in range(1, max_dim + 1))
     print(f"   m\\n {col_headers}")
-    print("   ───" + "────" * max_dim)
+    print("   ────" + "────" * max_dim)
 
     for m in range(1, max_dim + 1):
         row_str = f"  {m:>2}  │"
@@ -100,40 +106,29 @@ def run_query():
     medals = ["🥇", "🥈", "🥉"]
     for idx, (solver, count) in enumerate(solver_counts.most_common(10), 1):
         share = (count / total_grids) * 100
-        prefix = medals[idx - 1] if idx <= 3 else f"{idx:>2}."
+        prefix = medals[idx - 1] if idx <= 3 else f"{idx:>3}."
         print(f"  {prefix:<3} {solver:<22} {count:>8}   {share:>6.1f}%")
 
     # ------------------------------------------------------------------------
-    # ALPHAWOLF DISCOVERY HIGHLIGHTS
+    # ALPHAWOLF DISCOVERY HIGHLIGHTS (Sorted largest to smallest)
     # ------------------------------------------------------------------------
     alphawolf_records = [
         (m, n, rank) for (m, n), (rank, solver) in grid_map.items()
         if solver.lower() == "alphawolf"
     ]
-    alphawolf_records.sort(key=lambda x: (x[0] * x[1], x[0], x[1]))
+    alphawolf_records.sort(key=lambda x: (x[0] * x[1], max(x[0], x[1])), reverse=True)
 
-    print_section(f"AlphaWolf Standings ({len(alphawolf_records)} Records Held)")
+    print_section(f"AlphaWolf Records Held ({len(alphawolf_records)} Grids — Largest First)")
     if alphawolf_records:
-        formatted_grids = [f"{m}×{n} (r={rank})" for m, n, rank in alphawolf_records[:12]]
-        print(f"  AlphaWolf holds {len(alphawolf_records)} best-known scores across the database.")
-        print(f"  Notable grid records: {', '.join(formatted_grids)}")
-        if len(alphawolf_records) > 12:
-            print(f"  ... and {len(alphawolf_records) - 12} additional grids.")
+        print(f"  AlphaWolf holds the best-known rank on {len(alphawolf_records)} boards:")
+        formatted_grids = [f"{m}×{n} (r={rank})" for m, n, rank in alphawolf_records]
+        
+        # Display in chunks of 4 per line for clean readability
+        for i in range(0, len(formatted_grids), 4):
+            chunk = formatted_grids[i:i+4]
+            print("    • " + "   ".join(f"{item:<14}" for item in chunk))
     else:
         print("  No records currently held by AlphaWolf in this database.")
-
-    # ------------------------------------------------------------------------
-    # TOP DENSITY / LARGE GRIDS
-    # ------------------------------------------------------------------------
-    large_grids = sorted(solutions, key=lambda x: x[0] * x[1], reverse=True)[:10]
-    print_section("Largest Solved Grids (Top 10 by Area)")
-    print(f"  {'Grid':<8} {'Vertices':>10}   {'Best Rank':>10}   {'Solver':<15}")
-    print("  " + "─" * 8 + " " + "─" * 10 + "   " + "─" * 10 + "   " + "─" * 15)
-    for m, n, rank, solver in large_grids:
-        grid_str = f"{m}×{n}"
-        print(f"  {grid_str:<8} {m * n:>10,}   {rank:>10}   {solver:<15}")
-
-    print("\n" + "═" * 70 + "\n")
 
 
 if __name__ == "__main__":
