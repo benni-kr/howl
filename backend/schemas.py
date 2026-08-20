@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 Coordinate = Tuple[int, int]
 Edge = Tuple[Coordinate, Coordinate]
@@ -59,15 +59,14 @@ class SolutionCreate(BaseModel):
 
 
 class SolutionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     m: int
     n: int
     rank: int
     solver_name: str
     cut_sequence: Any
-
-    class Config:
-        from_attributes = True
 
 
 class SubmitResponse(BaseModel):
@@ -121,6 +120,8 @@ class IssueUpdate(BaseModel):
     last_changed_by: str
 
 class IssueResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     type: str
     description: str
@@ -130,6 +131,3 @@ class IssueResponse(BaseModel):
     created_at: datetime
     last_changed_by: Optional[str] = None
     updated_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
