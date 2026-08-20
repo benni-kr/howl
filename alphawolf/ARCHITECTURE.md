@@ -133,8 +133,44 @@ Never overwrite `best_model.pt` by hand — promotion is the only sanctioned pat
 ### 5. Tablebase Integration (`db/tablebase.py`)
 
 This module connects AlphaWolf directly to the shared backend database (`howl.db` / `test.db`).
+- **`validate_and_upsert_solution`**: **Authoritative Replay Gatekeeper**. Every discovery produced during self-play or evaluation is evaluated through `core_engine.replay_engine.replay_and_extract_subgraphs` before writing to SQLite. If the calculated bottom-up rank does not match the claimed rank, or the sequence is invalid/incomplete, the submission is rejected with 0 database writes. Subgraphs are saved in canonical coordinate space `[tx - dx, ty - dy]` matching frontend human submissions.
 - **`query_tablebase`**: Checks if the canonical hashes of current board shapes have known best solutions. If `is_optimal` is true, or the rank is extremely small ($\le 3$), MCTS stops exploring that subgraph and uses the value.
 - **`upsert_subgraph`** / **`upsert_grid_solution`**: Records new discoveries so the React frontend can automatically display Magic Wands and Abacuses for humans who encounter those same states. Both only ever improve an entry (`best_rank <` guard), so a bad run cannot degrade a better human solution. `upsert_subgraph` sets `is_optimal` by the `best_rank <= 4` induction: everything of rank $\le 3$ is in the seed, so a shape absent from it has rank $\ge 4$, and a solution achieving 4 is therefore exact. This is the only optimality any *playing* agent can establish.
 - **Caching**: lookups are served from a per-process cache over a persistent SQLite connection. The connection is PID-guarded so forked self-play workers open their own; positive hits are kept indefinitely (a best-known rank stays a valid upper bound), while the miss set is cleared on every local upsert. Discoveries made concurrently by *other* processes may be missed until then, which only means falling back to network evaluation — never an unsound result.
 
 This module uses raw `sqlite3` and can therefore only ever address a **local file**. It cannot write to the production Postgres/Supabase database; pointing `DATABASE_URL` at a Postgres URL would make it try to open a file by that name. Getting AlphaWolf discoveries into production requires a deliberate export/import step.
+
+---
+
+### 6. Testing & Mathematical Verification (`tests/`)
+
+AlphaWolf contains a comprehensive automated regression suite under `alphawolf/tests/` verifying all mathematical invariants, concurrency mechanics, and persistence guards:
+
+- **`test_math_invariants.py`**:
+  - $D_4$ dihedral group completeness (8 transformations) and invariance under arbitrary rotations, reflections, and translations.
+  - Canonical hash cache immutability and memory isolation.
+  - BFS graph component partitioning equivalence and symmetry deduplication.
+  - Tarjan articulation point detection on 2-connected grids, path graphs, and barbell bridges.
+  - Treedepth recurrence relations and base case ranks ($1\times 1 \to 1$, $1\times 3 \to 2$, $2\times 2 \to 3$).
+  - Tablebase induction and non-degradation invariants.
+- **`test_replay_gatekeeper.py`**:
+  - Validates `validate_and_upsert_solution` acceptance of true solutions and strict rejection of rank mismatches, invalid cuts, and incomplete sequences.
+  - End-to-end self-play discovery replay verification.
+- **`test_concurrency.py`**:
+  - Virtual loss zero-leakage invariant ($\sum \text{visits} = N$, `virtual_loss == 0` for all nodes after search).
+  - Action masking strictness on padded $10\times 10$ canvases (inactive cells pinned to $-10^9$).
+  - `ProcessPoolExecutor` worker spawn isolation and CPU tensor transfer across processes.
+- **`test_gnn.py`**:
+  - Sparse graph conversion, message passing, policy scatter, and backward pass optimization.
+- **`test_pipeline.py`**:
+  - Gauntlet benchmark reproducibility ($4\times 4$ to $9\times 9$, seed 42) and promotion decision trees.
+  - Full 1-generation AlphaZero loop dry run (Self-play $\to$ Training $\to$ Checkpointing).
+
+#### Running AlphaWolf Tests:
+```bash
+# Fast unit & math tests (~5-8s)
+PYTHONPATH=.:core_engine backend/venv/bin/pytest alphawolf/tests/ -k "not test_alpha_zero_1_generation_dry_run" -v
+
+# Full suite including 1-generation training dry run
+PYTHONPATH=.:core_engine backend/venv/bin/pytest alphawolf/tests/ -v
+```

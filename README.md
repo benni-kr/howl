@@ -28,9 +28,10 @@ howl-project/
 ├── alphawolf/                # AlphaZero-style RL pipeline
 │   ├── envs/                 # Custom Howl environments
 │   ├── models/               # PyTorch neural network definitions
-│   ├── db/                   # Tablebase interface
+│   ├── db/                   # Tablebase interface & replay gatekeeper
+│   ├── tests/                # AlphaWolf test suite (math, MCTS, gatekeeper, GNN)
 │   ├── train.py              # Main training loop (MCTS + Self-Play)
-│   ├── benchmark.py          # Automated model evaluation
+│   ├── benchmark.py          # Automated model evaluation & gauntlet
 │   └── ARCHITECTURE.md       # RL engine architecture documentation
 │
 ├── backend/                  # Python/FastAPI app + SQLite
@@ -38,6 +39,7 @@ howl-project/
 │   ├── main.py               # FastAPI entry point & lifespan events
 │   ├── routes/               # API routers (auth, game, leaderboards)
 │   ├── services/             # Application services
+│   ├── tests/                # Backend API, hashing, and replay tests
 │   ├── database.py           # SQLite connection & session configuration
 │   ├── models.py             # SQLAlchemy ORM models
 │   ├── schemas.py            # Pydantic validation schemas
@@ -93,6 +95,32 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 Runs on `http://127.0.0.1:8000` by default.
 
+## Running Tests
+
+HOWL uses `pytest` across both the backend and the AlphaWolf reinforcement learning engine. Run tests using the backend virtual environment:
+
+### Fast AlphaWolf Math & Unit Tests (~5–8s)
+Runs mathematical invariant checks, $D_4$ dihedral hashing, Tarjan cut vertex detection, replay gatekeeper validation, MCTS virtual loss checks, and GNN message passing:
+```bash
+PYTHONPATH=.:core_engine backend/venv/bin/pytest alphawolf/tests/ -k "not test_alpha_zero_1_generation_dry_run" -v
+```
+
+### Full AlphaWolf Test Suite (including 1-gen training dry run)
+```bash
+PYTHONPATH=.:core_engine backend/venv/bin/pytest alphawolf/tests/ -v
+```
+
+### Backend & API Tests
+Runs hashing, replay engine, and FastAPI endpoint tests:
+```bash
+PYTHONPATH=backend:core_engine backend/venv/bin/pytest backend/tests/ -v
+```
+
+### Run All Tests
+```bash
+PYTHONPATH=.:core_engine backend/venv/bin/pytest alphawolf/tests/ -v && PYTHONPATH=backend:core_engine backend/venv/bin/pytest backend/tests/ -v
+```
+
 ## Deployment
 
 The project is designed to be deployed across two separate services:
@@ -101,7 +129,7 @@ The project is designed to be deployed across two separate services:
 
 ## Architecture
 
-See [`alphawolf/ARCHITECTURE.md`](alphawolf/ARCHITECTURE.md) for a deep dive into the Reinforcement Learning pipeline, MCTS search, and model benchmarking.
+See [`alphawolf/ARCHITECTURE.md`](alphawolf/ARCHITECTURE.md) for a deep dive into the Reinforcement Learning pipeline, MCTS search, model benchmarking, and mathematical verification tests.
 
 See [`backend/ARCHITECTURE.md`](backend/ARCHITECTURE.md) for a detailed technical overview of the backend server and its interactions with the shared core engine.
 
