@@ -188,7 +188,11 @@ def upsert_subgraph(shape_hash: str, shape_str: str, best_rank: int, best_cut_se
 def upsert_grid_solution(m: int, n: int, rank: int, cut_sequence: list, solver_name: str = "alphawolf"):
     """
     Inserts or updates a full grid solution in the leaderboard table.
+    Enforces canonical orientation (m >= n).
     """
+    from core_engine.replay_engine import canonicalize_grid_solution
+    m, n, cut_sequence = canonicalize_grid_solution(m, n, cut_sequence)
+
     conn = get_db_connection()
     cursor = conn.cursor()
     import json
@@ -229,16 +233,19 @@ def upsert_grid_solution(m: int, n: int, rank: int, cut_sequence: list, solver_n
 def validate_and_upsert_solution(m: int, n: int, final_rank: int, final_sequence: list, solver_name: str = "alphawolf") -> bool:
     """
     Strict validation gatekeeper: passes final_sequence through the replay engine
-    before writing any data to SQLite.
+    before writing any data to SQLite. Enforces canonical orientation (m >= n).
     
     If the replay reconstruction succeeds and root_rank == final_rank, all extracted
     canonical subgraphs and the full grid solution are persisted.
     Returns True if valid and saved, False if rejected.
     """
-    from core_engine.replay_engine import replay_and_extract_subgraphs
+    from core_engine.replay_engine import replay_and_extract_subgraphs, canonicalize_grid_solution
 
     if not final_sequence or final_rank >= 999999:
         return False
+
+    # Canonicalize to m >= n before validation and insertion
+    m, n, final_sequence = canonicalize_grid_solution(m, n, final_sequence)
 
     try:
         ranks_dict, root_rank = replay_and_extract_subgraphs(m, n, final_sequence)

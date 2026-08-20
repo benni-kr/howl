@@ -13,7 +13,7 @@ from core_engine.replay_engine import replay_and_extract_subgraphs
 
 
 def test_gatekeeper_accepts_valid_solution(isolated_db):
-    """A mathematically valid 1x3 cut sequence must be validated and saved."""
+    """A mathematically valid 1x3 cut sequence must be validated, canonicalized (to 3x1), and saved."""
     valid_seq_1x3 = [
         {"t": "c", "v": [[0, 1]]},
         {"t": "i", "v": [[0, 2]]},
@@ -24,9 +24,9 @@ def test_gatekeeper_accepts_valid_solution(isolated_db):
 
     conn = sqlite3.connect(isolated_db)
     cursor = conn.cursor()
-    cursor.execute("SELECT m, n, rank, solver_name FROM grid_solutions WHERE m = 1 AND n = 3")
+    cursor.execute("SELECT m, n, rank, solver_name FROM grid_solutions WHERE m = 3 AND n = 1")
     row = cursor.fetchone()
-    assert row == (1, 3, 2, "alphawolf")
+    assert row == (3, 1, 2, "alphawolf")
 
     cursor.execute("SELECT COUNT(*) FROM subgraph_dictionary")
     count = cursor.fetchone()[0]

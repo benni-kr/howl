@@ -1,8 +1,8 @@
 {
   "current_m": 7,
   "current_n": 7,
-  "total_generations": 50,
-  "games_per_generation": 30,
+  "total_generations": 25,
+  "games_per_generation": 20,
   "mcts_simulations": 200,
   "gauntlet_fractured_per_tier": 2,
   "gauntlet_fracture_min": 0.1,
@@ -10,5 +10,6 @@
   "num_workers": 5,
   "mcts_batch_size": 8,
   "self_play_min_grid": 4,
-  "self_play_max_grid": 9
+  "self_play_max_grid": 9,
+  "solver_name": "alphawolf2"
 }

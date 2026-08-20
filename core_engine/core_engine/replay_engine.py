@@ -223,3 +223,24 @@ def replay_and_extract_subgraphs(m: int, n: int, flat_cut_sequence: list) -> dic
 
     root_rank = calc_intrinsic_rank(root)
     return ranks_dict, root_rank
+
+
+def canonicalize_grid_solution(m: int, n: int, cut_sequence: list) -> tuple[int, int, list]:
+    """
+    Canonicalizes grid dimensions to ensure m >= n.
+    If m < n, transposes dimensions to (n, m) and all coordinates [x, y] -> [y, x].
+    """
+    if m >= n:
+        return m, n, cut_sequence
+
+    transposed_seq = []
+    for action in cut_sequence:
+        norm = _normalize_action(action)
+        if norm is None:
+            continue
+        act = dict(norm)
+        if "v" in act and isinstance(act["v"], list):
+            act["v"] = [[y, x] for x, y in act["v"]]
+        transposed_seq.append(act)
+    return n, m, transposed_seq
+
