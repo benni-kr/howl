@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 
 from models.net import AlphaWolfNet, grid_tensor_to_pyg_data
 from envs.howl_env import HowlEnv, MAX_ROWS, MAX_COLS
-from db.tablebase import query_tablebase, insert_or_update_rank4_induction, upsert_subgraph, upsert_grid_solution
+from db.tablebase import query_tablebase, insert_or_update_rank4_induction, upsert_subgraph, upsert_grid_solution, validate_and_upsert_solution
 from core_engine.hashing import generate_canonical_hash, generate_canonical_data
 from core_engine.graph_logic import GridGraph
 
@@ -373,12 +373,13 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, 
             return local_trajectory + recursive_trajectories, total_rank, local_discoveries + recursive_discoveries
 
 def simulate_game_worker(worker_args):
-    m, n, model_state_dict, num_simulations, game_id, mcts_batch_size = worker_args
+    import io
+    m, n, model_bytes, num_simulations, game_id, mcts_batch_size = worker_args
     
     local_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.set_num_threads(1) # Prevent OpenMP deadlocks in multiprocessing
     net = AlphaWolfNet(m, n)
-    net.load_state_dict(model_state_dict)
+    net.load_state_dict(torch.load(io.BytesIO(model_bytes), map_location=local_device))
     net.to(local_device)
     net.eval()
     
@@ -386,25 +387,34 @@ def simulate_game_worker(worker_args):
     obs, _ = env.reset()
     traj, final_rank, discoveries = play_episode(net, env, obs, num_simulations, batch_size=mcts_batch_size)
     
-    # We must move PyG tensors back to CPU before pickling them back to the main process
-    # to avoid CUDA IPC memory issues across process boundaries
+    # Serialize PyG trajectory to plain bytes to avoid PyTorch IPC shared-memory leaks across processes
     for data in traj:
-        data = data.to('cpu')
+        data.x = data.x.cpu()
+        data.edge_index = data.edge_index.cpu()
+        data.flat_indices = data.flat_indices.cpu()
+        data.pi = data.pi.cpu()
+        data.v = data.v.cpu()
         
-    return game_id, m, n, traj, final_rank, discoveries
+    traj_buf = io.BytesIO()
+    torch.save(traj, traj_buf)
+    
+    return game_id, m, n, traj_buf.getvalue(), final_rank, discoveries
 
 def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_size=8):
     import concurrent.futures
+    import io
     import time
     
     replay_buffer = []
     
-    # Extract state dict on CPU to send to workers
-    model_state_dict = {k: v.cpu() for k, v in net.state_dict().items()}
+    # Serialize state dict to bytes to send to workers cleanly
+    model_buf = io.BytesIO()
+    torch.save(net.state_dict(), model_buf)
+    model_bytes = model_buf.getvalue()
     
     worker_args_list = []
     for game_id, (m, n) in enumerate(gm_gn_list):
-        worker_args_list.append((m, n, model_state_dict, num_simulations, game_id + 1, mcts_batch_size))
+        worker_args_list.append((m, n, model_bytes, num_simulations, game_id + 1, mcts_batch_size))
         
     num_games = len(gm_gn_list)
     print(f"\n[PHASE 1] Self-Play ({num_games} games | {num_workers} workers)")
@@ -420,23 +430,18 @@ def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_siz
         futures = [executor.submit(simulate_game_worker, args) for args in worker_args_list]
         
         for future in concurrent.futures.as_completed(futures):
-            game_id, m, n, traj, final_rank, discoveries = future.result()
+            game_id, m, n, traj_bytes, final_rank, discoveries = future.result()
+            traj = torch.load(io.BytesIO(traj_bytes), map_location='cpu', weights_only=False)
             replay_buffer.extend(traj)
             
             ranks.append(final_rank)
             lengths.append(len(traj))
             completed += 1
             
-            # Main Thread Gatekeeping: Sequential SQLite Writes to avoid locking
-            for state, rank, seq in discoveries:
-                active_coords = np.argwhere(state[0] == 1)
-                verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
-                can_data = generate_canonical_data(verts)
-                upsert_subgraph(can_data["hash"], can_data["shape_str"], rank, seq)
-                
+            # Main Thread Gatekeeping: Replay Engine Validation & Sequential SQLite Writes
             if discoveries:
                 final_sequence = discoveries[0][2]
-                upsert_grid_solution(m, n, final_rank, final_sequence)
+                validate_and_upsert_solution(m, n, final_rank, final_sequence, solver_name="alphawolf")
             
             # Nicer Terminal Output
             progress = f"[{completed}/{num_games}]"
@@ -500,7 +505,8 @@ def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simul
     
     replay_buffer = collections.deque(maxlen=30000)
     
-    os.makedirs("models/checkpoints", exist_ok=True)
+    ckpt_dir = os.path.join(os.path.dirname(__file__), "models/checkpoints")
+    os.makedirs(ckpt_dir, exist_ok=True)
     print(f"Initialized AlphaWolf V1 [{m}x{n}] - Multi-Process Worker Mode")
     print(f"MCTS Simulations per move: {num_simulations}")
     print(f"Replay Buffer Capacity: {replay_buffer.maxlen} samples")
@@ -527,7 +533,7 @@ def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simul
         train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32)
         scheduler.step()
         
-        ckpt_path = f"models/checkpoints/alphawolf_gen_{gen}.pt"
+        ckpt_path = os.path.join(ckpt_dir, f"alphawolf_gen_{gen}.pt")
         torch.save(net.state_dict(), ckpt_path)
         
         print(f"\n[PHASE 3] Validation & Checkpointing")

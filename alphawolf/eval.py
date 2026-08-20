@@ -6,7 +6,7 @@ from envs.howl_env import HowlEnv
 from models.net import AlphaWolfNet
 from train import play_episode
 from core_engine.hashing import generate_canonical_data
-from db.tablebase import upsert_subgraph, upsert_grid_solution
+from db.tablebase import validate_and_upsert_solution
 
 def evaluate_high_simulations(m, n, num_simulations=1000, num_games=10):
     model_path = "models/checkpoints/best_model.pt"
@@ -43,16 +43,13 @@ def evaluate_high_simulations(m, n, num_simulations=1000, num_games=10):
     print(f"Total Sequence Length (Trajectory Nodes): {len(best_traj)}")
 
     if best_discoveries:
-        print("\nUpserting best discoveries to database...")
-        for state, rank, seq in best_discoveries:
-            active_coords = np.argwhere(state[0] == 1)
-            verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
-            can_data = generate_canonical_data(verts)
-            upsert_subgraph(can_data["hash"], can_data["shape_str"], rank, seq)
-            
+        print("\nValidating and upserting best discoveries to database...")
         final_sequence = best_discoveries[0][2]
-        upsert_grid_solution(m, n, best_rank, final_sequence)
-        print("Upsert complete.")
+        saved = validate_and_upsert_solution(m, n, best_rank, final_sequence, solver_name="alphawolf")
+        if saved:
+            print("Replay validation passed and database upsert complete.")
+        else:
+            print("Warning: Solution rejected by replay validation; database not modified.")
 
 if __name__ == "__main__":
     import json

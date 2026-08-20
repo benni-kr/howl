@@ -89,7 +89,9 @@ def evaluate_model(model_path, gauntlet_boards, num_simulations=100, mcts_batch_
     execution_time = time.time() - start_time
     return cumulative_rank, total_node_expansions, execution_time
 
-def promote_model(new_model_path, best_model_path="models/checkpoints/best_model.pt"):
+_DEFAULT_BEST_MODEL_PATH = os.path.join(os.path.dirname(__file__), "models/checkpoints/best_model.pt")
+
+def promote_model(new_model_path, best_model_path=_DEFAULT_BEST_MODEL_PATH):
     gauntlet = create_gauntlet()
     
     if not os.path.exists(best_model_path):
