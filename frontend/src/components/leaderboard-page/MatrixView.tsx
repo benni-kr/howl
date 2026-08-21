@@ -10,6 +10,7 @@ interface MatrixViewProps {
   onCellClick: (m: number, n: number, hasData: boolean) => void;
   mode: MatrixMode;
   customFormula?: string;
+  solverFilter?: 'all' | 'humans' | 'ai';
 }
 
 const getLowerBound = (m: number, n: number): number => {
@@ -62,15 +63,16 @@ const CELL = 40;     // px per cell
 const GAP = 2;       // px gap between cells
 const MAX = 100;     // max grid dimension
 
-const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, customFormula = '' }) => {
+const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, customFormula = '', solverFilter = 'all' }) => {
   const { alias } = useAlias();
   const tooltipRef = React.useRef<HTMLDivElement>(null);
   const [hiddenCols, setHiddenCols] = React.useState(0);
 
   const handleScroll = React.useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const scrollTop = e.currentTarget.scrollTop;
-    const row = Math.floor(scrollTop / (CELL + GAP));
-    setHiddenCols(Math.max(0, row - 1));
+    const left = e.currentTarget.scrollLeft;
+    const colWidth = CELL + GAP;
+    const hidden = Math.floor(left / colWidth);
+    setHiddenCols(hidden);
   }, []);
 
   const handleMouseEnter = React.useCallback((e: React.MouseEvent, m: number, n: number, cellRender: any) => {
@@ -91,7 +93,13 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
       if (titleEl) titleEl.innerText = `Grid: ${m} × ${n}`;
       if (rankEl) rankEl.innerText = cellRender.minRank.toString();
       if (lbEl) lbEl.innerText = cellRender.lowerBound.toString();
-      if (solverEl) solverEl.innerText = cellRender.solver;
+      if (solverEl) {
+        if (cellRender.isAi) {
+          solverEl.innerHTML = `${cellRender.solver} <span style="font-size: 10px; background: rgba(99, 102, 241, 0.25); color: #818cf8; padding: 1px 5px; border-radius: 4px; font-weight: 600; margin-left: 4px;">🤖 AI</span>`;
+        } else {
+          solverEl.innerText = cellRender.solver;
+        }
+      }
       
       if (metricWrapEl && metricEl) {
         if (cellRender.metricValue !== null) {
@@ -293,7 +301,24 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
       color = '#ffffff';
     }
 
-    return { content, bgColor, color, border, opacity, lowerBound, metricValue, minRank: cellData.min_rank, solver: cellData.solver_name };
+    const isAi = Boolean(
+      cellData.is_ai ||
+      cellData.solver_name.toLowerCase().includes('alphawolf') ||
+      cellData.solver_name.toLowerCase().includes('computer')
+    );
+
+    return { 
+      content, 
+      bgColor, 
+      color, 
+      border, 
+      opacity, 
+      lowerBound, 
+      metricValue, 
+      minRank: cellData.min_rank, 
+      solver: cellData.solver_name,
+      isAi
+    };
   };
 
   const mIndices = useMemo(() => Array.from({ length: MAX }, (_, i) => i + 1), []);
@@ -431,7 +456,8 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
                           minRank: cellRender.minRank,
                           solver: cellRender.solver,
                           lowerBound: cellRender.lowerBound,
-                          metricValue: cellRender.metricValue
+                          metricValue: cellRender.metricValue,
+                          isAi: cellRender.isAi
                         });
                       }
                     }}
@@ -449,6 +475,7 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
                     {cellRender ? (
                       <div
                         style={{
+                          position: 'relative',
                           width: '100%',
                           height: '100%',
                           background: cellRender.bgColor,
@@ -464,9 +491,28 @@ const MatrixView: React.FC<MatrixViewProps> = ({ data, onCellClick, mode, custom
                           boxSizing: 'border-box',
                           boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.1), 0 2px 4px rgba(0,0,0,0.1)',
                           transition: 'background 0.2s, opacity 0.2s, transform 0.1s',
+                          overflow: 'hidden',
                         }}
                       >
                         {cellRender.content}
+                        {cellRender.isAi && (!solverFilter || solverFilter === 'all') && (
+                          <div
+                            title="AI Record"
+                            style={{
+                              position: 'absolute',
+                              top: '2px',
+                              right: '3px',
+                              fontSize: '8px',
+                              lineHeight: 1,
+                              opacity: 0.7,
+                              color: cellRender.color || 'var(--text-main)',
+                              userSelect: 'none',
+                              pointerEvents: 'none',
+                            }}
+                          >
+                            ✦
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div style={{

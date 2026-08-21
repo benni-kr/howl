@@ -1,5 +1,13 @@
 import hashlib
 
+# In-process memoization of canonical data. The canonical result depends only
+# on the multiset of coordinates, so the key is the sorted coordinate tuple —
+# a hit is byte-identical to a fresh computation. Bounded so long-running
+# processes (backend) stay safe; cleared wholesale on overflow.
+_CANONICAL_CACHE_LIMIT = 200_000
+_canonical_cache: dict = {}
+
+
 def get_transformations():
     """Returns the 8 D4 transformations as lambda functions."""
     return [
@@ -23,6 +31,13 @@ def generate_canonical_data(vertices: list[dict]) -> dict:
         return {"hash": "", "transform_idx": 0, "shift_x": 0, "shift_y": 0}
 
     coords = [(v["x"], v["y"]) for v in vertices]
+
+    cache_key = tuple(sorted(coords))
+    cached = _canonical_cache.get(cache_key)
+    if cached is not None:
+        # Return a copy so callers can never mutate the cached entry
+        return dict(cached)
+
     transforms = get_transformations()
     
     best_string = None
@@ -50,6 +65,10 @@ def generate_canonical_data(vertices: list[dict]) -> dict:
     md5_hash = hashlib.md5(best_string.encode('utf-8')).hexdigest()
     best_meta["hash"] = md5_hash
     best_meta["shape_str"] = best_string
+
+    if len(_canonical_cache) >= _CANONICAL_CACHE_LIMIT:
+        _canonical_cache.clear()
+    _canonical_cache[cache_key] = dict(best_meta)
 
     return best_meta
 

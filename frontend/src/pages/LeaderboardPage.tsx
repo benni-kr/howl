@@ -18,6 +18,9 @@ type ViewTab = 'matrix' | 'solvers';
 const VALID_VIEWS: ViewTab[] = ['matrix', 'solvers'];
 const VALID_MODES: MatrixMode[] = ['min_rank', 'top_solver', 'perfection_gap', 'density_linear', 'rank_jump', 'diagonal_jump', 'custom_formula'];
 
+type SolverFilter = 'all' | 'humans' | 'ai';
+const VALID_SOLVERS: SolverFilter[] = ['all', 'humans', 'ai'];
+
 const MODE_LABELS: Record<MatrixMode, string> = {
   min_rank: 'Min Rank',
   top_solver: 'Top Solver',
@@ -26,6 +29,12 @@ const MODE_LABELS: Record<MatrixMode, string> = {
   rank_jump: 'Rank Jump',
   diagonal_jump: 'Diag. Jump',
   custom_formula: 'Custom',
+};
+
+const SOLVER_LABELS: Record<SolverFilter, string> = {
+  all: 'AI & Humans',
+  humans: 'Only Humans',
+  ai: 'Only AI',
 };
 
 const LeaderboardPage: React.FC = () => {
@@ -55,6 +64,14 @@ const LeaderboardPage: React.FC = () => {
       ? storedMode
       : 'min_rank';
 
+  const rawSolver = searchParams.get('solver');
+  const storedSolver = localStorage.getItem('howl_solver_filter') as SolverFilter | null;
+  const solverFilter: SolverFilter = rawSolver && VALID_SOLVERS.includes(rawSolver as SolverFilter)
+    ? (rawSolver as SolverFilter)
+    : storedSolver && VALID_SOLVERS.includes(storedSolver)
+      ? storedSolver
+      : 'all';
+
   const squareOnlyRaw = searchParams.get('square');
   const storedSquareOnly = localStorage.getItem('howl_square_only');
   const squareOnly = squareOnlyRaw !== null 
@@ -64,8 +81,9 @@ const LeaderboardPage: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('howl_leaderboard_view', activeTab);
     localStorage.setItem('howl_matrix_mode', matrixMode);
+    localStorage.setItem('howl_solver_filter', solverFilter);
     localStorage.setItem('howl_square_only', String(squareOnly));
-  }, [activeTab, matrixMode, squareOnly]);
+  }, [activeTab, matrixMode, solverFilter, squareOnly]);
 
   // ── Data state (still local — it's server data, not UI state) ─────
   const [matrixData, setMatrixData] = useState<MatrixCellData[]>([]);
@@ -90,45 +108,59 @@ const LeaderboardPage: React.FC = () => {
   useEffect(() => {
     if (activeTab === 'matrix') {
       setLoading(true);
-      fetchMatrixLeaderboard().then(data => {
+      fetchMatrixLeaderboard(solverFilter).then(data => {
         setMatrixData(data);
         setLoading(false);
       });
     } else {
       setLoading(true);
-      fetchTopSolvers(squareOnly).then(data => {
+      fetchTopSolvers(squareOnly, solverFilter).then(data => {
         setTopSolvers(data);
         setLoading(false);
       });
     }
-  }, [activeTab, squareOnly]);
+  }, [activeTab, squareOnly, solverFilter]);
 
   // ── Navigation helpers ────────────────────────────────────────────
   const setView = useCallback((view: ViewTab) => {
-    navigate(`/leaderboard?view=${view}`);
-  }, [navigate]);
+    const params = new URLSearchParams(searchParams);
+    params.set('view', view);
+    navigate(`/leaderboard?${params.toString()}`);
+  }, [navigate, searchParams]);
 
   const setMode = useCallback((mode: MatrixMode) => {
-    navigate(`/leaderboard?view=matrix&mode=${mode}`);
-  }, [navigate]);
+    const params = new URLSearchParams(searchParams);
+    params.set('view', 'matrix');
+    params.set('mode', mode);
+    navigate(`/leaderboard?${params.toString()}`);
+  }, [navigate, searchParams]);
+
+  const setSolver = useCallback((solver: SolverFilter) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('solver', solver);
+    navigate(`/leaderboard?${params.toString()}`);
+  }, [navigate, searchParams]);
 
   const toggleSquare = useCallback(() => {
     const next = !squareOnly;
-    navigate(`/leaderboard?view=solvers&square=${next}`);
-  }, [navigate, squareOnly]);
+    const params = new URLSearchParams(searchParams);
+    params.set('view', 'solvers');
+    params.set('square', String(next));
+    navigate(`/leaderboard?${params.toString()}`);
+  }, [navigate, searchParams, squareOnly]);
 
   const handleCellClick = useCallback((m: number, n: number, hasData: boolean) => {
     // Preserve current mode in query params for back-nav context
     if (hasData) {
-      navigate(`/leaderboard/${m}/${n}?view=matrix&mode=${matrixMode}`);
+      navigate(`/leaderboard/${m}/${n}?view=matrix&mode=${matrixMode}&solver=${solverFilter}`);
     } else {
       setPlayPopup({ m, n });
     }
-  }, [navigate, matrixMode]);
+  }, [navigate, matrixMode, solverFilter]);
 
   const handleBack = useCallback(() => {
-    navigate(`/leaderboard?view=matrix&mode=${matrixMode}`);
-  }, [navigate, matrixMode]);
+    navigate(`/leaderboard?view=matrix&mode=${matrixMode}&solver=${solverFilter}`);
+  }, [navigate, matrixMode, solverFilter]);
 
   // ── Render ────────────────────────────────────────────────────────
   return (
@@ -153,7 +185,8 @@ const LeaderboardPage: React.FC = () => {
           </div>
 
           {/* Secondary Controls (Right Aligned) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 auto', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 auto', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              {/* Dropdown 1: Solver Filter (All Players / Only Humans / Only AI) */}
               <div style={{ 
                 position: 'relative', 
                 display: 'flex', 
@@ -164,7 +197,47 @@ const LeaderboardPage: React.FC = () => {
                 padding: '0 12px',
                 height: '36px',
                 width: '100%',
-                maxWidth: '220px'
+                maxWidth: '200px'
+              }}>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-subtle)', marginRight: '8px', whiteSpace: 'nowrap' }}>Players:</div>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {SOLVER_LABELS[solverFilter]}
+                </div>
+                <select
+                  id="solver-filter-select"
+                  value={solverFilter}
+                  onChange={(e) => setSolver(e.target.value as SolverFilter)}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    opacity: 0,
+                    cursor: 'pointer',
+                    appearance: 'none',
+                  }}
+                >
+                  {VALID_SOLVERS.map(s => (
+                    <option key={s} value={s}>{SOLVER_LABELS[s]}</option>
+                  ))}
+                </select>
+                <div style={{ pointerEvents: 'none', marginLeft: '8px', fontSize: '10px', color: 'var(--text-subtle)' }}>
+                  ▼
+                </div>
+              </div>
+
+              {/* Dropdown 2: Metric / Grid dropdown */}
+              <div style={{ 
+                position: 'relative', 
+                display: 'flex', 
+                alignItems: 'center', 
+                background: 'var(--bg-inset)', 
+                border: '1px solid var(--border-subtle)', 
+                borderRadius: '8px', 
+                padding: '0 12px',
+                height: '36px',
+                width: '100%',
+                maxWidth: '200px'
               }}>
                 {activeTab === 'matrix' ? (
                   <>
@@ -193,7 +266,7 @@ const LeaderboardPage: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-subtle)', marginRight: '8px', whiteSpace: 'nowrap' }}>Filter:</div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-subtle)', marginRight: '8px', whiteSpace: 'nowrap' }}>Grid:</div>
                     <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {squareOnly ? 'Square Only' : 'All Grids'}
                     </div>
@@ -330,6 +403,7 @@ const LeaderboardPage: React.FC = () => {
                     onCellClick={handleCellClick} 
                     mode={matrixMode} 
                     customFormula={customFormula}
+                    solverFilter={solverFilter}
                   />
                 </div>
               )

@@ -73,6 +73,24 @@ class GridGraph:
             self.adjacency.pop(vertex, None)
             self.vertices.discard(vertex)
 
+    def get_component_vertex_sets(self) -> List[Set[Vertex]]:
+        """
+        Return the connected components as plain vertex sets.
+
+        Cheaper than get_disconnected_subgraphs() because it skips building a
+        GridGraph (and copying its adjacency) per component. Use this when only
+        component membership is needed.
+        """
+        visited: Set[Vertex] = set()
+        components: List[Set[Vertex]] = []
+
+        for start in self.vertices:
+            if start in visited:
+                continue
+            components.append(self._bfs_component(start, visited))
+
+        return components
+
     def get_disconnected_subgraphs(self) -> List["GridGraph"]:
         """
         Return a list of disconnected subgraphs after cuts.
@@ -80,16 +98,7 @@ class GridGraph:
         Each subgraph is a GridGraph containing only the vertices and edges
         from one connected component.
         """
-        visited: Set[Vertex] = set()
-        subgraphs: List[GridGraph] = []
-
-        for start in self.vertices:
-            if start in visited:
-                continue
-            component = self._bfs_component(start, visited)
-            subgraphs.append(self._build_subgraph(component))
-
-        return subgraphs
+        return [self._build_subgraph(c) for c in self.get_component_vertex_sets()]
 
     def _bfs_component(self, start: Vertex, visited: Set[Vertex]) -> Set[Vertex]:
         """Collect vertices in a connected component using BFS."""

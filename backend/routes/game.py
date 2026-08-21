@@ -27,32 +27,36 @@ router = APIRouter()
 
 @router.post("/submit_solution", response_model=SubmitResponse)
 def submit_solution(payload: SolutionCreate, token: str = Depends(verify_token), db: Session = Depends(get_db)) -> SubmitResponse:
-    if payload.solver_name.lower() in ["computer", "alphawolf", "god"]:
+    name_clean = payload.solver_name.strip().lower()
+    if name_clean in ["computer", "god"] or "alphawolf" in name_clean:
         raise HTTPException(status_code=403, detail="Reserved system alias")
+
+    from core_engine.replay_engine import canonicalize_grid_solution
+    canon_m, canon_n, canon_seq = canonicalize_grid_solution(payload.m, payload.n, payload.cut_sequence)
 
     existing = (
         db.query(GridSolution)
         .filter(
-            GridSolution.m == payload.m,
-            GridSolution.n == payload.n,
+            GridSolution.m == canon_m,
+            GridSolution.n == canon_n,
             GridSolution.solver_name == payload.solver_name,
         )
         .first()
     )
 
     # ALWAYS update the subgraph dictionary and compute true rank
-    computed_rank = update_subgraph_dictionary(db, payload.m, payload.n, payload.cut_sequence, payload.solver_name)
+    computed_rank = update_subgraph_dictionary(db, canon_m, canon_n, canon_seq, payload.solver_name)
     
     if computed_rank != payload.achieved_rank:
         raise HTTPException(status_code=400, detail=f"Rank mismatch: client claimed {payload.achieved_rank}, but server computed {computed_rank}")
 
     if existing is None:
         solution = GridSolution(
-            m=payload.m,
-            n=payload.n,
+            m=canon_m,
+            n=canon_n,
             rank=computed_rank,
             solver_name=payload.solver_name,
-            cut_sequence=payload.cut_sequence,
+            cut_sequence=canon_seq,
         )
         db.add(solution)
         try:
@@ -61,12 +65,12 @@ def submit_solution(payload: SolutionCreate, token: str = Depends(verify_token),
             return SubmitResponse(updated=True, solution=solution)
         except IntegrityError:
             db.rollback()
-            computed_rank = update_subgraph_dictionary(db, payload.m, payload.n, payload.cut_sequence, payload.solver_name)
+            computed_rank = update_subgraph_dictionary(db, canon_m, canon_n, canon_seq, payload.solver_name)
             existing = (
                 db.query(GridSolution)
                 .filter(
-                    GridSolution.m == payload.m,
-                    GridSolution.n == payload.n,
+                    GridSolution.m == canon_m,
+                    GridSolution.n == canon_n,
                     GridSolution.solver_name == payload.solver_name,
                 )
                 .first()
@@ -79,13 +83,12 @@ def submit_solution(payload: SolutionCreate, token: str = Depends(verify_token),
 
     if computed_rank < existing.rank:
         existing.rank = computed_rank
-        existing.cut_sequence = payload.cut_sequence
+        existing.cut_sequence = canon_seq
         existing.created_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(existing)
         return SubmitResponse(updated=True, solution=existing)
 
-    db.commit()
     return SubmitResponse(updated=False, solution=existing)
 
 

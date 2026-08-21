@@ -28,9 +28,10 @@ howl-project/
 ├── alphawolf/                # AlphaZero-style RL pipeline
 │   ├── envs/                 # Custom Howl environments
 │   ├── models/               # PyTorch neural network definitions
-│   ├── db/                   # Tablebase interface
+│   ├── db/                   # Tablebase interface & replay gatekeeper
+│   ├── tests/                # AlphaWolf test suite (math, MCTS, gatekeeper, GNN)
 │   ├── train.py              # Main training loop (MCTS + Self-Play)
-│   ├── benchmark.py          # Automated model evaluation
+│   ├── benchmark.py          # Automated model evaluation & gauntlet
 │   └── ARCHITECTURE.md       # RL engine architecture documentation
 │
 ├── backend/                  # Python/FastAPI app + SQLite
@@ -38,6 +39,7 @@ howl-project/
 │   ├── main.py               # FastAPI entry point & lifespan events
 │   ├── routes/               # API routers (auth, game, leaderboards)
 │   ├── services/             # Application services
+│   ├── tests/                # Backend API, hashing, and replay tests
 │   ├── database.py           # SQLite connection & session configuration
 │   ├── models.py             # SQLAlchemy ORM models
 │   ├── schemas.py            # Pydantic validation schemas
@@ -71,27 +73,80 @@ howl-project/
 
 ## Setup & Run
 
-### Install & Run Frontend
+The project uses a single shared Python virtual environment (`backend/venv`) for all Python components (`backend`, `alphawolf`, and the editable `core_engine` package).
+
+### 1. Frontend (React / PixiJS)
 
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-
 Runs on `http://localhost:5173` by default (Vite).
 
-### Install & Run Backend
+### 2. Python Environment Setup (Shared for Backend & AlphaWolf)
 
 ```bash
 cd backend
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
+pip install -r ../alphawolf/requirements.txt
 ```
 
+### 3. Run Backend Server (FastAPI)
+
+With the virtual environment activated:
+```bash
+# From the backend/ directory:
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
 Runs on `http://127.0.0.1:8000` by default.
+
+### 4. Run AlphaWolf (RL Engine & CLI Tools)
+
+With the virtual environment activated (`source backend/venv/bin/activate`):
+
+```bash
+cd alphawolf
+
+# Query the database & 10x10 rank matrix:
+python query_db.py
+
+# Run high-simulation discovery rollouts:
+python eval.py
+
+# Start AlphaZero multi-process training loop:
+python train.py
+```
+
+## Running Tests
+
+Once your virtual environment is activated (`source backend/venv/bin/activate`), run tests directly with `pytest`:
+
+### Fast AlphaWolf Math & Unit Tests (~5–8s)
+Verifies $D_4$ hashing, Tarjan cut vertex detection, replay gatekeeper validation, MCTS virtual loss, and GNN message passing:
+```bash
+pytest alphawolf/tests/ -k "not test_alpha_zero_1_generation_dry_run" -v
+```
+
+### Full AlphaWolf Test Suite (including 1-gen training dry run)
+```bash
+pytest alphawolf/tests/ -v
+```
+
+### Backend & API Tests
+Runs hashing, replay engine, and FastAPI endpoint tests:
+```bash
+pytest backend/tests/ -v
+```
+
+### Run All Tests
+```bash
+pytest alphawolf/tests/ backend/tests/ -v
+```
+
+*(Note: If running without activating the virtualenv first, prepend `backend/venv/bin/pytest`)*
 
 ## Deployment
 
@@ -101,7 +156,7 @@ The project is designed to be deployed across two separate services:
 
 ## Architecture
 
-See [`alphawolf/ARCHITECTURE.md`](alphawolf/ARCHITECTURE.md) for a deep dive into the Reinforcement Learning pipeline, MCTS search, and model benchmarking.
+See [`alphawolf/ARCHITECTURE.md`](alphawolf/ARCHITECTURE.md) for a deep dive into the Reinforcement Learning pipeline, MCTS search, model benchmarking, and mathematical verification tests.
 
 See [`backend/ARCHITECTURE.md`](backend/ARCHITECTURE.md) for a detailed technical overview of the backend server and its interactions with the shared core engine.
 

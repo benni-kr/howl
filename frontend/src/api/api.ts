@@ -214,10 +214,14 @@ export type MatrixCellData = {
   min_rank: number;
   solver_name: string;
   is_optimal: boolean;
+  is_ai?: boolean;
 };
 
-export const fetchMatrixLeaderboard = async (): Promise<MatrixCellData[]> => {
-  const response = await apiFetch(`${API_BASE_URL}/leaderboard/matrix`);
+export const fetchMatrixLeaderboard = async (
+  solverType: 'all' | 'humans' | 'ai' = 'all'
+): Promise<MatrixCellData[]> => {
+  const query = solverType !== 'all' ? `?solver_type=${solverType}` : '';
+  const response = await apiFetch(`${API_BASE_URL}/leaderboard/matrix${query}`);
   if (!response.ok) {
     throw new Error(`fetchMatrixLeaderboard failed: ${response.status}`);
   }
@@ -232,8 +236,12 @@ export type TopSolverData = {
 
 export const fetchTopSolvers = async (
   squareOnly: boolean = false,
+  solverType: 'all' | 'humans' | 'ai' = 'all'
 ): Promise<TopSolverData[]> => {
-  const query = squareOnly ? "?square_only=true" : "";
+  const params = new URLSearchParams();
+  if (squareOnly) params.append('square_only', 'true');
+  if (solverType !== 'all') params.append('solver_type', solverType);
+  const query = params.toString() ? `?${params.toString()}` : '';
   const response = await apiFetch(
     `${API_BASE_URL}/leaderboard/top_solvers${query}`,
   );
