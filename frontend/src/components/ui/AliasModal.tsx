@@ -36,7 +36,7 @@ const AliasModal: React.FC<AliasModalProps> = ({
     
     // Alias Blocking
     const lower = trimmed.toLowerCase();
-    if (["computer", "alphawolf", "god"].includes(lower)) {
+    if (lower === "computer" || lower === "god" || lower.includes("alphawolf")) {
       setErrorMsg("This alias is reserved by the system.");
       return;
     }

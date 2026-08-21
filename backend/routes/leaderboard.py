@@ -14,12 +14,24 @@ router = APIRouter()
 def get_leaderboard(token: str = Depends(verify_token), db: Session = Depends(get_db)) -> List[GridSolution]:
     return db.query(GridSolution).order_by(GridSolution.m.asc(), GridSolution.n.asc()).all()
 
+def is_ai_name(name: str) -> bool:
+    if not name:
+        return False
+    n = name.lower()
+    return "alphawolf" in n or "computer" in n
+
+AI_FILTER = or_(
+    GridSolution.solver_name.ilike("%alphawolf%"),
+    GridSolution.solver_name.ilike("%computer%")
+)
+
 @router.get("/matrix")
-def get_matrix_leaderboard(token: str = Depends(verify_token), db: Session = Depends(get_db)):
+def get_matrix_leaderboard(solver_type: str = "all", token: str = Depends(verify_token), db: Session = Depends(get_db)):
     """
     Returns the best records for grids up to 100×100.
     Groups (m, n) and (n, m) as the same canonical grid and returns
-    a flat list of {m, n, min_rank, solver_name, is_optimal}.
+    a flat list of {m, n, min_rank, solver_name, is_optimal, is_ai}.
+    solver_type: 'all' | 'humans' | 'ai'
     """
     canonical_m = case(
         (GridSolution.m >= GridSolution.n, GridSolution.m),
@@ -32,7 +44,7 @@ def get_matrix_leaderboard(token: str = Depends(verify_token), db: Session = Dep
     ).label("canonical_n")
 
     # Subquery: best rank per canonical grid
-    min_ranks = (
+    min_ranks_query = (
         db.query(
             canonical_m,
             canonical_n,
@@ -40,14 +52,22 @@ def get_matrix_leaderboard(token: str = Depends(verify_token), db: Session = Dep
         )
         .filter(GridSolution.m <= 100)
         .filter(GridSolution.n <= 100)
-        .group_by("canonical_m", "canonical_n")
-        .subquery()
     )
 
+    results_query = db.query(GridSolution)
+
+    if solver_type == "humans":
+        min_ranks_query = min_ranks_query.filter(~AI_FILTER)
+        results_query = results_query.filter(~AI_FILTER)
+    elif solver_type == "ai":
+        min_ranks_query = min_ranks_query.filter(AI_FILTER)
+        results_query = results_query.filter(AI_FILTER)
+
+    min_ranks = min_ranks_query.group_by("canonical_m", "canonical_n").subquery()
+
     # Join back to get solver details for the best rank.
-    # A solution row matches its canonical grid via max/min.
     results = (
-        db.query(GridSolution)
+        results_query
         .join(
             min_ranks,
             (case((GridSolution.m >= GridSolution.n, GridSolution.m), else_=GridSolution.n) == min_ranks.c.canonical_m)
@@ -69,17 +89,19 @@ def get_matrix_leaderboard(token: str = Depends(verify_token), db: Session = Dep
                 "min_rank": r.rank,
                 "solver_name": r.solver_name,
                 "is_optimal": False,
+                "is_ai": is_ai_name(r.solver_name),
             }
 
     return list(matrix_map.values())
 
 
 @router.get("/top_solvers")
-def get_top_solvers(token: str = Depends(verify_token), square_only: bool = False, db: Session = Depends(get_db)):
+def get_top_solvers(solver_type: str = "all", square_only: bool = False, token: str = Depends(verify_token), db: Session = Depends(get_db)):
     """
     Returns a list of players ranked by the total number of "First Place" records
     they hold.  All first places count, even ties.
     Groups (m, n) and (n, m) as the same canonical grid.
+    solver_type: 'all' | 'humans' | 'ai'
     """
     canonical_m = case(
         (GridSolution.m >= GridSolution.n, GridSolution.m),
@@ -99,10 +121,19 @@ def get_top_solvers(token: str = Depends(verify_token), square_only: bool = Fals
     if square_only:
         query = query.filter(GridSolution.m == GridSolution.n)
 
+    results_query = db.query(GridSolution)
+
+    if solver_type == "humans":
+        query = query.filter(~AI_FILTER)
+        results_query = results_query.filter(~AI_FILTER)
+    elif solver_type == "ai":
+        query = query.filter(AI_FILTER)
+        results_query = results_query.filter(AI_FILTER)
+
     min_ranks = query.group_by("canonical_m", "canonical_n").subquery()
 
     results = (
-        db.query(GridSolution)
+        results_query
         .join(
             min_ranks,
             (case((GridSolution.m >= GridSolution.n, GridSolution.m), else_=GridSolution.n) == min_ranks.c.canonical_m)
@@ -125,11 +156,16 @@ def get_top_solvers(token: str = Depends(verify_token), square_only: bool = Fals
         counts[solver_name] = counts.get(solver_name, 0) + 1
 
     # Fetch total grids solved per user
-    solver_total_grids = db.query(
+    total_grids_query = db.query(
         GridSolution.solver_name,
         func.count(GridSolution.id).label("total_grids")
-    ).group_by(GridSolution.solver_name).all()
-    
+    )
+    if solver_type == "humans":
+        total_grids_query = total_grids_query.filter(~AI_FILTER)
+    elif solver_type == "ai":
+        total_grids_query = total_grids_query.filter(AI_FILTER)
+
+    solver_total_grids = total_grids_query.group_by(GridSolution.solver_name).all()
     total_grids_map = {row.solver_name: row.total_grids for row in solver_total_grids}
     
     # Ensure all solvers with at least 1 grid solved are included

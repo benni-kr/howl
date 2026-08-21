@@ -27,7 +27,8 @@ router = APIRouter()
 
 @router.post("/submit_solution", response_model=SubmitResponse)
 def submit_solution(payload: SolutionCreate, token: str = Depends(verify_token), db: Session = Depends(get_db)) -> SubmitResponse:
-    if payload.solver_name.lower() in ["computer", "alphawolf", "god"]:
+    name_clean = payload.solver_name.strip().lower()
+    if name_clean in ["computer", "god"] or "alphawolf" in name_clean:
         raise HTTPException(status_code=403, detail="Reserved system alias")
 
     from core_engine.replay_engine import canonicalize_grid_solution
