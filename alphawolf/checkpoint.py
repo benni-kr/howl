@@ -1,0 +1,164 @@
+"""
+Checkpoint Management for AlphaWolf.
+
+Handles saving and loading of model weights and training states (optimizer,
+scheduler, generation metadata) with full backward compatibility for legacy
+raw state_dict files.
+"""
+
+import collections
+import glob
+import os
+import re
+import torch
+
+
+DEFAULT_CHECKPOINT_DIR = os.path.join(os.path.dirname(__file__), "models/checkpoints")
+
+
+def find_latest_checkpoint(ckpt_dir: str = DEFAULT_CHECKPOINT_DIR) -> str | None:
+    """
+        Finds the latest generation checkpoint file (highest integer generation)
+    in the specified directory. Falls back to best_model.pt if no generation
+    checkpoints exist.
+    """
+    if not os.path.exists(ckpt_dir):
+        return None
+
+    pattern = os.path.join(ckpt_dir, "alphawolf_gen_*.pt")
+    files = glob.glob(pattern)
+
+    gen_files = []
+    for f in files:
+        match = re.search(r"alphawolf_gen_(\d+)\.pt$", os.path.basename(f))
+        if match:
+            gen_files.append((int(match.group(1)), f))
+
+    if gen_files:
+        gen_files.sort(key=lambda x: x[0], reverse=True)
+        return gen_files[0][1]
+
+    # Fallback to best_model.pt
+    best_path = os.path.join(ckpt_dir, "best_model.pt")
+    if os.path.exists(best_path):
+        return best_path
+
+    return None
+
+
+def resolve_checkpoint_path(resume_target: str | bool | None, ckpt_dir: str = DEFAULT_CHECKPOINT_DIR) -> str | None:
+    """
+    Resolves a user resume argument to an absolute checkpoint path.
+
+    - True / "latest" / "auto" -> latest generation file or best_model.pt
+    - "best" -> models/checkpoints/best_model.pt
+    - path string -> explicit path
+    - None / False -> None (fresh start)
+    """
+    if not resume_target or resume_target is False:
+        return None
+
+    if resume_target is True or resume_target in ("latest", "auto"):
+        return find_latest_checkpoint(ckpt_dir)
+
+    if resume_target == "best":
+        best_path = os.path.join(ckpt_dir, "best_model.pt")
+        return best_path if os.path.exists(best_path) else None
+
+    # Explicit path (relative or absolute)
+    if os.path.isabs(resume_target):
+        path = resume_target
+    else:
+        if os.path.exists(resume_target):
+            path = os.path.abspath(resume_target)
+        else:
+            cand = os.path.join(ckpt_dir, resume_target)
+            if os.path.exists(cand):
+                path = cand
+            else:
+                cand2 = os.path.join(os.path.dirname(__file__), resume_target)
+                path = cand2 if os.path.exists(cand2) else os.path.abspath(resume_target)
+
+    return path if os.path.exists(path) else None
+
+
+def load_checkpoint(
+    ckpt_path: str,
+    net: torch.nn.Module,
+    optimizer: torch.optim.Optimizer | None = None,
+    scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
+    device: torch.device | str = "cpu"
+) -> tuple[int, dict]:
+    """
+    Loads a checkpoint into `net` (and optionally `optimizer` and `scheduler`).
+    
+    Supports:
+    1. Full checkpoint dicts: {"generation": int, "model_state_dict": dict, "optimizer_state_dict": dict, ...}
+    2. Raw PyTorch state_dict files: OrderedDict of layer weights.
+    
+    Returns:
+        (last_completed_generation: int, metadata: dict)
+    """
+    if not os.path.exists(ckpt_path):
+        raise FileNotFoundError(f"Checkpoint file not found: {ckpt_path}")
+
+    ckpt_data = torch.load(ckpt_path, map_location=device, weights_only=False)
+
+    if isinstance(ckpt_data, dict) and "model_state_dict" in ckpt_data:
+        net.load_state_dict(ckpt_data["model_state_dict"])
+
+        if optimizer is not None and ckpt_data.get("optimizer_state_dict") is not None:
+            try:
+                optimizer.load_state_dict(ckpt_data["optimizer_state_dict"])
+            except Exception as e:
+                print(f"Warning: Could not restore optimizer state ({e}). Using fresh optimizer.")
+
+        if scheduler is not None and ckpt_data.get("scheduler_state_dict") is not None:
+            try:
+                scheduler.load_state_dict(ckpt_data["scheduler_state_dict"])
+            except Exception as e:
+                print(f"Warning: Could not restore scheduler state ({e}).")
+
+        generation = ckpt_data.get("generation", 0)
+        return generation, ckpt_data
+
+    elif isinstance(ckpt_data, (dict, collections.OrderedDict)):
+        # Raw state dict
+        net.load_state_dict(ckpt_data)
+        match = re.search(r"alphawolf_gen_(\d+)\.pt$", os.path.basename(ckpt_path))
+        generation = int(match.group(1)) if match else 0
+        return generation, {"model_state_dict": ckpt_data}
+
+    else:
+        raise ValueError(f"Unrecognized checkpoint format in {ckpt_path}: {type(ckpt_data)}")
+
+
+def save_checkpoint(
+    ckpt_path: str,
+    net: torch.nn.Module,
+    optimizer: torch.optim.Optimizer | None = None,
+    scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
+    generation: int = 0,
+    solver_name: str = "alphawolf2",
+    metrics: dict | None = None,
+    extra: dict | None = None
+) -> str:
+    """
+    Saves a comprehensive training checkpoint with weights, optimizer state,
+    scheduler state, generation index, and metadata.
+    """
+    os.makedirs(os.path.dirname(os.path.abspath(ckpt_path)), exist_ok=True)
+
+    payload = {
+        "generation": generation,
+        "model_state_dict": net.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict() if optimizer is not None else None,
+        "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
+        "solver_name": solver_name,
+        "metrics": metrics or {},
+    }
+    if extra:
+        payload.update(extra)
+
+    torch.save(payload, ckpt_path)
+    return ckpt_path

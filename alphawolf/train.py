@@ -497,8 +497,28 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
     elapsed = time.time() - start_time
     print("-" * 60)
     print(f"  Training Summary: {elapsed:.1f}s | Final P_Loss: {avg_p_loss:8.4f} | Final V_Loss: {avg_v_loss:8.4f}")
+    return {"policy_loss": avg_p_loss, "value_loss": avg_v_loss}
 
-def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simulations=200, num_workers=5, mcts_batch_size=8, self_play_min_grid=4, self_play_max_grid=9, solver_name="alphawolf2"):
+def alpha_zero_loop(
+    m,
+    n,
+    num_generations=50,
+    games_per_generation=15,
+    num_simulations=200,
+    num_workers=5,
+    mcts_batch_size=8,
+    self_play_min_grid=4,
+    self_play_max_grid=9,
+    solver_name="alphawolf2",
+    resume_from=None,
+):
+    from checkpoint import (
+        load_checkpoint,
+        save_checkpoint,
+        resolve_checkpoint_path,
+        DEFAULT_CHECKPOINT_DIR,
+    )
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Main Process using device: {device}")
     
@@ -510,11 +530,33 @@ def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simul
     
     ckpt_dir = os.path.join(os.path.dirname(__file__), "models/checkpoints")
     os.makedirs(ckpt_dir, exist_ok=True)
-    print(f"Initialized AlphaWolf V1 [{m}x{n}] - Multi-Process Worker Mode (solver: '{solver_name}')")
+
+    start_gen = 1
+    if resume_from:
+        resolved_ckpt = resolve_checkpoint_path(resume_from, ckpt_dir)
+        if resolved_ckpt:
+            try:
+                last_gen, meta = load_checkpoint(resolved_ckpt, net, optimizer=optimizer, scheduler=scheduler, device=device)
+                start_gen = last_gen + 1
+                print(f"\n[RESUME] Successfully loaded checkpoint: {resolved_ckpt}")
+                if last_gen > 0:
+                    print(f"[RESUME] Resuming training from Generation {start_gen} to {num_generations}")
+                else:
+                    print(f"[RESUME] Loaded baseline weights. Training from Generation 1 to {num_generations}")
+            except Exception as e:
+                print(f"\n[RESUME] Warning: Failed to load {resolved_ckpt} ({e}). Starting fresh from Generation 1.")
+        else:
+            print(f"\n[RESUME] Warning: Checkpoint target '{resume_from}' not found. Starting fresh from Generation 1.")
+
+    print(f"\nInitialized AlphaWolf V1 [{m}x{n}] - Multi-Process Worker Mode (solver: '{solver_name}')")
     print(f"MCTS Simulations per move: {num_simulations}")
     print(f"Replay Buffer Capacity: {replay_buffer.maxlen} samples")
+
+    if start_gen > num_generations:
+        print(f"\n[NOTICE] Checkpoint generation ({start_gen - 1}) is >= total_generations ({num_generations}). Nothing to run.")
+        return
     
-    for gen in range(1, num_generations + 1):
+    for gen in range(start_gen, num_generations + 1):
         print(f"\n{'='*40}")
         print(f"          GENERATION {gen}/{num_generations}")
         print(f"{'='*40}")
@@ -533,11 +575,19 @@ def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simul
             
         replay_buffer.extend(new_trajectories)
         
-        train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32)
+        loss_metrics = train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32)
         scheduler.step()
         
         ckpt_path = os.path.join(ckpt_dir, f"alphawolf_gen_{gen}.pt")
-        torch.save(net.state_dict(), ckpt_path)
+        save_checkpoint(
+            ckpt_path,
+            net,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            generation=gen,
+            solver_name=solver_name,
+            metrics=loss_metrics,
+        )
         
         print(f"\n[PHASE 3] Validation & Checkpointing")
         print("-" * 60)
@@ -548,23 +598,53 @@ def alpha_zero_loop(m, n, num_generations=50, games_per_generation=15, num_simul
         promote_model(ckpt_path)
 
 if __name__ == "__main__":
+    import argparse
     import json
     import os
     
+    parser = argparse.ArgumentParser(description="AlphaWolf AlphaZero Training Pipeline")
+    parser.add_argument("--resume", nargs="?", const="latest", default=None, help="Resume training from checkpoint ('latest', 'best', or file path)")
+    parser.add_argument("--fresh", action="store_true", help="Force fresh start from Generation 1 with random weights")
+    parser.add_argument("--generations", type=int, default=None, help="Total generations to train")
+    parser.add_argument("--games-per-gen", type=int, default=None, help="Games per generation")
+    parser.add_argument("--sims", type=int, default=None, help="MCTS simulations per move")
+    parser.add_argument("--workers", type=int, default=None, help="Number of worker processes")
+    parser.add_argument("--solver-name", type=str, default=None, help="Solver alias for DB submissions")
+
+    args = parser.parse_args()
+
     config_path = os.path.join(os.path.dirname(__file__), "config.json")
     with open(config_path, "r") as f:
         config = json.load(f)
         
     m = config.get("current_m", 5)
     n = config.get("current_n", 5)
-    num_generations = config.get("total_generations", 50)
-    games_per_gen = config.get("games_per_generation", 15)
-    simulations = config.get("mcts_simulations", 200)
-    num_workers = config.get("num_workers", 5)
-    
+    num_generations = args.generations or config.get("total_generations", 50)
+    games_per_gen = args.games_per_gen or config.get("games_per_generation", 15)
+    simulations = args.sims or config.get("mcts_simulations", 200)
+    num_workers = args.workers or config.get("num_workers", 5)
     mcts_batch_size = config.get("mcts_batch_size", 8)
     self_play_min_grid = config.get("self_play_min_grid", 4)
     self_play_max_grid = config.get("self_play_max_grid", 9)
-    solver_name = config.get("solver_name", "alphawolf2")
+    solver_name = args.solver_name or config.get("solver_name", "alphawolf2")
 
-    alpha_zero_loop(m, n, num_generations=num_generations, games_per_generation=games_per_gen, num_simulations=simulations, num_workers=num_workers, mcts_batch_size=mcts_batch_size, self_play_min_grid=self_play_min_grid, self_play_max_grid=self_play_max_grid, solver_name=solver_name)
+    if args.fresh:
+        resume_from = None
+    elif args.resume is not None:
+        resume_from = args.resume
+    else:
+        resume_from = config.get("resume_from", None)
+
+    alpha_zero_loop(
+        m,
+        n,
+        num_generations=num_generations,
+        games_per_generation=games_per_gen,
+        num_simulations=simulations,
+        num_workers=num_workers,
+        mcts_batch_size=mcts_batch_size,
+        self_play_min_grid=self_play_min_grid,
+        self_play_max_grid=self_play_max_grid,
+        solver_name=solver_name,
+        resume_from=resume_from,
+    )

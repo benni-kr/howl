@@ -19,7 +19,8 @@ def evaluate_high_simulations(m, n, num_simulations=1000, num_games=10, solver_n
 
     print(f"Loading {model_path} for {m}x{n} evaluation with {num_simulations} MCTS simulations (solver: '{solver_name}')...")
     net = AlphaWolfNet()
-    net.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+    from checkpoint import load_checkpoint
+    load_checkpoint(model_path, net, device=torch.device('cpu'))
     net.eval()
 
     best_rank = float('inf')
