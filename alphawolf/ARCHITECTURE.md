@@ -55,11 +55,24 @@ Unlike standard game engines, AlphaWolf is integrated with a globally shared tab
 
 ## Components
 
-### 1. Training Loop & Checkpoints (`train.py`, `checkpoint.py`)
+### 1. Training Loop, Checkpoints & Curriculum (`train.py`, `checkpoint.py`, `curriculum.py`, `bounds.py`)
 
-The main training orchestrator runs generations of self-play, network training, and benchmark promotion. Each generation samples `games_per_generation` boards with independently random dimensions in $[4, 9]$, spread across `num_workers` processes via `ProcessPoolExecutor`.
+The main training orchestrator runs generations of self-play, network training, and benchmark promotion, spread across `num_workers` processes via `ProcessPoolExecutor`.
 
-> **Note:** self-play sizes are sampled uniformly (`self_play_min_grid`..`self_play_max_grid` in `config.json`) — there is currently no curriculum. The former `unlocked_tiers` parameter was dead code (uniform sampling replaced it in `0736757`) and has been removed; a real curriculum with a lower-bound unlock criterion is planned (see `ROADMAP.md`, C2).
+#### Curriculum Learning Architecture
+Rather than naive uniform sampling, AlphaWolf employs an adaptive curriculum to master small foundational subgraphs before scaling up to larger boards:
+- **Triangulated Reference Targets ($R_{\text{target}}$)**: For any grid $(m, n)$, performance is evaluated against:
+  $$R_{\text{target}}(m, n) = \min(R_{\text{bisect}}(m, n), R_{\text{db}}(m, n) \text{ if present})$$
+  - *No DB entry*: Falls back to the algorithmic recursive balanced bisection upper bound $R_{\text{bisect}}$.
+  - *Suboptimal DB entry*: Capped by $R_{\text{bisect}}$ so the AI is never held to poor standards.
+  - *Human/God record*: Drives the agent to match or beat state-of-the-art human play.
+- **Curriculum Modes**:
+  - `hybrid` *(Default)*: Staged progression with **fast-track mastery unlock** ($\ge 80\%$ of generation games meeting $R_{\text{target}}$) plus stage generation timeout fallbacks.
+  - `staged`: Fixed generation budgets per board size stage.
+  - `linear`: Continuous linear scaling of maximum board dimension per generation.
+  - `uniform`: Flat random sampling (`[min_grid, max_grid]`).
+- **Frontier-Biased Sampling**: During staged training, $70\%$ of games are sampled from the active frontier (e.g. $6\times 6 \dots 7\times 7$), while $30\%$ sample foundational base subgraphs ($4\times 4 \dots 5\times 5$) to prevent catastrophic forgetting and populate tablebase base-cases.
+- **Resumable State**: Curriculum stage progression is saved directly into `.pt` checkpoint files, resuming seamlessly with `--resume`.
 
 #### Starting Fresh vs. Resuming Training
 - **Default (Fresh Start)**: If no resume argument or config is specified, training initializes fresh weights and starts from **Generation 1**.
