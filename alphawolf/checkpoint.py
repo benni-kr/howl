@@ -141,11 +141,12 @@ def save_checkpoint(
     generation: int = 0,
     solver_name: str = "alphawolf2",
     metrics: dict | None = None,
+    curriculum_state: dict | None = None,
     extra: dict | None = None
 ) -> str:
     """
     Saves a comprehensive training checkpoint with weights, optimizer state,
-    scheduler state, generation index, and metadata.
+    scheduler state, generation index, curriculum progression state, and metadata.
     """
     os.makedirs(os.path.dirname(os.path.abspath(ckpt_path)), exist_ok=True)
 
@@ -156,6 +157,7 @@ def save_checkpoint(
         "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
         "solver_name": solver_name,
         "metrics": metrics or {},
+        "curriculum_state": curriculum_state,
     }
     if extra:
         payload.update(extra)

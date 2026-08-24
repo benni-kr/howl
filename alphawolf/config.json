@@ -12,5 +12,13 @@
   "self_play_min_grid": 4,
   "self_play_max_grid": 9,
   "solver_name": "alphawolf2",
-  "resume_from": null
+  "resume_from": null,
+  "curriculum_mode": "hybrid",
+  "curriculum_frontier_ratio": 0.70,
+  "curriculum_success_threshold": 0.80,
+  "curriculum_stages": [
+    { "max_size": 5, "fraction": 0.25, "name": "Foundations (4x4-5x5)" },
+    { "max_size": 7, "fraction": 0.35, "name": "Intermediate (4x4-7x7)" },
+    { "max_size": 9, "fraction": 0.40, "name": "Full Scale (4x4-9x9)" }
+  ]
 }
