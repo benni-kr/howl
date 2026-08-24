@@ -116,17 +116,22 @@ python query_db.py
 # 2. Run high-simulation (1000 MCTS) rollouts to solve a specific grid:
 python eval.py
 
-# 3. Start a FRESH training run (Default: Generation 1 with random weights):
+# 3. Start a FRESH training run with Hybrid Curriculum (Default: 4x4 -> 9x9 staged mastery):
 python train.py
 
-# 4. RESUME training from the latest checkpoint (e.g. alphawolf_gen_25.pt -> Gen 26):
+# 4. Choose specific Curriculum Mode (hybrid, staged, linear, or uniform):
+python train.py --curriculum hybrid
+python train.py --curriculum linear
+python train.py --no-curriculum
+
+# 5. RESUME training from the latest checkpoint (e.g. alphawolf_gen_25.pt -> Gen 26):
 python train.py --resume
 
-# 5. Resume from best benchmark baseline or a specific file:
+# 6. Resume from best benchmark baseline or a specific file:
 python train.py --resume best
 python train.py --resume models/checkpoints/alphawolf_gen_15.pt
 
-# 6. Override training hyperparameters on the fly:
+# 7. Override training hyperparameters on the fly:
 python train.py --generations 50 --games-per-gen 20 --sims 400 --workers 6
 ```
 

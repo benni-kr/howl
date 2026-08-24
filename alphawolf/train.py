@@ -427,6 +427,7 @@ def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_siz
     ranks = []
     lengths = []
     completed = 0
+    game_results = []
     
     import multiprocessing as mp
     with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers, mp_context=mp.get_context('spawn')) as executor:
@@ -440,6 +441,7 @@ def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_siz
             ranks.append(final_rank)
             lengths.append(len(traj))
             completed += 1
+            game_results.append((m, n, final_rank))
             
             # Main Thread Gatekeeping: Replay Engine Validation & Sequential SQLite Writes
             if discoveries:
@@ -457,7 +459,7 @@ def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_siz
     print("-" * 60)
     print(f"  Self-Play Summary: {elapsed:.1f}s | Avg Rank: {avg_rank:.1f} | Avg Nodes: {avg_len:.1f} | Total Data: +{len(replay_buffer)}")
     
-    return replay_buffer
+    return replay_buffer, game_results
 
 def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
     import time
@@ -511,6 +513,10 @@ def alpha_zero_loop(
     self_play_max_grid=9,
     solver_name="alphawolf2",
     resume_from=None,
+    curriculum_mode="hybrid",
+    curriculum_stages=None,
+    curriculum_frontier_ratio=0.70,
+    curriculum_success_threshold=0.80,
 ):
     from checkpoint import (
         load_checkpoint,
@@ -518,6 +524,7 @@ def alpha_zero_loop(
         resolve_checkpoint_path,
         DEFAULT_CHECKPOINT_DIR,
     )
+    from curriculum import CurriculumManager
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Main Process using device: {device}")
@@ -531,6 +538,16 @@ def alpha_zero_loop(
     ckpt_dir = os.path.join(os.path.dirname(__file__), "models/checkpoints")
     os.makedirs(ckpt_dir, exist_ok=True)
 
+    curriculum = CurriculumManager(
+        mode=curriculum_mode,
+        min_grid=self_play_min_grid,
+        max_grid=self_play_max_grid,
+        total_generations=num_generations,
+        frontier_ratio=curriculum_frontier_ratio,
+        success_threshold=curriculum_success_threshold,
+        stages=curriculum_stages,
+    )
+
     start_gen = 1
     if resume_from:
         resolved_ckpt = resolve_checkpoint_path(resume_from, ckpt_dir)
@@ -538,6 +555,9 @@ def alpha_zero_loop(
             try:
                 last_gen, meta = load_checkpoint(resolved_ckpt, net, optimizer=optimizer, scheduler=scheduler, device=device)
                 start_gen = last_gen + 1
+                if "curriculum_state" in meta and meta["curriculum_state"]:
+                    curriculum.load_state_dict(meta["curriculum_state"])
+                    print(f"[RESUME] Restored curriculum state: {curriculum.active_stage.get('name', 'Active Stage')} (Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size})")
                 print(f"\n[RESUME] Successfully loaded checkpoint: {resolved_ckpt}")
                 if last_gen > 0:
                     print(f"[RESUME] Resuming training from Generation {start_gen} to {num_generations}")
@@ -551,6 +571,7 @@ def alpha_zero_loop(
     print(f"\nInitialized AlphaWolf V1 [{m}x{n}] - Multi-Process Worker Mode (solver: '{solver_name}')")
     print(f"MCTS Simulations per move: {num_simulations}")
     print(f"Replay Buffer Capacity: {replay_buffer.maxlen} samples")
+    print(f"Curriculum Mode: '{curriculum.mode.upper()}' | Active Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size}")
 
     if start_gen > num_generations:
         print(f"\n[NOTICE] Checkpoint generation ({start_gen - 1}) is >= total_generations ({num_generations}). Nothing to run.")
@@ -561,19 +582,24 @@ def alpha_zero_loop(
         print(f"          GENERATION {gen}/{num_generations}")
         print(f"{'='*40}")
         
-        import random
-        # Collect games symmetrically across the configured size range
-        lo = self_play_min_grid
-        hi = min(self_play_max_grid, MAX_ROWS, MAX_COLS)
-        gm_gn_list = []
-        for game_idx in range(games_per_generation):
-            gm = random.randint(lo, hi)
-            gn = random.randint(lo, hi)
-            gm_gn_list.append((gm, gn))
+        stage = curriculum.active_stage
+        print(f"[CURRICULUM] Stage: {stage.get('name', 'Active')} (Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size})")
+
+        gm_gn_list = curriculum.sample_games(games_per_generation, gen)
             
-        new_trajectories = self_play(net, gm_gn_list, num_simulations=num_simulations, num_workers=num_workers, mcts_batch_size=mcts_batch_size, solver_name=solver_name)
+        new_trajectories, game_results = self_play(net, gm_gn_list, num_simulations=num_simulations, num_workers=num_workers, mcts_batch_size=mcts_batch_size, solver_name=solver_name)
             
         replay_buffer.extend(new_trajectories)
+
+        cur_summary = curriculum.record_generation_results(gen, game_results)
+        met_cnt = cur_summary["games_met_target"]
+        tot_cnt = cur_summary["total_games"]
+        succ_pct = cur_summary["success_rate"]
+        print(f"  Curriculum Mastery: {met_cnt}/{tot_cnt} games ({succ_pct:.1%}) met R_target")
+        if cur_summary["advanced"]:
+            next_stage = curriculum.active_stage
+            print(f"  >>> STAGE PROMOTION! Reason: {cur_summary['advance_reason']}")
+            print(f"  >>> Advancing to: {next_stage.get('name', 'Next Stage')} (New Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size})")
         
         loss_metrics = train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32)
         scheduler.step()
@@ -587,6 +613,7 @@ def alpha_zero_loop(
             generation=gen,
             solver_name=solver_name,
             metrics=loss_metrics,
+            curriculum_state=curriculum.state_dict(),
         )
         
         print(f"\n[PHASE 3] Validation & Checkpointing")
@@ -605,6 +632,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="AlphaWolf AlphaZero Training Pipeline")
     parser.add_argument("--resume", nargs="?", const="latest", default=None, help="Resume training from checkpoint ('latest', 'best', or file path)")
     parser.add_argument("--fresh", action="store_true", help="Force fresh start from Generation 1 with random weights")
+    parser.add_argument("--curriculum", type=str, default=None, choices=["hybrid", "staged", "linear", "uniform"], help="Curriculum learning mode")
+    parser.add_argument("--no-curriculum", action="store_true", help="Disable curriculum (equivalent to --curriculum uniform)")
     parser.add_argument("--generations", type=int, default=None, help="Total generations to train")
     parser.add_argument("--games-per-gen", type=int, default=None, help="Games per generation")
     parser.add_argument("--sims", type=int, default=None, help="MCTS simulations per move")
@@ -635,6 +664,13 @@ if __name__ == "__main__":
     else:
         resume_from = config.get("resume_from", None)
 
+    if args.no_curriculum:
+        curriculum_mode = "uniform"
+    elif args.curriculum is not None:
+        curriculum_mode = args.curriculum
+    else:
+        curriculum_mode = config.get("curriculum_mode", "hybrid")
+
     alpha_zero_loop(
         m,
         n,
@@ -647,4 +683,8 @@ if __name__ == "__main__":
         self_play_max_grid=self_play_max_grid,
         solver_name=solver_name,
         resume_from=resume_from,
+        curriculum_mode=curriculum_mode,
+        curriculum_stages=config.get("curriculum_stages", None),
+        curriculum_frontier_ratio=config.get("curriculum_frontier_ratio", 0.70),
+        curriculum_success_threshold=config.get("curriculum_success_threshold", 0.80),
     )
