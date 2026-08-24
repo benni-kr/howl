@@ -84,8 +84,9 @@ def test_alpha_zero_1_generation_dry_run(isolated_db):
     assert os.path.exists(gen1_ckpt), f"Checkpoint was not saved at {gen1_ckpt}"
 
     net = AlphaWolfNet(m, n)
-    state_dict = torch.load(gen1_ckpt, map_location='cpu', weights_only=True)
-    net.load_state_dict(state_dict)
+    from checkpoint import load_checkpoint
+    gen, meta = load_checkpoint(gen1_ckpt, net)
+    assert gen == 1
 
     for name, param in net.named_parameters():
         assert not torch.isnan(param).any(), f"NaN in parameter {name}"

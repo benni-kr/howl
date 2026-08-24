@@ -55,18 +55,30 @@ Unlike standard game engines, AlphaWolf is integrated with a globally shared tab
 
 ## Components
 
-### 1. Training Loop (`train.py`)
+### 1. Training Loop & Checkpoints (`train.py`, `checkpoint.py`)
 
 The main training orchestrator runs generations of self-play, network training, and benchmark promotion. Each generation samples `games_per_generation` boards with independently random dimensions in $[4, 9]$, spread across `num_workers` processes via `ProcessPoolExecutor`.
 
 > **Note:** self-play sizes are sampled uniformly (`self_play_min_grid`..`self_play_max_grid` in `config.json`) — there is currently no curriculum. The former `unlocked_tiers` parameter was dead code (uniform sampling replaced it in `0736757`) and has been removed; a real curriculum with a lower-bound unlock criterion is planned (see `ROADMAP.md`, C2).
 
-Training starts from **randomly initialised weights every run** — `alpha_zero_loop` does not load `best_model.pt`. The existing checkpoint serves only as the benchmark baseline; there is no resume path.
+#### Starting Fresh vs. Resuming Training
+- **Default (Fresh Start)**: If no resume argument or config is specified, training initializes fresh weights and starts from **Generation 1**.
+- **Resuming from Checkpoint (`--resume`)**: 
+  - `python train.py --resume` $\to$ Automatically detects the highest generation checkpoint (e.g. `alphawolf_gen_25.pt`) in `models/checkpoints/` and resumes from Generation 26.
+  - `python train.py --resume best` $\to$ Resumes using `models/checkpoints/best_model.pt`.
+  - `python train.py --resume path/to/checkpoint.pt` $\to$ Resumes from a specific checkpoint.
+  - `python train.py --fresh` $\to$ Forces a fresh start from Generation 1 regardless of `config.json`.
+- **Saved Checkpoint State**: Each generation saves `alphawolf_gen_{gen}.pt` containing:
+  - Model weights (`model_state_dict`)
+  - Optimizer momentum (`optimizer_state_dict`)
+  - Cosine learning rate scheduler state (`scheduler_state_dict`)
+  - Generation number and loss metrics (`metrics`)
+- **Backward Compatibility**: `checkpoint.py` seamlessly loads both structured checkpoint dictionaries and legacy raw PyTorch `state_dict` weights (e.g. older `best_model.pt` files).
 
 During self-play:
 - Each MCTS simulation explores possible cuts, guided by the neural network's policy and value heads.
 - When an action shatters the graph into subgraphs, AlphaWolf evaluates each fragment. If a fragment is found in the `tablebase`, it immediately returns its known rank, halting the MCTS branch for that fragment.
-- Discovered sub-sequences and final best known grid solutions are upserted to the database, ensuring the community UI and future RL generations benefit from the run.
+- Discovered sub-sequences and final best known grid solutions are upserted to the database via the main thread gatekeeper, ensuring the community UI and future RL generations benefit from the run.
 
 ### 1a. MCTS Leaf Batching
 

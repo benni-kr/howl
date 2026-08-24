@@ -110,14 +110,24 @@ With the virtual environment activated (`source backend/venv/bin/activate`):
 ```bash
 cd alphawolf
 
-# Query the database & 10x10 rank matrix:
+# 1. Query the database & 10x10 rank matrix:
 python query_db.py
 
-# Run high-simulation discovery rollouts:
+# 2. Run high-simulation (1000 MCTS) rollouts to solve a specific grid:
 python eval.py
 
-# Start AlphaZero multi-process training loop:
+# 3. Start a FRESH training run (Default: Generation 1 with random weights):
 python train.py
+
+# 4. RESUME training from the latest checkpoint (e.g. alphawolf_gen_25.pt -> Gen 26):
+python train.py --resume
+
+# 5. Resume from best benchmark baseline or a specific file:
+python train.py --resume best
+python train.py --resume models/checkpoints/alphawolf_gen_15.pt
+
+# 6. Override training hyperparameters on the fly:
+python train.py --generations 50 --games-per-gen 20 --sims 400 --workers 6
 ```
 
 ## Running Tests
