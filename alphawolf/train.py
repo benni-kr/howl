@@ -7,6 +7,8 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from torch_geometric.data import Batch, Data
+import torch_geometric.utils as pyg_utils
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -111,39 +113,36 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
     
     net.eval()
     with torch.no_grad():
-        state_tensor = torch.tensor(root_state, dtype=torch.float32).unsqueeze(0)
-        state_tensor = state_tensor.to(next(net.parameters()).device)
-        p_logits, v = net(state_tensor)
+        root_data = env.to_pyg_data(device=next(net.parameters()).device)
+        p_logits, v = net(root_data)
         
-        # Action Masking
-        mask = (state_tensor[:, 0, :, :] == 0).flatten()
-        p_logits_flat = p_logits.flatten()
-        p_logits_flat[mask] = -1e9
-        p_probs = F.softmax(p_logits_flat, dim=0).cpu().numpy()
+        # Single-graph node softmax
+        p_probs = F.softmax(p_logits, dim=0).cpu().numpy()
         
         root.value_sum = v.item()
         root.visit_count = 1
         root.is_expanded = True
         
-        valid_actions = np.where(root_state[0].flatten() == 1)[0]
+        coords = [(int(x), int(y)) for x, y in root_data.coords.cpu().numpy()]
+        num_valid = len(coords)
         
-        if add_exploration_noise and len(valid_actions) > 0:
+        if add_exploration_noise and num_valid > 0:
             epsilon = 0.25
-            alpha = max(10.0 / len(valid_actions), 0.1) # Safe fallback
-            noise = np.random.dirichlet([alpha] * len(valid_actions))
+            alpha = max(10.0 / num_valid, 0.1) # Safe fallback
+            noise = np.random.dirichlet([alpha] * num_valid)
         else:
             epsilon = 0.0
-            noise = np.zeros(len(valid_actions))
+            noise = np.zeros(num_valid)
             
-        for idx, a in enumerate(valid_actions):
-            prior = (1 - epsilon) * p_probs[a] + epsilon * noise[idx]
-            root.children[a] = MCTSNode(state=None, parent=root, prior=prior)
+        for idx, coord in enumerate(coords):
+            prior = (1 - epsilon) * float(p_probs[idx]) + epsilon * float(noise[idx])
+            root.children[coord] = MCTSNode(state=None, parent=root, prior=prior)
 
     device = next(net.parameters()).device
     sims_done = 0
 
-    # Parse the root observation once; per-simulation clones are plain copies
-    root_env = clone_env_from_obs(root_state, env.m, env.n, env.cuts_made)
+    # Direct graph cloning from active env
+    root_env = clone_env(env)
 
     while sims_done < num_simulations:
         target = min(batch_size, num_simulations - sims_done)
@@ -190,8 +189,7 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                     if id(node) in scheduled:
                         entry = {"kind": "dup", "of": scheduled[id(node)]}
                     else:
-                        active_coords = np.argwhere(obs[0] == 1)
-                        verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
+                        verts = [{"x": int(x), "y": int(y)} for x, y in sim_env.graph.vertices]
                         can_hash = generate_canonical_hash(verts)
                         db_res = query_tablebase([can_hash]).get(can_hash)
 
@@ -201,7 +199,8 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                             node.terminal_rank = value
                             entry = {"kind": "value", "value": value}
                         else:
-                            entry = {"kind": "expand", "node": node, "obs": obs,
+                            pyg_data = sim_env.to_pyg_data()
+                            entry = {"kind": "expand", "node": node, "pyg_data": pyg_data,
                                      "db_res": db_res, "cuts": sim_env.cuts_made}
                             scheduled[id(node)] = len(pending)
 
@@ -211,12 +210,12 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
             pending.append(entry)
 
         # 2. Evaluation: one forward pass over all leaf and fragment states
-        obs_batch = []
+        pyg_data_batch = []
         slots = []  # (pending index, "leaf" | "frag", fragment index)
         for i, e in enumerate(pending):
             if e["kind"] == "expand":
                 slots.append((i, "leaf", None))
-                obs_batch.append(e["obs"])
+                pyg_data_batch.append(e["pyg_data"])
             elif e["kind"] == "fragments":
                 e["frag_values"] = [None] * len(e["fragments"])
                 e["frag_db"] = []
@@ -231,19 +230,17 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                         frag_env = HowlEnv(env.m, env.n, generate=False)
                         frag_env.graph = frag
                         slots.append((i, "frag", j))
-                        obs_batch.append(frag_env._get_obs())
+                        pyg_data_batch.append(frag_env.to_pyg_data())
 
-        p_probs_batch = v_batch = None
-        if obs_batch:
+        node_probs_all = v_batch = batch_indices = None
+        if pyg_data_batch:
             with torch.no_grad():
-                state_tensor = torch.tensor(np.stack(obs_batch), dtype=torch.float32).to(device)
-                p_logits, v = net(state_tensor)
-
-                # Action Masking (per row)
-                mask = state_tensor[:, 0, :, :].reshape(state_tensor.size(0), -1) == 0
-                p_logits = p_logits.masked_fill(mask, -1e9)
-                p_probs_batch = F.softmax(p_logits, dim=1).cpu().numpy()
-                v_batch = v.squeeze(1).cpu().numpy()
+                batch = Batch.from_data_list(pyg_data_batch).to(device)
+                p_logits, v = net(batch)
+                import torch_geometric.utils as pyg_utils
+                node_probs_all = pyg_utils.softmax(p_logits, batch.batch).cpu().numpy()
+                v_batch = v.squeeze(-1).cpu().numpy()
+                batch_indices = batch.batch.cpu().numpy()
 
         for s_idx, (i, kind, j) in enumerate(slots):
             e = pending[i]
@@ -258,11 +255,12 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                 e["value"] = nn_val + e["cuts"]
 
                 node.is_expanded = True
-                valid_actions = np.where(e["obs"][0].flatten() == 1)[0]
-                for a in valid_actions:
-                    node.children[a] = MCTSNode(state=None, parent=node, prior=p_probs_batch[s_idx][a])
+                leaf_data = pyg_data_batch[s_idx]
+                leaf_coords = [(int(x), int(y)) for x, y in leaf_data.coords.cpu().numpy()]
+                slot_probs = node_probs_all[batch_indices == s_idx]
+                for idx, coord in enumerate(leaf_coords):
+                    node.children[coord] = MCTSNode(state=None, parent=node, prior=float(slot_probs[idx]))
             else:
-                # Same clamping as evaluate_fragment_rank
                 db_res = e["frag_db"][j]
                 nn_val = float(v_batch[s_idx])
                 if db_res and not db_res['is_optimal']:
@@ -295,23 +293,25 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
 
 
 
-def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, batch_size=8, greedy=False, temperature=1.0):
+def play_episode(net, env, obs=None, num_simulations=50, add_exploration_noise=True, batch_size=8, greedy=False, temperature=1.0):
+    if obs is None:
+        obs, _ = env.reset()
     state_history = []
     local_sequence = []
 
     while True:
         root = mcts_search(obs, net, env, num_simulations, add_exploration_noise, batch_size=batch_size)
         
-        action_visits = {a: child.visit_count for a, child in root.children.items()}
+        action_visits = {coord: child.visit_count for coord, child in root.children.items()}
         total_visits = sum(action_visits.values())
         if total_visits == 0:
             return [], env.cuts_made, []
             
-        pi = np.zeros(MAX_ROWS * MAX_COLS)
-        for a, visits in action_visits.items():
-            pi[a] = visits / total_visits
-            
-        state_history.append((obs.copy(), pi, env.cuts_made, len(local_sequence)))
+        pyg_data = env.to_pyg_data()
+        coords = [(int(x), int(y)) for x, y in pyg_data.coords.cpu().numpy()]
+        node_pi = np.array([action_visits.get(c, 0.0) / total_visits for c in coords], dtype=np.float32)
+        
+        state_history.append((pyg_data, node_pi, env.cuts_made, len(local_sequence)))
         
         if greedy or not add_exploration_noise:
             action = max(action_visits, key=action_visits.get)
@@ -324,9 +324,10 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, 
                 probs = visits / sum_visits if sum_visits > 0 else [1.0 / len(actions)] * len(actions)
             else:
                 probs = [action_visits[a] / total_visits for a in actions]
-            action = np.random.choice(actions, p=probs)
+            action_idx = np.random.choice(len(actions), p=probs)
+            action = actions[action_idx]
         
-        local_sequence.append({"t": "c", "v": [[int(action // MAX_COLS), int(action % MAX_COLS)]]})
+        local_sequence.append({"t": "c", "v": [[int(action[0]), int(action[1])]]})
         
         obs, reward, terminated, _, info = env.step(action)
         
@@ -343,14 +344,12 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, 
             
             if "fragments" in info and info["fragments"]:
                 for frag in info["fragments"]:
-                    # Create an isolated environment for this fragment
                     frag_env = HowlEnv(env.m, env.n, generate=False)
                     frag_env.graph = frag
                     frag_env.cuts_made = 0
                     frag_obs = frag_env._get_obs()
                     
-                    active_coords = np.argwhere(frag_obs[0] == 1)
-                    verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
+                    verts = [{"x": int(x), "y": int(y)} for x, y in frag.vertices]
                     can_hash = generate_canonical_hash(verts)
                     db_res_dict = query_tablebase([can_hash])
                     db_res = db_res_dict.get(can_hash)
@@ -379,12 +378,11 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, 
             
             local_trajectory = []
             local_discoveries = []
-            for i, (state, policy, cuts_at_state, seq_idx) in enumerate(state_history):
+            for i, (pyg_data, node_pi, cuts_at_state, seq_idx) in enumerate(state_history):
                 intrinsic_rank = total_rank - cuts_at_state
-                local_discoveries.append((state.copy(), intrinsic_rank, final_sequence[seq_idx:]))
+                local_discoveries.append((None, intrinsic_rank, final_sequence[seq_idx:]))
                 
-                pyg_data = grid_tensor_to_pyg_data(torch.tensor(state, dtype=torch.float32))
-                pyg_data.pi = torch.tensor(policy, dtype=torch.float32).unsqueeze(0)
+                pyg_data.node_pi = torch.tensor(node_pi, dtype=torch.float32)
                 pyg_data.v = torch.tensor([intrinsic_rank], dtype=torch.float32).unsqueeze(0)
                 local_trajectory.append(pyg_data)
                     
@@ -409,9 +407,13 @@ def simulate_game_worker(worker_args):
     for data in traj:
         data.x = data.x.cpu()
         data.edge_index = data.edge_index.cpu()
-        data.flat_indices = data.flat_indices.cpu()
-        data.pi = data.pi.cpu()
+        data.coords = data.coords.cpu()
+        data.node_pi = data.node_pi.cpu()
         data.v = data.v.cpu()
+        if hasattr(data, "flat_indices"):
+            data.flat_indices = data.flat_indices.cpu()
+        if hasattr(data, "pi"):
+            data.pi = data.pi.cpu()
         
     traj_buf = io.BytesIO()
     torch.save(traj, traj_buf)
@@ -487,6 +489,7 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
     net.train()
     
     from torch_geometric.loader import DataLoader as PyGDataLoader
+    import torch_geometric.utils as pyg_utils
     buffer_list = list(replay_buffer)
     
     loader = PyGDataLoader(buffer_list, batch_size=batch_size, shuffle=True)
@@ -499,9 +502,11 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
         for batch in loader:
             optimizer.zero_grad()
             batch = batch.to(next(net.parameters()).device)
-            p_logits, v_pred = net(batch)
+            node_p_logits, v_pred = net(batch)
             
-            p_loss = F.cross_entropy(p_logits, batch.pi)
+            # PyG Segmented Softmax Loss across variable graph sizes
+            log_probs = pyg_utils.softmax(node_p_logits, batch.batch).clamp(min=1e-12).log()
+            p_loss = -torch.sum(batch.node_pi * log_probs) / batch.num_graphs
             v_loss = F.mse_loss(v_pred.squeeze(-1), batch.v.squeeze(-1))
             loss = p_loss + 0.5 * v_loss
             loss.backward()
@@ -510,8 +515,8 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
             total_p_loss += p_loss.item()
             total_v_loss += v_loss.item()
             
-        avg_p_loss = total_p_loss / len(loader)
-        avg_v_loss = total_v_loss / len(loader)
+        avg_p_loss = total_p_loss / len(loader) if len(loader) > 0 else 0.0
+        avg_v_loss = total_v_loss / len(loader) if len(loader) > 0 else 0.0
         print(f"  Epoch {epoch+1:<2}/{epochs:<2} | Policy Loss: {avg_p_loss:8.4f} | Value Loss: {avg_v_loss:8.4f}")
         
     elapsed = time.time() - start_time

@@ -184,6 +184,10 @@ def save_replay_buffer(buffer: list, buffer_path: str, max_samples: int | None =
             data.x = data.x.cpu()
         if hasattr(data, "edge_index") and data.edge_index is not None:
             data.edge_index = data.edge_index.cpu()
+        if hasattr(data, "coords") and data.coords is not None:
+            data.coords = data.coords.cpu()
+        if hasattr(data, "node_pi") and data.node_pi is not None:
+            data.node_pi = data.node_pi.cpu()
         if hasattr(data, "flat_indices") and data.flat_indices is not None:
             data.flat_indices = data.flat_indices.cpu()
         if hasattr(data, "pi") and data.pi is not None:

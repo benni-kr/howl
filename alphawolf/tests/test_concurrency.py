@@ -118,7 +118,7 @@ def test_simulate_game_worker_spawn_isolation(isolated_db):
     for data in traj:
         assert data.x.device.type == "cpu"
         assert data.edge_index.device.type == "cpu"
-        assert data.pi.device.type == "cpu"
+        assert data.node_pi.device.type == "cpu"
         assert data.v.device.type == "cpu"
 
     assert len(discoveries) > 0
