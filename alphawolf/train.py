@@ -295,7 +295,7 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
 
 
 
-def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, batch_size=8):
+def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, batch_size=8, greedy=False, temperature=1.0):
     state_history = []
     local_sequence = []
 
@@ -313,9 +313,18 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, 
             
         state_history.append((obs.copy(), pi, env.cuts_made, len(local_sequence)))
         
-        actions = list(action_visits.keys())
-        probs = [action_visits[a] / total_visits for a in actions]
-        action = np.random.choice(actions, p=probs)
+        if greedy or not add_exploration_noise:
+            action = max(action_visits, key=action_visits.get)
+        else:
+            actions = list(action_visits.keys())
+            if temperature != 1.0 and temperature > 0:
+                visits = np.array([action_visits[a] for a in actions], dtype=np.float64)
+                visits = visits ** (1.0 / temperature)
+                sum_visits = np.sum(visits)
+                probs = visits / sum_visits if sum_visits > 0 else [1.0 / len(actions)] * len(actions)
+            else:
+                probs = [action_visits[a] / total_visits for a in actions]
+            action = np.random.choice(actions, p=probs)
         
         local_sequence.append({"t": "c", "v": [[int(action // MAX_COLS), int(action % MAX_COLS)]]})
         
@@ -351,7 +360,13 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, 
                         frag_vertices = [[int(x), int(y)] for x, y in frag.vertices]
                         recursive_cuts.append({"t": "v", "v": frag_vertices, "r": int(db_res['best_rank'])})
                     else:
-                        frag_traj, frag_rank, frag_discoveries = play_episode(net, frag_env, frag_obs, num_simulations, add_exploration_noise, batch_size=batch_size)
+                        frag_traj, frag_rank, frag_discoveries = play_episode(
+                            net, frag_env, frag_obs, num_simulations,
+                            add_exploration_noise=add_exploration_noise,
+                            batch_size=batch_size,
+                            greedy=greedy,
+                            temperature=temperature
+                        )
                         frag_ranks.append(frag_rank)
                         recursive_trajectories.extend(frag_traj)
                         recursive_cuts.extend(frag_discoveries[0][2] if frag_discoveries else [])
@@ -524,6 +539,8 @@ def alpha_zero_loop(
     from checkpoint import (
         load_checkpoint,
         save_checkpoint,
+        save_replay_buffer,
+        load_replay_buffer,
         resolve_checkpoint_path,
         DEFAULT_CHECKPOINT_DIR,
     )
@@ -561,6 +578,15 @@ def alpha_zero_loop(
                 if "curriculum_state" in meta and meta["curriculum_state"]:
                     curriculum.load_state_dict(meta["curriculum_state"])
                     print(f"[RESUME] Restored curriculum state: {curriculum.active_stage.get('name', 'Active Stage')} (Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size})")
+                
+                # Restore rolling replay buffer if present
+                buffer_file = os.path.join(ckpt_dir, "replay_buffer.pt")
+                if os.path.exists(buffer_file):
+                    restored_samples = load_replay_buffer(buffer_file, max_samples=replay_buffer.maxlen)
+                    if restored_samples:
+                        replay_buffer.extend(restored_samples)
+                        print(f"[RESUME] Restored {len(restored_samples)} samples from rolling replay buffer ({buffer_file})")
+
                 print(f"\n[RESUME] Successfully loaded checkpoint: {resolved_ckpt}")
                 if last_gen > 0:
                     print(f"[RESUME] Resuming training from Generation {start_gen} to {num_generations}")
@@ -618,6 +644,10 @@ def alpha_zero_loop(
             metrics=loss_metrics,
             curriculum_state=curriculum.state_dict(),
         )
+
+        # Atomically update rolling replay buffer
+        buffer_file = os.path.join(ckpt_dir, "replay_buffer.pt")
+        save_replay_buffer(replay_buffer, buffer_file, max_samples=replay_buffer.maxlen)
         
         print(f"\n[PHASE 3] Validation & Checkpointing")
         print("-" * 60)
@@ -625,7 +655,7 @@ def alpha_zero_loop(
         
         # Benchmark Suite Promotion Check
         from benchmark import promote_model
-        promote_model(ckpt_path)
+        promote_model(ckpt_path, num_workers=num_workers)
 
 if __name__ == "__main__":
     import argparse

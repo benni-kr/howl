@@ -132,3 +132,35 @@ def test_alpha_zero_loop_resume_execution(tmp_path, isolated_db):
         self_play_max_grid=5,
         resume_from=gen1_ckpt,
     )
+
+
+def test_save_and_load_replay_buffer(tmp_path):
+    """Verify save_replay_buffer and load_replay_buffer persist and restore PyG Data objects on CPU."""
+    from torch_geometric.data import Data
+    from checkpoint import save_replay_buffer, load_replay_buffer
+
+    buf_path = str(tmp_path / "replay_buffer.pt")
+    
+    # Create sample Data items
+    sample_buffer = []
+    for i in range(10):
+        d = Data(
+            x=torch.randn(4, 4),
+            edge_index=torch.tensor([[0, 1], [1, 0]], dtype=torch.long),
+            flat_indices=torch.tensor([0, 1, 2, 3], dtype=torch.long),
+            pi=torch.zeros(100),
+            v=torch.tensor([float(i)])
+        )
+        sample_buffer.append(d)
+
+    saved_path = save_replay_buffer(sample_buffer, buf_path, max_samples=8)
+    assert os.path.exists(saved_path)
+
+    # Restored buffer should respect max_samples cap (last 8)
+    restored = load_replay_buffer(buf_path)
+    assert len(restored) == 8
+    assert restored[-1].v.item() == 9.0
+
+    for item in restored:
+        assert item.x.device.type == "cpu"
+        assert item.edge_index.device.type == "cpu"

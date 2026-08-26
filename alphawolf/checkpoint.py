@@ -167,3 +167,51 @@ def save_checkpoint(
 
     torch.save(payload, ckpt_path)
     return ckpt_path
+
+
+def save_replay_buffer(buffer: list, buffer_path: str, max_samples: int | None = None) -> str:
+    """
+    Atomically saves the active replay buffer to disk.
+    Tensors are ensured to be on CPU before saving.
+    """
+    os.makedirs(os.path.dirname(os.path.abspath(buffer_path)), exist_ok=True)
+    samples = list(buffer)
+    if max_samples is not None and len(samples) > max_samples:
+        samples = samples[-max_samples:]
+        
+    for data in samples:
+        if hasattr(data, "x") and data.x is not None:
+            data.x = data.x.cpu()
+        if hasattr(data, "edge_index") and data.edge_index is not None:
+            data.edge_index = data.edge_index.cpu()
+        if hasattr(data, "flat_indices") and data.flat_indices is not None:
+            data.flat_indices = data.flat_indices.cpu()
+        if hasattr(data, "pi") and data.pi is not None:
+            data.pi = data.pi.cpu()
+        if hasattr(data, "v") and data.v is not None:
+            data.v = data.v.cpu()
+
+    tmp_path = buffer_path + ".tmp"
+    torch.save(samples, tmp_path)
+    if os.path.exists(buffer_path):
+        os.replace(tmp_path, buffer_path)
+    else:
+        os.rename(tmp_path, buffer_path)
+    return buffer_path
+
+
+def load_replay_buffer(buffer_path: str, max_samples: int | None = None) -> list:
+    """
+    Loads a persisted replay buffer from disk.
+    """
+    if not os.path.exists(buffer_path):
+        return []
+    try:
+        samples = torch.load(buffer_path, map_location="cpu", weights_only=False)
+        if isinstance(samples, list):
+            if max_samples is not None and len(samples) > max_samples:
+                samples = samples[-max_samples:]
+            return samples
+    except Exception as e:
+        print(f"Warning: Could not load replay buffer from {buffer_path} ({e}). Starting with empty buffer.")
+    return []
