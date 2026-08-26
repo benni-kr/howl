@@ -1,7 +1,7 @@
-fastapi==0.104.1
-sqlalchemy==2.0.32
-uvicorn[standard]==0.24.0
-psycopg2-binary==2.9.10
-gunicorn==21.2.0
-python-dotenv==1.0.0
+fastapi>=0.104.1
+sqlalchemy>=2.0.32
+uvicorn[standard]>=0.24.0
+python-dotenv>=1.0.0
 -e ../core_engine
+psycopg2-binary>=2.9.10; sys_platform != 'win32'
+gunicorn>=21.2.0; sys_platform != 'win32'
