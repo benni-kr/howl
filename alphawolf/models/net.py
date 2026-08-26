@@ -30,8 +30,11 @@ def grid_tensor_to_pyg_data(state_tensor):
     if V == 0:
         x = torch.zeros((0, 4), dtype=torch.float32, device=device)
         edge_index = torch.zeros((2, 0), dtype=torch.long, device=device)
+        coords = torch.zeros((0, 2), dtype=torch.long, device=device)
         flat_indices = torch.zeros((0,), dtype=torch.long, device=device)
-        return Data(x=x, edge_index=edge_index, flat_indices=flat_indices, m=m, n=n)
+        return Data(x=x, edge_index=edge_index, coords=coords, flat_indices=flat_indices, m=m, n=n)
+    
+    coords = active_indices_2d.clone()
     
     # 1D flattened positional indices (from 0 to M*N-1)
     flat_indices = active_indices_2d[:, 0] * n + active_indices_2d[:, 1]
@@ -57,16 +60,18 @@ def grid_tensor_to_pyg_data(state_tensor):
     dst = torch.cat([h_dst, h_src, v_dst, v_src])
     edge_index = torch.stack([src, dst]).contiguous()
         
-    return Data(x=x, edge_index=edge_index, flat_indices=flat_indices, m=m, n=n)
+    return Data(x=x, edge_index=edge_index, coords=coords, flat_indices=flat_indices, m=m, n=n)
+
 
 class AlphaWolfGNN(nn.Module):
-    def __init__(self, m=None, n=None, in_channels=4, hidden_channels=128, num_layers=6):
+    """
+    Size-agnostic Graph Neural Network for Vertex k-Ranking.
+    Operates on arbitrary graph sizes without canvas zero-padding.
+    """
+    def __init__(self, m=None, n=None, in_channels=4, hidden_channels=128, num_layers=6, **kwargs):
         super().__init__()
-        # Policy scatter target follows the padded canvas size. No weights
-        # depend on these values, so checkpoints stay valid across canvas sizes.
-        from envs.howl_env import MAX_ROWS, MAX_COLS
-        self.m = MAX_ROWS
-        self.n = MAX_COLS
+        self.m = m or 10
+        self.n = n or 10
         
         if not HAS_PYG:
             raise ImportError("torch_geometric is required for AlphaWolfGNN.")
@@ -85,12 +90,23 @@ class AlphaWolfGNN(nn.Module):
         self.value_fc1 = nn.Linear(hidden_channels, hidden_channels)
         self.value_fc2 = nn.Linear(hidden_channels, 1)
         
-    def forward(self, batch_data):
+    def forward(self, batch_data, return_scattered: bool = False):
+        """
+        Forward pass for size-agnostic GNN.
+        batch_data: PyG Data, PyG Batch, or dense Tensor.
+        
+        Returns:
+          node_p_logits: [Total_Nodes] (scalar logit per active vertex)
+          graph_v:       [Batch_Size, 1] (predicted intrinsic rank)
+        """
         # Auto-convert raw dense tensors to PyG Batch objects
         if isinstance(batch_data, torch.Tensor):
             data_list = [grid_tensor_to_pyg_data(batch_data[i]) for i in range(batch_data.size(0))]
             batch_data = Batch.from_data_list(data_list)
             batch_data = batch_data.to(next(self.parameters()).device)
+            return_scattered = True
+        elif hasattr(batch_data, "batch") and batch_data.batch is None:
+            batch_data = Batch.from_data_list([batch_data])
             
         x, edge_index, batch_idx = batch_data.x, batch_data.edge_index, batch_data.batch
         
@@ -99,28 +115,30 @@ class AlphaWolfGNN(nn.Module):
         for layer in self.layers:
             residual = x
             x = F.relu(layer(x, edge_index))
-            x = x + residual # Skip connection
+            x = x + residual  # Skip connection
             
-        # 2. Policy Head
+        # 2. Policy Head: scalar logit per active node
         p = F.relu(self.policy_fc1(x))
-        p_logits = self.policy_fc2(p).squeeze(-1) # [V]
-        
-        B = batch_data.num_graphs
-        max_size = self.m * self.n
-        
-        # Scatter initialization (Action Masking)
-        policy_out = torch.full((B, max_size), -1e9, dtype=torch.float32, device=x.device)
-        
-        # Scatter logits back to fixed positional dimensions [Batch, M*N]
-        if x.size(0) > 0:
-            policy_out[batch_idx, batch_data.flat_indices] = p_logits
+        node_p_logits = self.policy_fc2(p).squeeze(-1)  # [Total_Nodes]
         
         # 3. Value Head (Global Mean Pooling)
-        v = global_mean_pool(x, batch_idx) # [B, hidden_channels]
+        v = global_mean_pool(x, batch_idx)  # [B, hidden_channels]
         v = F.relu(self.value_fc1(v))
-        v = self.value_fc2(v) # [B, 1]
+        graph_v = self.value_fc2(v)  # [B, 1]
         
-        return policy_out, v
+        if return_scattered:
+            B = batch_data.num_graphs
+            m = getattr(batch_data, "m", self.m)
+            n = getattr(batch_data, "n", self.n)
+            if isinstance(m, torch.Tensor): m = int(m[0].item()) if m.numel() > 0 else self.m
+            if isinstance(n, torch.Tensor): n = int(n[0].item()) if n.numel() > 0 else self.n
+            max_size = m * n
+            policy_out = torch.full((B, max_size), -1e9, dtype=torch.float32, device=x.device)
+            if x.size(0) > 0 and hasattr(batch_data, "flat_indices"):
+                policy_out[batch_idx, batch_data.flat_indices] = node_p_logits
+            return policy_out, graph_v
+            
+        return node_p_logits, graph_v
 
 class ResBlock(nn.Module):
     # Archived for reference

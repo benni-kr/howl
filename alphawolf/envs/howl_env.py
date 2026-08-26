@@ -10,24 +10,25 @@ if _CORE_DIR not in sys.path:
 
 from core_engine.graph_logic import GridGraph, filter_and_deduplicate
 
-MAX_ROWS = 10
-MAX_COLS = 10
+MAX_ROWS = 10  # Kept as legacy default
+MAX_COLS = 10  # Kept as legacy default
+
 
 class HowlEnv(gym.Env):
     """
     Custom Gymnasium Environment for the Vertex k-Ranking problem on grid graphs.
+    Supports arbitrary dynamic grid dimensions (m x n) and direct PyG export.
     """
     def __init__(self, m: int, n: int, generate: bool = True):
         super().__init__()
-        assert m <= MAX_ROWS and n <= MAX_COLS, f"Grid size {m}x{n} exceeds max {MAX_ROWS}x{MAX_COLS}"
         self.m = m
         self.n = n
 
-        # Observation space: 5-channel 2D array of the padded grid
-        self.observation_space = spaces.Box(low=0, high=1, shape=(5, MAX_ROWS, MAX_COLS), dtype=np.float32)
+        # Observation space: 5-channel 2D array of the actual grid dimensions
+        self.observation_space = spaces.Box(low=0, high=1, shape=(5, m, n), dtype=np.float32)
 
-        # Action space: Flattened 1D discrete selection across the full 10x10 canvas
-        self.action_space = spaces.Discrete(MAX_ROWS * MAX_COLS)
+        # Action space: Flattened 1D discrete selection across the m x n canvas (or coordinate tuple)
+        self.action_space = spaces.Discrete(m * n)
 
         self.graph = None
         self.cuts_made = 0
@@ -44,13 +45,10 @@ class HowlEnv(gym.Env):
         return self._get_obs(), {}
 
     def _get_obs(self, components=None):
-        """Build the observation. `components` may pass a known component
-        decomposition of self.graph to skip recomputing it (step() uses this:
-        after a non-terminal step the graph is exactly one component)."""
-        obs = np.zeros((5, MAX_ROWS, MAX_COLS), dtype=np.float32)
+        """Build the observation dynamically scaled to (5, m, n)."""
+        obs = np.zeros((5, self.m, self.n), dtype=np.float32)
 
         adjacency = self.graph.adjacency
-        # Only component membership is needed here, so skip building subgraphs
         if components is None:
             components = self.graph.get_component_vertex_sets()
 
@@ -78,6 +76,62 @@ class HowlEnv(gym.Env):
             obs[4, x, y] = 1.0
 
         return obs
+
+    def to_pyg_data(self, device=None):
+        """
+        Directly exports the active graph state into a PyG Data object.
+        Active vertices are deterministically ordered by sorted (x, y).
+        """
+        import torch
+        from torch_geometric.data import Data
+
+        active_vertices = sorted(self.graph.vertices)
+        V = len(active_vertices)
+
+        if V == 0:
+            x = torch.zeros((0, 4), dtype=torch.float32, device=device)
+            edge_index = torch.zeros((2, 0), dtype=torch.long, device=device)
+            coords = torch.zeros((0, 2), dtype=torch.long, device=device)
+            return Data(x=x, edge_index=edge_index, coords=coords, m=self.m, n=self.n)
+
+        coord_to_idx = {v: i for i, v in enumerate(active_vertices)}
+        coords_tensor = torch.tensor(active_vertices, dtype=torch.long, device=device)
+
+        adjacency = self.graph.adjacency
+        components = self.graph.get_component_vertex_sets()
+        comp_map = {}
+        for comp_idx, comp in enumerate(components):
+            val = (comp_idx + 1) / max(1, len(components))
+            for v in comp:
+                comp_map[v] = val
+
+        art_points = self._articulation_points()
+
+        node_feats = []
+        src_list = []
+        dst_list = []
+
+        for v in active_vertices:
+            deg = len(adjacency[v])
+            deg_norm = deg / 4.0
+            border = 1.0 if deg < 4 else 0.0
+            comp_id = comp_map.get(v, 1.0)
+            art = 1.0 if v in art_points else 0.0
+            node_feats.append([deg_norm, border, comp_id, art])
+
+            idx_u = coord_to_idx[v]
+            for neighbor in adjacency[v]:
+                if neighbor in coord_to_idx:
+                    src_list.append(idx_u)
+                    dst_list.append(coord_to_idx[neighbor])
+
+        x_tensor = torch.tensor(node_feats, dtype=torch.float32, device=device)
+        if src_list:
+            edge_index = torch.tensor([src_list, dst_list], dtype=torch.long, device=device)
+        else:
+            edge_index = torch.zeros((2, 0), dtype=torch.long, device=device)
+
+        return Data(x=x_tensor, edge_index=edge_index, coords=coords_tensor, m=self.m, n=self.n)
 
     def _articulation_points(self):
         """Finds all articulation points via Tarjan's algorithm (iterative DFS)."""
@@ -127,12 +181,16 @@ class HowlEnv(gym.Env):
 
         return points
 
-    def step(self, action: int, compute_obs: bool = True):
-        """Apply a cut. Pass compute_obs=False when the returned observation is
-        not needed (e.g. during MCTS descent) — building it (BFS + Tarjan) is
-        the most expensive part of a step."""
-        x = action // MAX_COLS
-        y = action % MAX_COLS
+    def step(self, action, compute_obs: bool = True):
+        """Apply a cut. Accepts integer (row * n + col) or coordinate tuple (x, y)."""
+        if isinstance(action, (int, np.integer)):
+            x = int(action) // self.n
+            y = int(action) % self.n
+        elif isinstance(action, (tuple, list)):
+            x, y = int(action[0]), int(action[1])
+        else:
+            raise TypeError(f"Action must be int or (x, y) tuple, got {type(action)}")
+
         vertex = (x, y)
 
         # Invalid action (cutting an already cut vertex)
