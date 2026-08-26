@@ -38,3 +38,6 @@ __pycache__/
 
 # AlphaWolf Checkpoints
 alphawolf/models/checkpoints/alphawolf_gen_*.pt
+alphawolf/models/checkpoints/*.meta.json
+alphawolf/models/checkpoints/replay_buffer.pt
+alphawolf/models/checkpoints/*.tmp
