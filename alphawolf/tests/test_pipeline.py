@@ -44,6 +44,76 @@ def test_model_evaluation_on_mini_gauntlet():
     assert exec_time > 0.0
 
 
+def test_deterministic_greedy_argmax_evaluation(tmp_path):
+    """Verify that evaluate_model produces bit-identical scores across runs with greedy argmax."""
+    ckpt_path = str(tmp_path / "model.pt")
+    net = AlphaWolfNet()
+    torch.save(net.state_dict(), ckpt_path)
+
+    mini_gauntlet = [
+        {"m": 4, "n": 4, "missing": []},
+        {"m": 4, "n": 5, "missing": [(0, 0)]}
+    ]
+
+    r1, n1, _ = evaluate_model(ckpt_path, mini_gauntlet, num_simulations=15, mcts_batch_size=1, num_workers=1, use_cache=False)
+    r2, n2, _ = evaluate_model(ckpt_path, mini_gauntlet, num_simulations=15, mcts_batch_size=1, num_workers=1, use_cache=False)
+
+    assert r1 == r2, f"Ranks differed across runs: {r1} vs {r2}"
+    assert n1 == n2, f"Nodes differed across runs: {n1} vs {n2}"
+
+
+def test_benchmark_cache_hit_and_invalidation(tmp_path):
+    """Verify that benchmark sidecar metadata caches results and invalidates when weights change."""
+    from benchmark import get_benchmark_meta_path, load_benchmark_cache, save_benchmark_cache
+
+    ckpt_path = str(tmp_path / "test_model.pt")
+    net = AlphaWolfNet()
+    torch.save(net.state_dict(), ckpt_path)
+
+    mini_gauntlet = [{"m": 4, "n": 4, "missing": []}]
+
+    # 1. First run: generates cache
+    r1, n1, t1 = evaluate_model(ckpt_path, mini_gauntlet, num_simulations=10, mcts_batch_size=1, use_cache=True)
+    meta_path = get_benchmark_meta_path(ckpt_path)
+    assert os.path.exists(meta_path)
+
+    # 2. Second run: cache hit
+    cached = load_benchmark_cache(ckpt_path, mini_gauntlet, num_simulations=10, mcts_batch_size=1)
+    assert cached is not None
+    assert cached[0] == r1
+    assert cached[1] == n1
+
+    # 3. Modify weights: invalidates cache
+    net2 = AlphaWolfNet()
+    with torch.no_grad():
+        for p in net2.parameters():
+            p.add_(1.0)
+    torch.save(net2.state_dict(), ckpt_path)
+
+    # Cache should be invalidated because sha256 changed
+    invalidated = load_benchmark_cache(ckpt_path, mini_gauntlet, num_simulations=10, mcts_batch_size=1)
+    assert invalidated is None
+
+
+def test_parallel_multi_worker_evaluation(tmp_path):
+    """Verify that multi-worker parallel evaluation produces matching results to single-worker."""
+    ckpt_path = str(tmp_path / "model.pt")
+    net = AlphaWolfNet()
+    torch.save(net.state_dict(), ckpt_path)
+
+    mini_gauntlet = [
+        {"m": 4, "n": 4, "missing": []},
+        {"m": 4, "n": 5, "missing": [(0, 0)]},
+        {"m": 5, "n": 5, "missing": []}
+    ]
+
+    r_seq, n_seq, _ = evaluate_model(ckpt_path, mini_gauntlet, num_simulations=10, num_workers=1, use_cache=False)
+    r_par, n_par, _ = evaluate_model(ckpt_path, mini_gauntlet, num_simulations=10, num_workers=3, use_cache=False)
+
+    assert r_seq == r_par
+    assert n_seq == n_par
+
+
 def test_promotion_logic_unit_test(tmp_path):
     """Test promote_model decision branching."""
     baseline_pt = str(tmp_path / "best_model.pt")
