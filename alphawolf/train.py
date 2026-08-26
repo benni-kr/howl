@@ -382,7 +382,7 @@ def simulate_game_worker(worker_args):
     local_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.set_num_threads(1) # Prevent OpenMP deadlocks in multiprocessing
     net = AlphaWolfNet(m, n)
-    net.load_state_dict(torch.load(io.BytesIO(model_bytes), map_location=local_device))
+    net.load_state_dict(torch.load(io.BytesIO(model_bytes), map_location=local_device, weights_only=True))
     net.to(local_device)
     net.eval()
     
@@ -422,6 +422,8 @@ def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_siz
     num_games = len(gm_gn_list)
     print(f"\n[PHASE 1] Self-Play ({num_games} games | {num_workers} workers | solver: '{solver_name}')")
     print("-" * 60)
+    print(f"Game      | Time     | Grid  | Rank | Nodes | Worker")
+    print("-" * 60)
     
     start_time = time.time()
     ranks = []
@@ -451,7 +453,8 @@ def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_siz
             # Nicer Terminal Output
             progress = f"[{completed}/{num_games}]"
             grid_str = f"{m}x{n}"
-            print(f"  {progress:<9} Grid: {grid_str:<5} | Rank: {final_rank:<3} | Nodes: {len(traj):<3} | Worker Game: #{game_id}")
+            current_time = time.strftime("%H:%M:%S")
+            print(f"{progress:<9} | {current_time:<8} | {grid_str:<5} | {final_rank:<4} | {len(traj):<5} | #{game_id}")
             
     elapsed = time.time() - start_time
     avg_rank = sum(ranks) / len(ranks) if ranks else 0

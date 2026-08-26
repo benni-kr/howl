@@ -21,22 +21,24 @@ def grid_tensor_to_pyg_data(state_tensor):
     channels, m, n = state_tensor.shape
     assert channels == 5, f"Expected 5 channels, got {channels}"
     
+    device = state_tensor.device
+    
     # Active vertices where mask (channel 0) == 1
     active_indices_2d = torch.nonzero(state_tensor[0] == 1, as_tuple=False)  # shape (V, 2)
     V = active_indices_2d.size(0)
     
     if V == 0:
-        x = torch.zeros((0, 4), dtype=torch.float32)
-        edge_index = torch.zeros((2, 0), dtype=torch.long)
-        flat_indices = torch.zeros((0,), dtype=torch.long)
+        x = torch.zeros((0, 4), dtype=torch.float32, device=device)
+        edge_index = torch.zeros((2, 0), dtype=torch.long, device=device)
+        flat_indices = torch.zeros((0,), dtype=torch.long, device=device)
         return Data(x=x, edge_index=edge_index, flat_indices=flat_indices, m=m, n=n)
     
     # 1D flattened positional indices (from 0 to M*N-1)
     flat_indices = active_indices_2d[:, 0] * n + active_indices_2d[:, 1]
     
     # Map from 2D coordinate -> vertex index in 0..V-1
-    coord_to_idx = torch.full((m, n), -1, dtype=torch.long)
-    coord_to_idx[active_indices_2d[:, 0], active_indices_2d[:, 1]] = torch.arange(V)
+    coord_to_idx = torch.full((m, n), -1, dtype=torch.long, device=device)
+    coord_to_idx[active_indices_2d[:, 0], active_indices_2d[:, 1]] = torch.arange(V, device=device)
     
     # Extract topological node features (Channels 1 to 4) for active vertices
     x = state_tensor[1:, active_indices_2d[:, 0], active_indices_2d[:, 1]].T.clone().detach()

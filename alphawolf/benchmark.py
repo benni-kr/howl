@@ -56,11 +56,11 @@ def evaluate_model(model_path, gauntlet_boards, num_simulations=100, mcts_batch_
     total_node_expansions = 0
     start_time = time.time()
     
-    # Instantiate the network.
-    net = AlphaWolfNet() # Defaults to 10x10 zero-padded format
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    net = AlphaWolfNet().to(device)
     try:
         from checkpoint import load_checkpoint
-        load_checkpoint(model_path, net, device=torch.device('cpu'))
+        load_checkpoint(model_path, net, device=device)
     except Exception as e:
         print(f"Warning: Failed to load model weights for {model_path} ({e}). Yielding invalid scores.")
         return float('inf'), float('inf'), 0.0
