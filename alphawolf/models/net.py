@@ -11,15 +11,17 @@ except ImportError:
 
 def grid_tensor_to_pyg_data(state_tensor):
     """
-    Converts a single (5, M, N) dense grid tensor into a sparse PyG Data object.
-    state_tensor: (5, M, N)
-    Channels: 0: mask, 1: degree, 2: border, 3: comp_id, 4: articulation
+    Converts a single (9, M, N) dense grid tensor into a sparse PyG Data object.
+    state_tensor: (9, M, N)
+    Channels: 0: mask, 1: deg_orth, 2: deg_diag, 3: boundary_depth,
+              4: radial_center_dist, 5: tarjan_split_balance,
+              6: cut_frontier_proximity, 7: aspect_ratio_inv, 8: component_solidity
     """
     if not HAS_PYG:
         raise ImportError("torch_geometric is required for GNN representation.")
         
     channels, m, n = state_tensor.shape
-    assert channels == 5, f"Expected 5 channels, got {channels}"
+    assert channels == 9, f"Expected 9 channels, got {channels}"
     
     device = state_tensor.device
     
@@ -28,11 +30,12 @@ def grid_tensor_to_pyg_data(state_tensor):
     V = active_indices_2d.size(0)
     
     if V == 0:
-        x = torch.zeros((0, 4), dtype=torch.float32, device=device)
+        x = torch.zeros((0, 8), dtype=torch.float32, device=device)
         edge_index = torch.zeros((2, 0), dtype=torch.long, device=device)
         coords = torch.zeros((0, 2), dtype=torch.long, device=device)
         flat_indices = torch.zeros((0,), dtype=torch.long, device=device)
-        return Data(x=x, edge_index=edge_index, coords=coords, flat_indices=flat_indices, m=m, n=n)
+        legal_mask = torch.zeros((0,), dtype=torch.bool, device=device)
+        return Data(x=x, edge_index=edge_index, coords=coords, flat_indices=flat_indices, legal_mask=legal_mask, m=m, n=n)
     
     coords = active_indices_2d.clone()
     
@@ -43,7 +46,7 @@ def grid_tensor_to_pyg_data(state_tensor):
     coord_to_idx = torch.full((m, n), -1, dtype=torch.long, device=device)
     coord_to_idx[active_indices_2d[:, 0], active_indices_2d[:, 1]] = torch.arange(V, device=device)
     
-    # Extract topological node features (Channels 1 to 4) for active vertices
+    # Extract topological node features (Channels 1 to 8) for active vertices
     x = state_tensor[1:, active_indices_2d[:, 0], active_indices_2d[:, 1]].T.clone().detach()
     
     # Build edge_index (4-way connectivity) via shifted-mask adjacency
@@ -68,7 +71,7 @@ class AlphaWolfGNN(nn.Module):
     Size-agnostic Graph Neural Network for Vertex k-Ranking.
     Operates on arbitrary graph sizes without canvas zero-padding.
     """
-    def __init__(self, m=None, n=None, in_channels=4, hidden_channels=128, num_layers=6, **kwargs):
+    def __init__(self, m=None, n=None, in_channels=8, hidden_channels=128, num_layers=6, **kwargs):
         super().__init__()
         self.m = m or 10
         self.n = n or 10
