@@ -672,7 +672,7 @@ def alpha_zero_loop(
 
         if is_eval_stage and is_eval_gen:
             from benchmark import promote_model
-            promote_model(ckpt_path, num_workers=num_workers, mcts_batch_size=mcts_batch_size)
+            promote_model(ckpt_path, num_workers=num_workers, mcts_batch_size=mcts_batch_size, max_size=self_play_max_grid)
         else:
             if not is_eval_stage:
                 reason = f"Stage {curriculum.current_stage_idx + 1} < Stage {benchmark_min_stage + 1}"

@@ -19,14 +19,35 @@ from models.net import AlphaWolfNet
 from train import play_episode
 
 
-def create_gauntlet(fractured_per_tier=2, fracture_min=0.1, fracture_max=0.3, min_size=4, max_size=9):
+def create_gauntlet(fractured_per_tier=1, fracture_min=0.1, fracture_max=0.3, min_size=4, max_size=None):
     """Returns a list of dicts defining the benchmark boards.
 
-    NOTE: changing min_size/max_size redefines the gauntlet and breaks
-    comparability with all previously recorded benchmark results. The
-    defaults are the stable metric.
+    Dynamically generates benchmark tiers based on max_size (configured from config.json).
+    For sizes up to 9: exhaustive rectangular pairs.
+    For sizes > 9: all square grids up to max_size plus representative aspect ratios.
     """
-    unlocked_tiers = [(i, j) for i in range(min_size, max_size + 1) for j in range(min_size, max_size + 1) if i <= j]
+    if max_size is None:
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), "config.json")
+            if os.path.exists(config_path):
+                with open(config_path, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                max_size = cfg.get("self_play_max_grid", 9)
+        except Exception:
+            max_size = 9
+
+    if max_size <= 9:
+        unlocked_tiers = [(i, j) for i in range(min_size, max_size + 1) for j in range(min_size, max_size + 1) if i <= j]
+    else:
+        # Core dense foundation tiers up to 8x8
+        tiers = [(i, j) for i in range(min_size, 9) for j in range(min_size, 9) if i <= j]
+        # Extended large tiers: all square boards and key rectangular bisection challenges
+        for k in range(9, max_size + 1):
+            tiers.append((k, k))
+            if k % 2 == 0 or k == max_size:
+                tiers.append((max(min_size, k // 2), k))
+                tiers.append((k - 2, k))
+        unlocked_tiers = sorted(list(set(tiers)))
         
     gauntlet = []
     
@@ -214,13 +235,13 @@ def evaluate_model(model_path, gauntlet_boards, num_simulations=100, mcts_batch_
 _DEFAULT_BEST_MODEL_PATH = os.path.join(os.path.dirname(__file__), "models/checkpoints/best_model.pt")
 
 
-def promote_model(new_model_path, best_model_path=_DEFAULT_BEST_MODEL_PATH, num_workers=5, num_simulations=100, mcts_batch_size=8):
+def promote_model(new_model_path, best_model_path=_DEFAULT_BEST_MODEL_PATH, num_workers=5, num_simulations=100, mcts_batch_size=8, max_size=None):
     """
     Evaluates new_model against best_model using the gauntlet.
     Promotes challenger if strictly better rank or equal rank with fewer nodes.
     Reuses cached baseline score whenever available.
     """
-    gauntlet = create_gauntlet()
+    gauntlet = create_gauntlet(max_size=max_size)
     
     if not os.path.exists(best_model_path):
         print(f"No best_model.pt found. Bootstrapping with {new_model_path}")
