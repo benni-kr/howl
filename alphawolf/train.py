@@ -557,6 +557,7 @@ def alpha_zero_loop(
     enable_perimeter_mask=True,
     benchmark_interval=3,
     benchmark_min_stage=2,
+    replay_buffer_capacity=60000,
 ):
     from checkpoint import (
         load_checkpoint,
@@ -575,7 +576,7 @@ def alpha_zero_loop(
     optimizer = optim.Adam(net.parameters(), lr=1e-3, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_generations, eta_min=1e-5)
     
-    replay_buffer = collections.deque(maxlen=30000)
+    replay_buffer = collections.deque(maxlen=replay_buffer_capacity)
     
     ckpt_dir = os.path.join(os.path.dirname(__file__), "models/checkpoints")
     os.makedirs(ckpt_dir, exist_ok=True)
@@ -746,4 +747,5 @@ if __name__ == "__main__":
         enable_perimeter_mask=config.get("enable_perimeter_mask", True),
         benchmark_interval=config.get("benchmark_interval", 3),
         benchmark_min_stage=config.get("benchmark_min_stage", 2),
+        replay_buffer_capacity=config.get("replay_buffer_capacity", 60000),
     )
