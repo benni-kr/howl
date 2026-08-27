@@ -107,8 +107,20 @@ def load_checkpoint(
     except Exception:
         ckpt_data = torch.load(ckpt_path, map_location=device, weights_only=False)
 
+    def _safe_load_state_dict(model, state_dict):
+        try:
+            model.load_state_dict(state_dict)
+        except RuntimeError as e:
+            if "size mismatch" in str(e) or "shape" in str(e):
+                raise RuntimeError(
+                    f"Checkpoint loading failed due to architecture/shape mismatch in '{ckpt_path}'. "
+                    f"This indicates loading a legacy checkpoint into the upgraded 9-channel D4-invariant GNN. "
+                    f"Please start a fresh training run using '--fresh' or specify an updated checkpoint."
+                ) from e
+            raise
+
     if isinstance(ckpt_data, dict) and "model_state_dict" in ckpt_data:
-        net.load_state_dict(ckpt_data["model_state_dict"])
+        _safe_load_state_dict(net, ckpt_data["model_state_dict"])
 
         if optimizer is not None and ckpt_data.get("optimizer_state_dict") is not None:
             try:
@@ -127,7 +139,7 @@ def load_checkpoint(
 
     elif isinstance(ckpt_data, (dict, collections.OrderedDict)):
         # Raw state dict
-        net.load_state_dict(ckpt_data)
+        _safe_load_state_dict(net, ckpt_data)
         match = re.search(r"alphawolf_gen_(\d+)\.pt$", os.path.basename(ckpt_path))
         generation = int(match.group(1)) if match else 0
         return generation, {"model_state_dict": ckpt_data}
@@ -204,18 +216,25 @@ def save_replay_buffer(buffer: list, buffer_path: str, max_samples: int | None =
     return buffer_path
 
 
-def load_replay_buffer(buffer_path: str, max_samples: int | None = None) -> list:
+def load_replay_buffer(buffer_path: str, max_samples: int | None = None, expected_features: int = 8) -> list:
     """
-    Loads a persisted replay buffer from disk.
+    Loads a persisted replay buffer from disk, filtering out samples with incompatible feature dimensions.
     """
     if not os.path.exists(buffer_path):
         return []
     try:
         samples = torch.load(buffer_path, map_location="cpu", weights_only=False)
         if isinstance(samples, list):
-            if max_samples is not None and len(samples) > max_samples:
-                samples = samples[-max_samples:]
-            return samples
+            valid_samples = []
+            for s in samples:
+                if hasattr(s, "x") and s.x is not None and s.x.numel() > 0:
+                    if s.x.size(-1) == expected_features:
+                        valid_samples.append(s)
+                else:
+                    valid_samples.append(s)
+            if max_samples is not None and len(valid_samples) > max_samples:
+                valid_samples = valid_samples[-max_samples:]
+            return valid_samples
     except Exception as e:
         print(f"Warning: Could not load replay buffer from {buffer_path} ({e}). Starting with empty buffer.")
     return []

@@ -20,5 +20,6 @@
     { "max_size": 5, "fraction": 0.25, "name": "Foundations (4x4-5x5)" },
     { "max_size": 7, "fraction": 0.35, "name": "Intermediate (4x4-7x7)" },
     { "max_size": 9, "fraction": 0.40, "name": "Full Scale (4x4-9x9)" }
-  ]
+  ],
+  "enable_perimeter_mask": true
 }

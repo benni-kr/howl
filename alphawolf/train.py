@@ -27,6 +27,7 @@ def clone_env(src_env, current_cuts=None):
     sim_env.graph.vertices = set(src_env.graph.vertices)
     sim_env.graph.adjacency = {v: set(s) for v, s in src_env.graph.adjacency.items()}
     sim_env.cuts_made = src_env.cuts_made if current_cuts is None else current_cuts
+    sim_env.cuts_in_turn = set(src_env.cuts_in_turn)
     return sim_env
 
 def clone_env_from_obs(obs, m, n, current_cuts=0):
@@ -41,6 +42,7 @@ def clone_env_from_obs(obs, m, n, current_cuts=0):
                 sim_env.graph._add_edge((x, y), (x+dx, y+dy))
                 
     sim_env.cuts_made = current_cuts
+    sim_env.cuts_in_turn = set()
     return sim_env
 
 def evaluate_fragment_rank(frag, m, n, net):
@@ -108,34 +110,40 @@ def ucb_score(parent: MCTSNode, child: MCTSNode) -> float:
         q = base_q
     return q - prior_score
 
-def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise=True, batch_size=8):
+def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise=True, batch_size=8, enable_perimeter_mask=True):
     root = MCTSNode(root_state)
     
     net.eval()
     with torch.no_grad():
-        root_data = env.to_pyg_data(device=next(net.parameters()).device)
+        root_data = env.to_pyg_data(device=next(net.parameters()).device, perimeter_only=enable_perimeter_mask)
         p_logits, v = net(root_data)
         
-        # Single-graph node softmax
-        p_probs = F.softmax(p_logits, dim=0).cpu().numpy()
+        # Single-graph node softmax with perimeter action masking
+        masked_p_logits = p_logits.clone()
+        if hasattr(root_data, "legal_mask") and root_data.legal_mask is not None and root_data.legal_mask.numel() > 0:
+            masked_p_logits[~root_data.legal_mask] = -1e9
+        p_probs = F.softmax(masked_p_logits, dim=0).cpu().numpy()
         
         root.value_sum = v.item()
         root.visit_count = 1
         root.is_expanded = True
         
         coords = [(int(x), int(y)) for x, y in root_data.coords.cpu().numpy()]
-        num_valid = len(coords)
+        legal_mask_np = root_data.legal_mask.cpu().numpy() if (hasattr(root_data, "legal_mask") and root_data.legal_mask is not None) else np.ones(len(coords), dtype=bool)
+        legal_indices = [idx for idx in range(len(coords)) if legal_mask_np[idx]]
+        num_legal = len(legal_indices)
         
-        if add_exploration_noise and num_valid > 0:
+        if add_exploration_noise and num_legal > 0:
             epsilon = 0.25
-            alpha = max(10.0 / num_valid, 0.1) # Safe fallback
-            noise = np.random.dirichlet([alpha] * num_valid)
+            alpha = max(10.0 / num_legal, 0.1) # Safe fallback
+            noise = np.random.dirichlet([alpha] * num_legal)
         else:
             epsilon = 0.0
-            noise = np.zeros(num_valid)
+            noise = np.zeros(num_legal)
             
-        for idx, coord in enumerate(coords):
-            prior = (1 - epsilon) * float(p_probs[idx]) + epsilon * float(noise[idx])
+        for k, idx in enumerate(legal_indices):
+            coord = coords[idx]
+            prior = (1 - epsilon) * float(p_probs[idx]) + epsilon * float(noise[k])
             root.children[coord] = MCTSNode(state=None, parent=root, prior=prior)
 
     device = next(net.parameters()).device
@@ -199,7 +207,7 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                             node.terminal_rank = value
                             entry = {"kind": "value", "value": value}
                         else:
-                            pyg_data = sim_env.to_pyg_data()
+                            pyg_data = sim_env.to_pyg_data(perimeter_only=enable_perimeter_mask)
                             entry = {"kind": "expand", "node": node, "pyg_data": pyg_data,
                                      "db_res": db_res, "cuts": sim_env.cuts_made}
                             scheduled[id(node)] = len(pending)
@@ -230,7 +238,7 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                         frag_env = HowlEnv(env.m, env.n, generate=False)
                         frag_env.graph = frag
                         slots.append((i, "frag", j))
-                        pyg_data_batch.append(frag_env.to_pyg_data())
+                        pyg_data_batch.append(frag_env.to_pyg_data(perimeter_only=enable_perimeter_mask))
 
         node_probs_all = v_batch = batch_indices = None
         if pyg_data_batch:
@@ -238,7 +246,10 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                 batch = Batch.from_data_list(pyg_data_batch).to(device)
                 p_logits, v = net(batch)
                 import torch_geometric.utils as pyg_utils
-                node_probs_all = pyg_utils.softmax(p_logits, batch.batch).cpu().numpy()
+                masked_batch_logits = p_logits.clone()
+                if hasattr(batch, 'legal_mask') and batch.legal_mask is not None:
+                    masked_batch_logits[~batch.legal_mask] = -1e9
+                node_probs_all = pyg_utils.softmax(masked_batch_logits, batch.batch).cpu().numpy()
                 v_batch = v.squeeze(-1).cpu().numpy()
                 batch_indices = batch.batch.cpu().numpy()
 
@@ -258,8 +269,10 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                 leaf_data = pyg_data_batch[s_idx]
                 leaf_coords = [(int(x), int(y)) for x, y in leaf_data.coords.cpu().numpy()]
                 slot_probs = node_probs_all[batch_indices == s_idx]
+                leaf_legal = leaf_data.legal_mask.cpu().numpy() if (hasattr(leaf_data, 'legal_mask') and leaf_data.legal_mask is not None) else np.ones(len(leaf_coords), dtype=bool)
                 for idx, coord in enumerate(leaf_coords):
-                    node.children[coord] = MCTSNode(state=None, parent=node, prior=float(slot_probs[idx]))
+                    if leaf_legal[idx]:
+                        node.children[coord] = MCTSNode(state=None, parent=node, prior=float(slot_probs[idx]))
             else:
                 db_res = e["frag_db"][j]
                 nn_val = float(v_batch[s_idx])
@@ -293,21 +306,21 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
 
 
 
-def play_episode(net, env, obs=None, num_simulations=50, add_exploration_noise=True, batch_size=8, greedy=False, temperature=1.0):
+def play_episode(net, env, obs=None, num_simulations=50, add_exploration_noise=True, batch_size=8, greedy=False, temperature=1.0, enable_perimeter_mask=True):
     if obs is None:
         obs, _ = env.reset()
     state_history = []
     local_sequence = []
 
     while True:
-        root = mcts_search(obs, net, env, num_simulations, add_exploration_noise, batch_size=batch_size)
+        root = mcts_search(obs, net, env, num_simulations, add_exploration_noise, batch_size=batch_size, enable_perimeter_mask=enable_perimeter_mask)
         
         action_visits = {coord: child.visit_count for coord, child in root.children.items()}
         total_visits = sum(action_visits.values())
         if total_visits == 0:
             return [], env.cuts_made, []
             
-        pyg_data = env.to_pyg_data()
+        pyg_data = env.to_pyg_data(perimeter_only=enable_perimeter_mask)
         coords = [(int(x), int(y)) for x, y in pyg_data.coords.cpu().numpy()]
         node_pi = np.array([action_visits.get(c, 0.0) / total_visits for c in coords], dtype=np.float32)
         
@@ -364,7 +377,8 @@ def play_episode(net, env, obs=None, num_simulations=50, add_exploration_noise=T
                             add_exploration_noise=add_exploration_noise,
                             batch_size=batch_size,
                             greedy=greedy,
-                            temperature=temperature
+                            temperature=temperature,
+                            enable_perimeter_mask=enable_perimeter_mask
                         )
                         frag_ranks.append(frag_rank)
                         recursive_trajectories.extend(frag_traj)
@@ -390,7 +404,7 @@ def play_episode(net, env, obs=None, num_simulations=50, add_exploration_noise=T
 
 def simulate_game_worker(worker_args):
     import io
-    m, n, model_bytes, num_simulations, game_id, mcts_batch_size = worker_args
+    m, n, model_bytes, num_simulations, game_id, mcts_batch_size, enable_perimeter_mask = worker_args
     
     local_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.set_num_threads(1) # Prevent OpenMP deadlocks in multiprocessing
@@ -401,7 +415,7 @@ def simulate_game_worker(worker_args):
     
     env = HowlEnv(m, n)
     obs, _ = env.reset()
-    traj, final_rank, discoveries = play_episode(net, env, obs, num_simulations, batch_size=mcts_batch_size)
+    traj, final_rank, discoveries = play_episode(net, env, obs, num_simulations, batch_size=mcts_batch_size, enable_perimeter_mask=enable_perimeter_mask)
     
     # Serialize PyG trajectory to plain bytes to avoid PyTorch IPC shared-memory leaks across processes
     for data in traj:
@@ -420,7 +434,7 @@ def simulate_game_worker(worker_args):
     
     return game_id, m, n, traj_buf.getvalue(), final_rank, discoveries
 
-def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_size=8, solver_name="alphawolf2"):
+def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_size=8, solver_name="alphawolf2", enable_perimeter_mask=True):
     import concurrent.futures
     import io
     import time
@@ -434,7 +448,7 @@ def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_siz
     
     worker_args_list = []
     for game_id, (m, n) in enumerate(gm_gn_list):
-        worker_args_list.append((m, n, model_bytes, num_simulations, game_id + 1, mcts_batch_size))
+        worker_args_list.append((m, n, model_bytes, num_simulations, game_id + 1, mcts_batch_size, enable_perimeter_mask))
         
     num_games = len(gm_gn_list)
     print(f"\n[PHASE 1] Self-Play ({num_games} games | {num_workers} workers | solver: '{solver_name}')")
@@ -540,6 +554,7 @@ def alpha_zero_loop(
     curriculum_stages=None,
     curriculum_frontier_ratio=0.70,
     curriculum_success_threshold=0.80,
+    enable_perimeter_mask=True,
 ):
     from checkpoint import (
         load_checkpoint,
@@ -621,7 +636,7 @@ def alpha_zero_loop(
 
         gm_gn_list = curriculum.sample_games(games_per_generation, gen)
             
-        new_trajectories, game_results = self_play(net, gm_gn_list, num_simulations=num_simulations, num_workers=num_workers, mcts_batch_size=mcts_batch_size, solver_name=solver_name)
+        new_trajectories, game_results = self_play(net, gm_gn_list, num_simulations=num_simulations, num_workers=num_workers, mcts_batch_size=mcts_batch_size, solver_name=solver_name, enable_perimeter_mask=enable_perimeter_mask)
             
         replay_buffer.extend(new_trajectories)
 
@@ -725,4 +740,5 @@ if __name__ == "__main__":
         curriculum_stages=config.get("curriculum_stages", None),
         curriculum_frontier_ratio=config.get("curriculum_frontier_ratio", 0.70),
         curriculum_success_threshold=config.get("curriculum_success_threshold", 0.80),
+        enable_perimeter_mask=config.get("enable_perimeter_mask", True),
     )
