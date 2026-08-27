@@ -1,25 +1,42 @@
 {
-  "current_m": 7,
-  "current_n": 7,
-  "total_generations": 25,
+  "current_m": 15,
+  "current_n": 15,
+  "total_generations": 50,
   "games_per_generation": 20,
   "mcts_simulations": 200,
   "gauntlet_fractured_per_tier": 2,
   "gauntlet_fracture_min": 0.1,
-  "gauntlet_fracture_max": 0.2,
+  "gauntlet_fracture_max": 0.3,
   "num_workers": 5,
   "mcts_batch_size": 8,
   "self_play_min_grid": 4,
-  "self_play_max_grid": 9,
-  "solver_name": "alphawolf2",
-  "resume_from": null,
+  "self_play_max_grid": 15,
+  "solver_name": "alphawolf2.2",
+  "resume_from": "fresh",
   "curriculum_mode": "hybrid",
   "curriculum_frontier_ratio": 0.70,
   "curriculum_success_threshold": 0.80,
   "curriculum_stages": [
-    { "max_size": 5, "fraction": 0.25, "name": "Foundations (4x4-5x5)" },
-    { "max_size": 7, "fraction": 0.35, "name": "Intermediate (4x4-7x7)" },
-    { "max_size": 9, "fraction": 0.40, "name": "Full Scale (4x4-9x9)" }
+    {
+      "max_size": 6,
+      "fraction": 0.20,
+      "name": "Foundations (4x4-6x6)"
+    },
+    {
+      "max_size": 9,
+      "fraction": 0.25,
+      "name": "Intermediate Bisection (4x4-9x9)"
+    },
+    {
+      "max_size": 12,
+      "fraction": 0.25,
+      "name": "Advanced Bisection (4x4-12x12)"
+    },
+    {
+      "max_size": 15,
+      "fraction": 0.30,
+      "name": "Full Scale (4x4-15x15)"
+    }
   ],
   "enable_perimeter_mask": true
 }

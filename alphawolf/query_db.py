@@ -19,9 +19,9 @@ from db.tablebase import get_db_path
 
 
 def print_header(title: str, width: int = 80):
-    print("\n" + "═" * width)
+    print("\n" + "=" * width)
     print(f" {title.center(width - 2)}")
-    print("═" * width)
+    print("=" * width)
 
 
 def print_section(title: str, width: int = 80):
@@ -76,36 +76,34 @@ def run_query():
         solver_counts[solver] += 1
 
     total_grids = len(grid_map)
-    solutions = [(m, n, rank, ", ".join(solvers)) for (m, n), (rank, solvers) in grid_map.items()]
 
     # ------------------------------------------------------------------------
     # HEADER & OVERVIEW
     # ------------------------------------------------------------------------
     print_header("HOWL Leaderboard & Tablebase Summary")
-    print(f"  • Database Path      : {os.path.relpath(db_path, os.getcwd()) if os.path.isabs(db_path) else db_path}")
-    print(f"  • Unique Grids Solved: {total_grids:,}")
-    print(f"  • Tablebase Shapes   : {total_subgraphs:,} ({optimal_subgraphs:,} verified optimal)")
-    print(f"  • Total Solvers      : {len(solver_counts):,}")
+    print(f"  * Database Path      : {os.path.relpath(db_path, os.getcwd()) if os.path.isabs(db_path) else db_path}")
+    print(f"  * Unique Grids Solved: {total_grids:,}")
+    print(f"  * Tablebase Shapes   : {total_subgraphs:,} ({optimal_subgraphs:,} verified optimal)")
+    print(f"  * Total Solvers      : {len(solver_counts):,}")
 
     # ------------------------------------------------------------------------
-    # 10x10 MATRIX VIEW
+    # MATRIX VIEW (Clamped to 15x15 for display sanity)
     # ------------------------------------------------------------------------
-    max_dim = 10
-    print_section(f"{max_dim}×{max_dim} Grid Best-Rank Matrix")
+    max_dim = min(15, max([m for m, n in grid_map.keys() if m <= 15] + [n for m, n in grid_map.keys() if n <= 15] + [10]))
+    print_section(f"{max_dim}x{max_dim} Grid Best-Rank Matrix")
     
-    # Header row (columns n = 1..10)
     col_headers = "".join(f"{n:>4}" for n in range(1, max_dim + 1))
     print(f"   m\\n {col_headers}")
-    print("   ────" + "────" * max_dim)
+    print("   ----" + "----" * max_dim)
 
     for m in range(1, max_dim + 1):
-        row_str = f"  {m:>2}  │"
+        row_str = f"  {m:>2}  |"
         for n in range(1, max_dim + 1):
             entry = grid_map.get((m, n)) or grid_map.get((n, m))
             if entry:
                 rank_str = f"{entry[0]:>4}"
             else:
-                rank_str = "   ·"
+                rank_str = "   ."
             row_str += rank_str
         print(row_str)
 
@@ -114,16 +112,14 @@ def run_query():
     # ------------------------------------------------------------------------
     print_section("Top Solvers & Record Holders")
     print(f"  {'#':<3} {'Solver Name':<22} {'Records':>8}   {'Share':>7}")
-    print("  " + "─" * 3 + " " + "─" * 22 + " " + "─" * 8 + "   " + "─" * 7)
+    print("  --- " + "-" * 22 + " " + "-" * 8 + "   " + "-" * 7)
 
-    medals = ["🥇", "🥈", "🥉"]
-    for idx, (solver, count) in enumerate(solver_counts.most_common(10), 1):
+    for idx, (solver, count) in enumerate(solver_counts.most_common(15), 1):
         share = (count / total_grids) * 100
-        prefix = medals[idx - 1] if idx <= 3 else f"{idx:>3}."
-        print(f"  {prefix:<3} {solver:<22} {count:>8}   {share:>6.1f}%")
+        print(f"  {idx:>2}. {solver:<22} {count:>8}   {share:>6.1f}%")
 
     # ------------------------------------------------------------------------
-    # ALPHAWOLF DISCOVERY HIGHLIGHTS (Sorted largest to smallest)
+    # ALPHAWOLF DISCOVERY HIGHLIGHTS
     # ------------------------------------------------------------------------
     alphawolf_records = []
     for (m, n), (rank, solvers) in grid_map.items():
@@ -132,15 +128,13 @@ def run_query():
             alphawolf_records.append((m, n, rank, ", ".join(matched)))
     alphawolf_records.sort(key=lambda x: (x[0] * x[1], max(x[0], x[1])), reverse=True)
 
-    print_section(f"AlphaWolf Records Held ({len(alphawolf_records)} Grids — Largest First)")
+    print_section(f"AlphaWolf Records Held ({len(alphawolf_records)} Grids -- Largest First)")
     if alphawolf_records:
         print(f"  AlphaWolf agents hold the best-known rank on {len(alphawolf_records)} boards:")
-        formatted_grids = [f"{m}×{n} (r={rank} by {solver})" for m, n, rank, solver in alphawolf_records]
-        
-        # Display in chunks of 3 per line for clean readability
+        formatted_grids = [f"{m}x{n} (r={rank} by {solver})" for m, n, rank, solver in alphawolf_records]
         for i in range(0, len(formatted_grids), 3):
             chunk = formatted_grids[i:i+3]
-            print("    • " + "   ".join(f"{item:<24}" for item in chunk))
+            print("    * " + "   ".join(f"{item:<26}" for item in chunk))
     else:
         print("  No records currently held by AlphaWolf in this database.")
 
