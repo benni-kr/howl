@@ -555,6 +555,8 @@ def alpha_zero_loop(
     curriculum_frontier_ratio=0.70,
     curriculum_success_threshold=0.80,
     enable_perimeter_mask=True,
+    benchmark_interval=3,
+    benchmark_min_stage=2,
 ):
     from checkpoint import (
         load_checkpoint,
@@ -608,35 +610,26 @@ def alpha_zero_loop(
                         print(f"[RESUME] Restored {len(restored_samples)} samples from rolling replay buffer ({buffer_file})")
 
                 print(f"\n[RESUME] Successfully loaded checkpoint: {resolved_ckpt}")
-                if last_gen > 0:
-                    print(f"[RESUME] Resuming training from Generation {start_gen} to {num_generations}")
-                else:
-                    print(f"[RESUME] Loaded baseline weights. Training from Generation 1 to {num_generations}")
             except Exception as e:
-                print(f"\n[RESUME] Warning: Failed to load {resolved_ckpt} ({e}). Starting fresh from Generation 1.")
-        else:
-            print(f"\n[RESUME] Warning: Checkpoint target '{resume_from}' not found. Starting fresh from Generation 1.")
+                print(f"Warning: Failed to load checkpoint {resolved_ckpt} ({e}). Starting fresh.")
+                start_gen = 1
 
-    print(f"\nInitialized AlphaWolf V1 [{m}x{n}] - Multi-Process Worker Mode (solver: '{solver_name}')")
-    print(f"MCTS Simulations per move: {num_simulations}")
-    print(f"Replay Buffer Capacity: {replay_buffer.maxlen} samples")
-    print(f"Curriculum Mode: '{curriculum.mode.upper()}' | Active Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size}")
-
-    if start_gen > num_generations:
-        print(f"\n[NOTICE] Checkpoint generation ({start_gen - 1}) is >= total_generations ({num_generations}). Nothing to run.")
-        return
-    
     for gen in range(start_gen, num_generations + 1):
-        print(f"\n{'='*40}")
-        print(f"          GENERATION {gen}/{num_generations}")
-        print(f"{'='*40}")
+        print(f"\n" + "=" * 60)
+        print(f" GENERATION {gen}/{num_generations}  |  Stage: {curriculum.active_stage.get('name', 'N/A')}  |  Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size}")
+        print("=" * 60)
         
-        stage = curriculum.active_stage
-        print(f"[CURRICULUM] Stage: {stage.get('name', 'Active')} (Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size})")
-
-        gm_gn_list = curriculum.sample_games(games_per_generation, gen)
-            
-        new_trajectories, game_results = self_play(net, gm_gn_list, num_simulations=num_simulations, num_workers=num_workers, mcts_batch_size=mcts_batch_size, solver_name=solver_name, enable_perimeter_mask=enable_perimeter_mask)
+        # Sample game grid sizes developmentally from the curriculum
+        sampled_grids = curriculum.sample_games(games_per_generation, gen)
+        
+        new_trajectories, game_results = self_play(
+            net,
+            sampled_grids,
+            num_simulations=num_simulations,
+            num_workers=num_workers,
+            mcts_batch_size=mcts_batch_size,
+            solver_name=solver_name
+        )
             
         replay_buffer.extend(new_trajectories)
 
@@ -673,9 +666,19 @@ def alpha_zero_loop(
         print("-" * 60)
         print(f"  Saved Checkpoint: {ckpt_path}")
         
-        # Benchmark Suite Promotion Check
-        from benchmark import promote_model
-        promote_model(ckpt_path, num_workers=num_workers)
+        # Benchmark Suite Promotion Check (Batched evaluation, Stride=3, Min Stage=3)
+        is_eval_stage = (curriculum.current_stage_idx >= benchmark_min_stage)
+        is_eval_gen = (gen % benchmark_interval == 0) or (gen == num_generations) or cur_summary.get("advanced", False)
+
+        if is_eval_stage and is_eval_gen:
+            from benchmark import promote_model
+            promote_model(ckpt_path, num_workers=num_workers, mcts_batch_size=mcts_batch_size)
+        else:
+            if not is_eval_stage:
+                reason = f"Stage {curriculum.current_stage_idx + 1} < Stage {benchmark_min_stage + 1}"
+            else:
+                reason = f"Stride {gen % benchmark_interval}/{benchmark_interval}"
+            print(f"  Benchmark Arena: Skipped ({reason})")
 
 if __name__ == "__main__":
     import argparse
@@ -741,4 +744,6 @@ if __name__ == "__main__":
         curriculum_frontier_ratio=config.get("curriculum_frontier_ratio", 0.70),
         curriculum_success_threshold=config.get("curriculum_success_threshold", 0.80),
         enable_perimeter_mask=config.get("enable_perimeter_mask", True),
+        benchmark_interval=config.get("benchmark_interval", 3),
+        benchmark_min_stage=config.get("benchmark_min_stage", 2),
     )

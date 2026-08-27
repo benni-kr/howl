@@ -156,7 +156,7 @@ def evaluate_board_worker(worker_args):
     return rank, len(traj)
 
 
-def evaluate_model(model_path, gauntlet_boards, num_simulations=100, mcts_batch_size=1, num_workers=5, use_cache=True):
+def evaluate_model(model_path, gauntlet_boards, num_simulations=100, mcts_batch_size=8, num_workers=5, use_cache=True):
     """
     Evaluates a model against a gauntlet of test boards.
     Supports multi-worker parallel execution and persistent caching.
@@ -214,7 +214,7 @@ def evaluate_model(model_path, gauntlet_boards, num_simulations=100, mcts_batch_
 _DEFAULT_BEST_MODEL_PATH = os.path.join(os.path.dirname(__file__), "models/checkpoints/best_model.pt")
 
 
-def promote_model(new_model_path, best_model_path=_DEFAULT_BEST_MODEL_PATH, num_workers=5, num_simulations=100, mcts_batch_size=1):
+def promote_model(new_model_path, best_model_path=_DEFAULT_BEST_MODEL_PATH, num_workers=5, num_simulations=100, mcts_batch_size=8):
     """
     Evaluates new_model against best_model using the gauntlet.
     Promotes challenger if strictly better rank or equal rank with fewer nodes.
