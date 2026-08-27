@@ -71,7 +71,7 @@ def test_action_masking_strictness():
     net = AlphaWolfNet()
     net.eval()
 
-    obs = np.zeros((5, MAX_ROWS, MAX_COLS), dtype=np.float32)
+    obs = np.zeros((9, MAX_ROWS, MAX_COLS), dtype=np.float32)
     active = [(0, 0), (0, 1), (1, 0), (1, 1)]
     for x, y in active:
         obs[0, x, y] = 1.0
@@ -101,7 +101,7 @@ def test_simulate_game_worker_spawn_isolation(isolated_db):
     buf = io.BytesIO()
     torch.save(net.state_dict(), buf)
     model_bytes = buf.getvalue()
-    worker_args = (3, 3, model_bytes, 40, 1, 4)
+    worker_args = (3, 3, model_bytes, 40, 1, 4, True)
 
     ctx = mp.get_context('spawn')
     with ctx.Pool(1) as pool:

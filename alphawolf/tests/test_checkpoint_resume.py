@@ -26,7 +26,7 @@ def test_save_and_load_full_checkpoint(tmp_path):
     sch1 = optim.lr_scheduler.CosineAnnealingLR(opt1, T_max=50, eta_min=1e-5)
 
     # Perform a dummy optimizer and scheduler step
-    dummy_x = torch.randn(1, 5, 10, 10)
+    dummy_x = torch.randn(1, 9, 10, 10)
     p, v = net1(dummy_x)
     loss = p.sum() + v.sum()
     loss.backward()
@@ -145,7 +145,7 @@ def test_save_and_load_replay_buffer(tmp_path):
     sample_buffer = []
     for i in range(10):
         d = Data(
-            x=torch.randn(4, 4),
+            x=torch.randn(4, 8),
             edge_index=torch.tensor([[0, 1], [1, 0]], dtype=torch.long),
             flat_indices=torch.tensor([0, 1, 2, 3], dtype=torch.long),
             pi=torch.zeros(100),

@@ -28,8 +28,9 @@ def test_gnn_forward_and_node_level_logits():
 
     # 1. Single PyG Data object from to_pyg_data()
     pyg_data1 = env1.to_pyg_data()
-    assert pyg_data1.x.shape == (24, 4)  # 25 - 1 cut = 24 active nodes
+    assert pyg_data1.x.shape == (24, 8)  # 25 - 1 cut = 24 active nodes, 8 features
     assert pyg_data1.coords.shape == (24, 2)
+    assert pyg_data1.legal_mask.shape == (24,)
     
     p_logits1, v1 = net(pyg_data1)
     assert p_logits1.shape == (24,)
@@ -37,7 +38,7 @@ def test_gnn_forward_and_node_level_logits():
 
     # 2. PyG Batching with variable graph sizes
     pyg_data2 = env2.to_pyg_data()
-    assert pyg_data2.x.shape == (49, 4)  # 7x7 = 49 active nodes
+    assert pyg_data2.x.shape == (49, 8)  # 7x7 = 49 active nodes, 8 features
     
     batch = Batch.from_data_list([pyg_data1, pyg_data2])
     total_nodes = 24 + 49
@@ -109,7 +110,7 @@ def test_dynamic_env_large_boards_and_coordinate_actions():
     """Verify that HowlEnv seamlessly handles 15x15 and 20x20 boards with coordinate actions."""
     env = HowlEnv(15, 15)
     obs, _ = env.reset()
-    assert obs.shape == (5, 15, 15)
+    assert obs.shape == (9, 15, 15)
     assert len(env.graph.vertices) == 225
 
     # 1. Coordinate action
@@ -126,7 +127,7 @@ def test_dynamic_env_large_boards_and_coordinate_actions():
 
     # 3. Direct PyG export
     pyg_data = env.to_pyg_data()
-    assert pyg_data.x.shape == (223, 4)
+    assert pyg_data.x.shape == (223, 8)
     assert pyg_data.coords.shape == (223, 2)
     assert pyg_data.m == 15
     assert pyg_data.n == 15
@@ -134,5 +135,5 @@ def test_dynamic_env_large_boards_and_coordinate_actions():
     # 4. Even larger 20x20 board
     env20 = HowlEnv(20, 20)
     obs20, _ = env20.reset()
-    assert obs20.shape == (5, 20, 20)
+    assert obs20.shape == (9, 20, 20)
     assert len(env20.graph.vertices) == 400
