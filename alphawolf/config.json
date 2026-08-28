@@ -1,7 +1,7 @@
 {
   "current_m": 15,
   "current_n": 15,
-  "total_generations": 50,
+  "total_generations": 100,
   "games_per_generation": 40,
   "mcts_simulations": 400,
   "gauntlet_fractured_per_tier": 1,
