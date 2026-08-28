@@ -86,12 +86,33 @@ Runs on `http://localhost:5173` by default (Vite).
 
 ### 2. Python Environment Setup (Shared for Backend & AlphaWolf)
 
+#### macOS / Linux / WSL
 ```bash
 cd backend
-python -m venv venv
+python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 pip install -r ../alphawolf/requirements.txt
+```
+
+#### Windows (PowerShell)
+```powershell
+cd backend
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+pip install -r ..\alphawolf\requirements.txt
+```
+> **Tip for PowerShell:** If you receive an execution policy error, enable scripts for the current terminal session:
+> `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process`
+
+#### Windows (Command Prompt `cmd.exe`)
+```cmd
+cd backend
+python -m venv venv
+venv\Scripts\activate.bat
+pip install -r requirements.txt
+pip install -r ..\alphawolf\requirements.txt
 ```
 
 ### 3. Run Backend Server (FastAPI)
@@ -101,11 +122,11 @@ With the virtual environment activated:
 # From the backend/ directory:
 uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
-Runs on `http://127.0.0.1:8000` by default.
+Runs on `http://127.0.0.1:8000` by default (Swagger API docs at `http://127.0.0.1:8000/docs`).
 
 ### 4. Run AlphaWolf (RL Engine & CLI Tools)
 
-With the virtual environment activated (`source backend/venv/bin/activate`):
+With the virtual environment activated (`source backend/venv/bin/activate` on Unix or `.\backend\venv\Scripts\Activate.ps1` on Windows):
 
 ```bash
 cd alphawolf
@@ -137,31 +158,47 @@ python train.py --generations 50 --games-per-gen 20 --sims 400 --workers 6
 
 ## Running Tests
 
-Once your virtual environment is activated (`source backend/venv/bin/activate`), run tests directly with `pytest`:
+Once your virtual environment is activated, run tests directly with `pytest`:
 
 ### Fast AlphaWolf Math & Unit Tests (~5–8s)
 Verifies $D_4$ hashing, Tarjan cut vertex detection, replay gatekeeper validation, MCTS virtual loss, and GNN message passing:
 ```bash
+# macOS / Linux / WSL:
 pytest alphawolf/tests/ -k "not test_alpha_zero_1_generation_dry_run" -v
+
+# Windows (PowerShell):
+pytest alphawolf\tests\ -k "not test_alpha_zero_1_generation_dry_run" -v
 ```
 
 ### Full AlphaWolf Test Suite (including 1-gen training dry run)
 ```bash
+# macOS / Linux / WSL:
 pytest alphawolf/tests/ -v
+
+# Windows (PowerShell):
+pytest alphawolf\tests\ -v
 ```
 
 ### Backend & API Tests
 Runs hashing, replay engine, and FastAPI endpoint tests:
 ```bash
+# macOS / Linux / WSL:
 pytest backend/tests/ -v
+
+# Windows (PowerShell):
+pytest backend\tests\ -v
 ```
 
 ### Run All Tests
 ```bash
+# macOS / Linux / WSL:
 pytest alphawolf/tests/ backend/tests/ -v
+
+# Windows (PowerShell):
+pytest alphawolf\tests\ backend\tests\ -v
 ```
 
-*(Note: If running without activating the virtualenv first, prepend `backend/venv/bin/pytest`)*
+*(Note: If running without activating the virtualenv first, use `backend/venv/bin/pytest` on Unix or `.\backend\venv\Scripts\pytest.exe` on Windows)*
 
 ## Deployment
 

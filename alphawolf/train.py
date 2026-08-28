@@ -7,6 +7,8 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from torch_geometric.data import Batch, Data
+import torch_geometric.utils as pyg_utils
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -25,6 +27,7 @@ def clone_env(src_env, current_cuts=None):
     sim_env.graph.vertices = set(src_env.graph.vertices)
     sim_env.graph.adjacency = {v: set(s) for v, s in src_env.graph.adjacency.items()}
     sim_env.cuts_made = src_env.cuts_made if current_cuts is None else current_cuts
+    sim_env.cuts_in_turn = set(src_env.cuts_in_turn)
     return sim_env
 
 def clone_env_from_obs(obs, m, n, current_cuts=0):
@@ -39,6 +42,7 @@ def clone_env_from_obs(obs, m, n, current_cuts=0):
                 sim_env.graph._add_edge((x, y), (x+dx, y+dy))
                 
     sim_env.cuts_made = current_cuts
+    sim_env.cuts_in_turn = set()
     return sim_env
 
 def evaluate_fragment_rank(frag, m, n, net):
@@ -106,44 +110,47 @@ def ucb_score(parent: MCTSNode, child: MCTSNode) -> float:
         q = base_q
     return q - prior_score
 
-def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise=True, batch_size=8):
+def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise=True, batch_size=8, enable_perimeter_mask=True):
     root = MCTSNode(root_state)
     
     net.eval()
     with torch.no_grad():
-        state_tensor = torch.tensor(root_state, dtype=torch.float32).unsqueeze(0)
-        state_tensor = state_tensor.to(next(net.parameters()).device)
-        p_logits, v = net(state_tensor)
+        root_data = env.to_pyg_data(device=next(net.parameters()).device, perimeter_only=enable_perimeter_mask)
+        p_logits, v = net(root_data)
         
-        # Action Masking
-        mask = (state_tensor[:, 0, :, :] == 0).flatten()
-        p_logits_flat = p_logits.flatten()
-        p_logits_flat[mask] = -1e9
-        p_probs = F.softmax(p_logits_flat, dim=0).cpu().numpy()
+        # Single-graph node softmax with perimeter action masking
+        masked_p_logits = p_logits.clone()
+        if hasattr(root_data, "legal_mask") and root_data.legal_mask is not None and root_data.legal_mask.numel() > 0:
+            masked_p_logits[~root_data.legal_mask] = -1e9
+        p_probs = F.softmax(masked_p_logits, dim=0).cpu().numpy()
         
         root.value_sum = v.item()
         root.visit_count = 1
         root.is_expanded = True
         
-        valid_actions = np.where(root_state[0].flatten() == 1)[0]
+        coords = [(int(x), int(y)) for x, y in root_data.coords.cpu().numpy()]
+        legal_mask_np = root_data.legal_mask.cpu().numpy() if (hasattr(root_data, "legal_mask") and root_data.legal_mask is not None) else np.ones(len(coords), dtype=bool)
+        legal_indices = [idx for idx in range(len(coords)) if legal_mask_np[idx]]
+        num_legal = len(legal_indices)
         
-        if add_exploration_noise and len(valid_actions) > 0:
+        if add_exploration_noise and num_legal > 0:
             epsilon = 0.25
-            alpha = max(10.0 / len(valid_actions), 0.1) # Safe fallback
-            noise = np.random.dirichlet([alpha] * len(valid_actions))
+            alpha = max(10.0 / num_legal, 0.1) # Safe fallback
+            noise = np.random.dirichlet([alpha] * num_legal)
         else:
             epsilon = 0.0
-            noise = np.zeros(len(valid_actions))
+            noise = np.zeros(num_legal)
             
-        for idx, a in enumerate(valid_actions):
-            prior = (1 - epsilon) * p_probs[a] + epsilon * noise[idx]
-            root.children[a] = MCTSNode(state=None, parent=root, prior=prior)
+        for k, idx in enumerate(legal_indices):
+            coord = coords[idx]
+            prior = (1 - epsilon) * float(p_probs[idx]) + epsilon * float(noise[k])
+            root.children[coord] = MCTSNode(state=None, parent=root, prior=prior)
 
     device = next(net.parameters()).device
     sims_done = 0
 
-    # Parse the root observation once; per-simulation clones are plain copies
-    root_env = clone_env_from_obs(root_state, env.m, env.n, env.cuts_made)
+    # Direct graph cloning from active env
+    root_env = clone_env(env)
 
     while sims_done < num_simulations:
         target = min(batch_size, num_simulations - sims_done)
@@ -190,8 +197,7 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                     if id(node) in scheduled:
                         entry = {"kind": "dup", "of": scheduled[id(node)]}
                     else:
-                        active_coords = np.argwhere(obs[0] == 1)
-                        verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
+                        verts = [{"x": int(x), "y": int(y)} for x, y in sim_env.graph.vertices]
                         can_hash = generate_canonical_hash(verts)
                         db_res = query_tablebase([can_hash]).get(can_hash)
 
@@ -201,7 +207,8 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                             node.terminal_rank = value
                             entry = {"kind": "value", "value": value}
                         else:
-                            entry = {"kind": "expand", "node": node, "obs": obs,
+                            pyg_data = sim_env.to_pyg_data(perimeter_only=enable_perimeter_mask)
+                            entry = {"kind": "expand", "node": node, "pyg_data": pyg_data,
                                      "db_res": db_res, "cuts": sim_env.cuts_made}
                             scheduled[id(node)] = len(pending)
 
@@ -211,12 +218,12 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
             pending.append(entry)
 
         # 2. Evaluation: one forward pass over all leaf and fragment states
-        obs_batch = []
+        pyg_data_batch = []
         slots = []  # (pending index, "leaf" | "frag", fragment index)
         for i, e in enumerate(pending):
             if e["kind"] == "expand":
                 slots.append((i, "leaf", None))
-                obs_batch.append(e["obs"])
+                pyg_data_batch.append(e["pyg_data"])
             elif e["kind"] == "fragments":
                 e["frag_values"] = [None] * len(e["fragments"])
                 e["frag_db"] = []
@@ -231,19 +238,20 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                         frag_env = HowlEnv(env.m, env.n, generate=False)
                         frag_env.graph = frag
                         slots.append((i, "frag", j))
-                        obs_batch.append(frag_env._get_obs())
+                        pyg_data_batch.append(frag_env.to_pyg_data(perimeter_only=enable_perimeter_mask))
 
-        p_probs_batch = v_batch = None
-        if obs_batch:
+        node_probs_all = v_batch = batch_indices = None
+        if pyg_data_batch:
             with torch.no_grad():
-                state_tensor = torch.tensor(np.stack(obs_batch), dtype=torch.float32).to(device)
-                p_logits, v = net(state_tensor)
-
-                # Action Masking (per row)
-                mask = state_tensor[:, 0, :, :].reshape(state_tensor.size(0), -1) == 0
-                p_logits = p_logits.masked_fill(mask, -1e9)
-                p_probs_batch = F.softmax(p_logits, dim=1).cpu().numpy()
-                v_batch = v.squeeze(1).cpu().numpy()
+                batch = Batch.from_data_list(pyg_data_batch).to(device)
+                p_logits, v = net(batch)
+                import torch_geometric.utils as pyg_utils
+                masked_batch_logits = p_logits.clone()
+                if hasattr(batch, 'legal_mask') and batch.legal_mask is not None:
+                    masked_batch_logits[~batch.legal_mask] = -1e9
+                node_probs_all = pyg_utils.softmax(masked_batch_logits, batch.batch).cpu().numpy()
+                v_batch = v.squeeze(-1).cpu().numpy()
+                batch_indices = batch.batch.cpu().numpy()
 
         for s_idx, (i, kind, j) in enumerate(slots):
             e = pending[i]
@@ -258,11 +266,14 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
                 e["value"] = nn_val + e["cuts"]
 
                 node.is_expanded = True
-                valid_actions = np.where(e["obs"][0].flatten() == 1)[0]
-                for a in valid_actions:
-                    node.children[a] = MCTSNode(state=None, parent=node, prior=p_probs_batch[s_idx][a])
+                leaf_data = pyg_data_batch[s_idx]
+                leaf_coords = [(int(x), int(y)) for x, y in leaf_data.coords.cpu().numpy()]
+                slot_probs = node_probs_all[batch_indices == s_idx]
+                leaf_legal = leaf_data.legal_mask.cpu().numpy() if (hasattr(leaf_data, 'legal_mask') and leaf_data.legal_mask is not None) else np.ones(len(leaf_coords), dtype=bool)
+                for idx, coord in enumerate(leaf_coords):
+                    if leaf_legal[idx]:
+                        node.children[coord] = MCTSNode(state=None, parent=node, prior=float(slot_probs[idx]))
             else:
-                # Same clamping as evaluate_fragment_rank
                 db_res = e["frag_db"][j]
                 nn_val = float(v_batch[s_idx])
                 if db_res and not db_res['is_optimal']:
@@ -295,29 +306,41 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
 
 
 
-def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, batch_size=8):
+def play_episode(net, env, obs=None, num_simulations=50, add_exploration_noise=True, batch_size=8, greedy=False, temperature=1.0, enable_perimeter_mask=True):
+    if obs is None:
+        obs, _ = env.reset()
     state_history = []
     local_sequence = []
 
     while True:
-        root = mcts_search(obs, net, env, num_simulations, add_exploration_noise, batch_size=batch_size)
+        root = mcts_search(obs, net, env, num_simulations, add_exploration_noise, batch_size=batch_size, enable_perimeter_mask=enable_perimeter_mask)
         
-        action_visits = {a: child.visit_count for a, child in root.children.items()}
+        action_visits = {coord: child.visit_count for coord, child in root.children.items()}
         total_visits = sum(action_visits.values())
         if total_visits == 0:
             return [], env.cuts_made, []
             
-        pi = np.zeros(MAX_ROWS * MAX_COLS)
-        for a, visits in action_visits.items():
-            pi[a] = visits / total_visits
-            
-        state_history.append((obs.copy(), pi, env.cuts_made, len(local_sequence)))
+        pyg_data = env.to_pyg_data(perimeter_only=enable_perimeter_mask)
+        coords = [(int(x), int(y)) for x, y in pyg_data.coords.cpu().numpy()]
+        node_pi = np.array([action_visits.get(c, 0.0) / total_visits for c in coords], dtype=np.float32)
         
-        actions = list(action_visits.keys())
-        probs = [action_visits[a] / total_visits for a in actions]
-        action = np.random.choice(actions, p=probs)
+        state_history.append((pyg_data, node_pi, env.cuts_made, len(local_sequence)))
         
-        local_sequence.append({"t": "c", "v": [[int(action // MAX_COLS), int(action % MAX_COLS)]]})
+        if greedy or not add_exploration_noise:
+            action = max(action_visits, key=action_visits.get)
+        else:
+            actions = list(action_visits.keys())
+            if temperature != 1.0 and temperature > 0:
+                visits = np.array([action_visits[a] for a in actions], dtype=np.float64)
+                visits = visits ** (1.0 / temperature)
+                sum_visits = np.sum(visits)
+                probs = visits / sum_visits if sum_visits > 0 else [1.0 / len(actions)] * len(actions)
+            else:
+                probs = [action_visits[a] / total_visits for a in actions]
+            action_idx = np.random.choice(len(actions), p=probs)
+            action = actions[action_idx]
+        
+        local_sequence.append({"t": "c", "v": [[int(action[0]), int(action[1])]]})
         
         obs, reward, terminated, _, info = env.step(action)
         
@@ -334,14 +357,12 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, 
             
             if "fragments" in info and info["fragments"]:
                 for frag in info["fragments"]:
-                    # Create an isolated environment for this fragment
                     frag_env = HowlEnv(env.m, env.n, generate=False)
                     frag_env.graph = frag
                     frag_env.cuts_made = 0
                     frag_obs = frag_env._get_obs()
                     
-                    active_coords = np.argwhere(frag_obs[0] == 1)
-                    verts = [{"x": int(x), "y": int(y)} for x, y in active_coords]
+                    verts = [{"x": int(x), "y": int(y)} for x, y in frag.vertices]
                     can_hash = generate_canonical_hash(verts)
                     db_res_dict = query_tablebase([can_hash])
                     db_res = db_res_dict.get(can_hash)
@@ -351,7 +372,14 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, 
                         frag_vertices = [[int(x), int(y)] for x, y in frag.vertices]
                         recursive_cuts.append({"t": "v", "v": frag_vertices, "r": int(db_res['best_rank'])})
                     else:
-                        frag_traj, frag_rank, frag_discoveries = play_episode(net, frag_env, frag_obs, num_simulations, add_exploration_noise, batch_size=batch_size)
+                        frag_traj, frag_rank, frag_discoveries = play_episode(
+                            net, frag_env, frag_obs, num_simulations,
+                            add_exploration_noise=add_exploration_noise,
+                            batch_size=batch_size,
+                            greedy=greedy,
+                            temperature=temperature,
+                            enable_perimeter_mask=enable_perimeter_mask
+                        )
                         frag_ranks.append(frag_rank)
                         recursive_trajectories.extend(frag_traj)
                         recursive_cuts.extend(frag_discoveries[0][2] if frag_discoveries else [])
@@ -364,12 +392,11 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, 
             
             local_trajectory = []
             local_discoveries = []
-            for i, (state, policy, cuts_at_state, seq_idx) in enumerate(state_history):
+            for i, (pyg_data, node_pi, cuts_at_state, seq_idx) in enumerate(state_history):
                 intrinsic_rank = total_rank - cuts_at_state
-                local_discoveries.append((state.copy(), intrinsic_rank, final_sequence[seq_idx:]))
+                local_discoveries.append((None, intrinsic_rank, final_sequence[seq_idx:]))
                 
-                pyg_data = grid_tensor_to_pyg_data(torch.tensor(state, dtype=torch.float32))
-                pyg_data.pi = torch.tensor(policy, dtype=torch.float32).unsqueeze(0)
+                pyg_data.node_pi = torch.tensor(node_pi, dtype=torch.float32)
                 pyg_data.v = torch.tensor([intrinsic_rank], dtype=torch.float32).unsqueeze(0)
                 local_trajectory.append(pyg_data)
                     
@@ -377,33 +404,37 @@ def play_episode(net, env, obs, num_simulations=50, add_exploration_noise=True, 
 
 def simulate_game_worker(worker_args):
     import io
-    m, n, model_bytes, num_simulations, game_id, mcts_batch_size = worker_args
+    m, n, model_bytes, num_simulations, game_id, mcts_batch_size, enable_perimeter_mask = worker_args
     
     local_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.set_num_threads(1) # Prevent OpenMP deadlocks in multiprocessing
     net = AlphaWolfNet(m, n)
-    net.load_state_dict(torch.load(io.BytesIO(model_bytes), map_location=local_device))
+    net.load_state_dict(torch.load(io.BytesIO(model_bytes), map_location=local_device, weights_only=True))
     net.to(local_device)
     net.eval()
     
     env = HowlEnv(m, n)
     obs, _ = env.reset()
-    traj, final_rank, discoveries = play_episode(net, env, obs, num_simulations, batch_size=mcts_batch_size)
+    traj, final_rank, discoveries = play_episode(net, env, obs, num_simulations, batch_size=mcts_batch_size, enable_perimeter_mask=enable_perimeter_mask)
     
     # Serialize PyG trajectory to plain bytes to avoid PyTorch IPC shared-memory leaks across processes
     for data in traj:
         data.x = data.x.cpu()
         data.edge_index = data.edge_index.cpu()
-        data.flat_indices = data.flat_indices.cpu()
-        data.pi = data.pi.cpu()
+        data.coords = data.coords.cpu()
+        data.node_pi = data.node_pi.cpu()
         data.v = data.v.cpu()
+        if hasattr(data, "flat_indices"):
+            data.flat_indices = data.flat_indices.cpu()
+        if hasattr(data, "pi"):
+            data.pi = data.pi.cpu()
         
     traj_buf = io.BytesIO()
     torch.save(traj, traj_buf)
     
     return game_id, m, n, traj_buf.getvalue(), final_rank, discoveries
 
-def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_size=8, solver_name="alphawolf2"):
+def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_size=8, solver_name="alphawolf2", enable_perimeter_mask=True):
     import concurrent.futures
     import io
     import time
@@ -417,10 +448,12 @@ def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_siz
     
     worker_args_list = []
     for game_id, (m, n) in enumerate(gm_gn_list):
-        worker_args_list.append((m, n, model_bytes, num_simulations, game_id + 1, mcts_batch_size))
+        worker_args_list.append((m, n, model_bytes, num_simulations, game_id + 1, mcts_batch_size, enable_perimeter_mask))
         
     num_games = len(gm_gn_list)
     print(f"\n[PHASE 1] Self-Play ({num_games} games | {num_workers} workers | solver: '{solver_name}')")
+    print("-" * 60)
+    print(f"Game      | Time     | Grid  | Rank | Nodes | Worker")
     print("-" * 60)
     
     start_time = time.time()
@@ -451,7 +484,8 @@ def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_siz
             # Nicer Terminal Output
             progress = f"[{completed}/{num_games}]"
             grid_str = f"{m}x{n}"
-            print(f"  {progress:<9} Grid: {grid_str:<5} | Rank: {final_rank:<3} | Nodes: {len(traj):<3} | Worker Game: #{game_id}")
+            current_time = time.strftime("%H:%M:%S")
+            print(f"{progress:<9} | {current_time:<8} | {grid_str:<5} | {final_rank:<4} | {len(traj):<5} | #{game_id}")
             
     elapsed = time.time() - start_time
     avg_rank = sum(ranks) / len(ranks) if ranks else 0
@@ -469,6 +503,7 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
     net.train()
     
     from torch_geometric.loader import DataLoader as PyGDataLoader
+    import torch_geometric.utils as pyg_utils
     buffer_list = list(replay_buffer)
     
     loader = PyGDataLoader(buffer_list, batch_size=batch_size, shuffle=True)
@@ -481,9 +516,11 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
         for batch in loader:
             optimizer.zero_grad()
             batch = batch.to(next(net.parameters()).device)
-            p_logits, v_pred = net(batch)
+            node_p_logits, v_pred = net(batch)
             
-            p_loss = F.cross_entropy(p_logits, batch.pi)
+            # PyG Segmented Softmax Loss across variable graph sizes
+            log_probs = pyg_utils.softmax(node_p_logits, batch.batch).clamp(min=1e-12).log()
+            p_loss = -torch.sum(batch.node_pi * log_probs) / batch.num_graphs
             v_loss = F.mse_loss(v_pred.squeeze(-1), batch.v.squeeze(-1))
             loss = p_loss + 0.5 * v_loss
             loss.backward()
@@ -492,8 +529,8 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
             total_p_loss += p_loss.item()
             total_v_loss += v_loss.item()
             
-        avg_p_loss = total_p_loss / len(loader)
-        avg_v_loss = total_v_loss / len(loader)
+        avg_p_loss = total_p_loss / len(loader) if len(loader) > 0 else 0.0
+        avg_v_loss = total_v_loss / len(loader) if len(loader) > 0 else 0.0
         print(f"  Epoch {epoch+1:<2}/{epochs:<2} | Policy Loss: {avg_p_loss:8.4f} | Value Loss: {avg_v_loss:8.4f}")
         
     elapsed = time.time() - start_time
@@ -517,10 +554,16 @@ def alpha_zero_loop(
     curriculum_stages=None,
     curriculum_frontier_ratio=0.70,
     curriculum_success_threshold=0.80,
+    enable_perimeter_mask=True,
+    benchmark_interval=3,
+    benchmark_min_stage=2,
+    replay_buffer_capacity=60000,
 ):
     from checkpoint import (
         load_checkpoint,
         save_checkpoint,
+        save_replay_buffer,
+        load_replay_buffer,
         resolve_checkpoint_path,
         DEFAULT_CHECKPOINT_DIR,
     )
@@ -533,7 +576,7 @@ def alpha_zero_loop(
     optimizer = optim.Adam(net.parameters(), lr=1e-3, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_generations, eta_min=1e-5)
     
-    replay_buffer = collections.deque(maxlen=30000)
+    replay_buffer = collections.deque(maxlen=replay_buffer_capacity)
     
     ckpt_dir = os.path.join(os.path.dirname(__file__), "models/checkpoints")
     os.makedirs(ckpt_dir, exist_ok=True)
@@ -558,36 +601,36 @@ def alpha_zero_loop(
                 if "curriculum_state" in meta and meta["curriculum_state"]:
                     curriculum.load_state_dict(meta["curriculum_state"])
                     print(f"[RESUME] Restored curriculum state: {curriculum.active_stage.get('name', 'Active Stage')} (Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size})")
+                
+                # Restore rolling replay buffer if present
+                buffer_file = os.path.join(ckpt_dir, "replay_buffer.pt")
+                if os.path.exists(buffer_file):
+                    restored_samples = load_replay_buffer(buffer_file, max_samples=replay_buffer.maxlen)
+                    if restored_samples:
+                        replay_buffer.extend(restored_samples)
+                        print(f"[RESUME] Restored {len(restored_samples)} samples from rolling replay buffer ({buffer_file})")
+
                 print(f"\n[RESUME] Successfully loaded checkpoint: {resolved_ckpt}")
-                if last_gen > 0:
-                    print(f"[RESUME] Resuming training from Generation {start_gen} to {num_generations}")
-                else:
-                    print(f"[RESUME] Loaded baseline weights. Training from Generation 1 to {num_generations}")
             except Exception as e:
-                print(f"\n[RESUME] Warning: Failed to load {resolved_ckpt} ({e}). Starting fresh from Generation 1.")
-        else:
-            print(f"\n[RESUME] Warning: Checkpoint target '{resume_from}' not found. Starting fresh from Generation 1.")
+                print(f"Warning: Failed to load checkpoint {resolved_ckpt} ({e}). Starting fresh.")
+                start_gen = 1
 
-    print(f"\nInitialized AlphaWolf V1 [{m}x{n}] - Multi-Process Worker Mode (solver: '{solver_name}')")
-    print(f"MCTS Simulations per move: {num_simulations}")
-    print(f"Replay Buffer Capacity: {replay_buffer.maxlen} samples")
-    print(f"Curriculum Mode: '{curriculum.mode.upper()}' | Active Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size}")
-
-    if start_gen > num_generations:
-        print(f"\n[NOTICE] Checkpoint generation ({start_gen - 1}) is >= total_generations ({num_generations}). Nothing to run.")
-        return
-    
     for gen in range(start_gen, num_generations + 1):
-        print(f"\n{'='*40}")
-        print(f"          GENERATION {gen}/{num_generations}")
-        print(f"{'='*40}")
+        print(f"\n" + "=" * 60)
+        print(f" GENERATION {gen}/{num_generations}  |  Stage: {curriculum.active_stage.get('name', 'N/A')}  |  Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size}")
+        print("=" * 60)
         
-        stage = curriculum.active_stage
-        print(f"[CURRICULUM] Stage: {stage.get('name', 'Active')} (Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size})")
-
-        gm_gn_list = curriculum.sample_games(games_per_generation, gen)
-            
-        new_trajectories, game_results = self_play(net, gm_gn_list, num_simulations=num_simulations, num_workers=num_workers, mcts_batch_size=mcts_batch_size, solver_name=solver_name)
+        # Sample game grid sizes developmentally from the curriculum
+        sampled_grids = curriculum.sample_games(games_per_generation, gen)
+        
+        new_trajectories, game_results = self_play(
+            net,
+            sampled_grids,
+            num_simulations=num_simulations,
+            num_workers=num_workers,
+            mcts_batch_size=mcts_batch_size,
+            solver_name=solver_name
+        )
             
         replay_buffer.extend(new_trajectories)
 
@@ -615,14 +658,28 @@ def alpha_zero_loop(
             metrics=loss_metrics,
             curriculum_state=curriculum.state_dict(),
         )
+
+        # Atomically update rolling replay buffer
+        buffer_file = os.path.join(ckpt_dir, "replay_buffer.pt")
+        save_replay_buffer(replay_buffer, buffer_file, max_samples=replay_buffer.maxlen)
         
         print(f"\n[PHASE 3] Validation & Checkpointing")
         print("-" * 60)
         print(f"  Saved Checkpoint: {ckpt_path}")
         
-        # Benchmark Suite Promotion Check
-        from benchmark import promote_model
-        promote_model(ckpt_path)
+        # Benchmark Suite Promotion Check (Batched evaluation, Stride=3, Min Stage=3)
+        is_eval_stage = (curriculum.current_stage_idx >= benchmark_min_stage)
+        is_eval_gen = (gen % benchmark_interval == 0) or (gen == num_generations) or cur_summary.get("advanced", False)
+
+        if is_eval_stage and is_eval_gen:
+            from benchmark import promote_model
+            promote_model(ckpt_path, num_workers=num_workers, mcts_batch_size=mcts_batch_size, max_size=self_play_max_grid)
+        else:
+            if not is_eval_stage:
+                reason = f"Stage {curriculum.current_stage_idx + 1} < Stage {benchmark_min_stage + 1}"
+            else:
+                reason = f"Stride {gen % benchmark_interval}/{benchmark_interval}"
+            print(f"  Benchmark Arena: Skipped ({reason})")
 
 if __name__ == "__main__":
     import argparse
@@ -687,4 +744,8 @@ if __name__ == "__main__":
         curriculum_stages=config.get("curriculum_stages", None),
         curriculum_frontier_ratio=config.get("curriculum_frontier_ratio", 0.70),
         curriculum_success_threshold=config.get("curriculum_success_threshold", 0.80),
+        enable_perimeter_mask=config.get("enable_perimeter_mask", True),
+        benchmark_interval=config.get("benchmark_interval", 3),
+        benchmark_min_stage=config.get("benchmark_min_stage", 2),
+        replay_buffer_capacity=config.get("replay_buffer_capacity", 60000),
     )

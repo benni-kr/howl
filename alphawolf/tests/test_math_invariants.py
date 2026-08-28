@@ -4,6 +4,7 @@ Unit and Property Tests for HOWL & AlphaWolf Mathematical Invariants.
 
 import math
 import random
+import numpy as np
 import pytest
 
 from core_engine.graph_logic import GridGraph, filter_and_deduplicate
@@ -238,3 +239,154 @@ def test_tablebase_induction_and_non_degradation(isolated_db):
     res = tb.query_tablebase([dummy_hash])
     assert res[dummy_hash]["best_rank"] == 4
     assert res[dummy_hash]["is_optimal"] is True
+
+
+# ============================================================================
+# 5. 9-CHANNEL D4-INVARIANT FEATURES & ACTION MASKING INVARIANTS
+# ============================================================================
+
+def test_9_channel_features_d4_invariance():
+    """
+    Assert that all 8 node features extracted on an asymmetric shape are bit-identical /
+    strictly invariant under all 8 D4 rotations and reflections.
+    """
+    f_shape = {
+        (0, 0), (1, 0), (2, 0),
+        (0, 1),
+        (0, 2), (1, 2),
+        (0, 3)
+    }
+    transforms = get_transformations()
+
+    # Base features on original shape
+    env_base = HowlEnv(10, 10, generate=False)
+    for v in f_shape:
+        env_base.graph._add_vertex(v)
+    for v in f_shape:
+        for dx, dy in [(0, 1), (1, 0)]:
+            if (v[0] + dx, v[1] + dy) in f_shape:
+                env_base.graph._add_edge(v, (v[0] + dx, v[1] + dy))
+
+    feats_base = env_base._compute_component_features(f_shape)
+
+    for t_idx, t in enumerate(transforms):
+        transformed_verts = {t(x, y) for x, y in f_shape}
+        # Shift to non-negative bounding box
+        min_x = min(x for x, y in transformed_verts)
+        min_y = min(y for x, y in transformed_verts)
+        shifted_verts = {(x - min_x, y - min_y) for x, y in transformed_verts}
+
+        env_t = HowlEnv(10, 10, generate=False)
+        for v in shifted_verts:
+            env_t.graph._add_vertex(v)
+        for v in shifted_verts:
+            for dx, dy in [(0, 1), (1, 0)]:
+                if (v[0] + dx, v[1] + dy) in shifted_verts:
+                    env_t.graph._add_edge(v, (v[0] + dx, v[1] + dy))
+
+        feats_t = env_t._compute_component_features(shifted_verts)
+
+        # Global scalars
+        assert math.isclose(feats_base["ar"], feats_t["ar"], abs_tol=1e-5), f"Aspect ratio mismatch on transform #{t_idx}"
+        assert math.isclose(feats_base["solidity"], feats_t["solidity"], abs_tol=1e-5), f"Solidity mismatch on transform #{t_idx}"
+
+        # Per-node features: map original vertex to transformed vertex
+        for orig_v in f_shape:
+            tx, ty = t(orig_v[0], orig_v[1])
+            mapped_v = (tx - min_x, ty - min_y)
+
+            assert math.isclose(feats_base["deg_orth"][orig_v], feats_t["deg_orth"][mapped_v], abs_tol=1e-5)
+            assert math.isclose(feats_base["deg_diag"][orig_v], feats_t["deg_diag"][mapped_v], abs_tol=1e-5)
+            assert math.isclose(feats_base["depth"][orig_v], feats_t["depth"][mapped_v], abs_tol=1e-5)
+            assert math.isclose(feats_base["radial"][orig_v], feats_t["radial"][mapped_v], abs_tol=1e-5)
+            assert math.isclose(feats_base["split_balance"][orig_v], feats_t["split_balance"][mapped_v], abs_tol=1e-5)
+
+
+def test_division_by_zero_guards():
+    """Verify that thin ribbons, 2x2 blocks, and 1x1 shapes do not trigger division by zero."""
+    # 1. 1x1 isolated node
+    env_1x1 = HowlEnv(1, 1)
+    obs_1x1 = env_1x1._get_obs()
+    assert obs_1x1.shape == (9, 1, 1)
+    assert not np.isnan(obs_1x1).any()
+    assert obs_1x1[3, 0, 0] == 0.0  # depth
+    assert obs_1x1[4, 0, 0] == 0.0  # radial
+
+    # 2. 1x5 ribbon
+    env_1x5 = HowlEnv(1, 5)
+    obs_1x5 = env_1x5._get_obs()
+    assert obs_1x5.shape == (9, 1, 5)
+    assert not np.isnan(obs_1x5).any()
+    assert (obs_1x5[3] == 0.0).all()  # All perimeter, depth max=0 -> 0.0
+
+    # 3. 2x2 square
+    env_2x2 = HowlEnv(2, 2)
+    obs_2x2 = env_2x2._get_obs()
+    assert obs_2x2.shape == (9, 2, 2)
+    assert not np.isnan(obs_2x2).any()
+    assert (obs_2x2[3] == 0.0).all()  # All corners, depth max=0 -> 0.0
+
+
+def test_tarjan_split_balance_quantitative_scores():
+    """Verify exact quantitative split balance values on an 8-node path graph."""
+    env = HowlEnv(1, 8)
+    split_balances = env._tarjan_split_balances(set(env.graph.vertices))
+
+    # Endpoints are not articulation points
+    assert split_balances[(0, 0)] == 0.0
+    assert split_balances[(0, 7)] == 0.0
+
+    # Node (0, 3) splits into 3 and 4 -> (|V|-1 - max(3,4)) / (8/2) = (7-4)/4 = 3/4 = 0.75
+    assert math.isclose(split_balances[(0, 3)], 0.75, abs_tol=1e-5)
+    # Node (0, 4) splits into 4 and 3 -> 0.75
+    assert math.isclose(split_balances[(0, 4)], 0.75, abs_tol=1e-5)
+    # Node (0, 1) splits into 1 and 6 -> (7-6)/4 = 1/4 = 0.25
+    assert math.isclose(split_balances[(0, 1)], 0.25, abs_tol=1e-5)
+
+
+def test_cut_frontier_proximity():
+    """Verify cut frontier proximity BFS gradient from active cuts."""
+    env = HowlEnv(5, 5)
+    
+    # Before any cut: all 0.0
+    obs, _ = env.reset()
+    assert (obs[6] == 0.0).all()
+
+    # Step 1: cut corner (0, 0)
+    obs, _, terminated, _, _ = env.step((0, 0))
+    assert not terminated
+    assert (0, 0) in env.cuts_in_turn
+
+    # 8-neighbors of (0, 0): (0, 1), (1, 0), (1, 1) must have proximity 1.0
+    assert obs[6, 0, 1] == 1.0
+    assert obs[6, 1, 0] == 1.0
+    assert obs[6, 1, 1] == 1.0
+
+    # 2-hops from (0, 0): e.g. (0, 2), (2, 0), (2, 2) must have proximity 0.5
+    assert obs[6, 0, 2] == 0.5
+    assert obs[6, 2, 0] == 0.5
+    assert obs[6, 2, 2] == 0.5
+
+
+def test_perimeter_action_masking_legality():
+    """Verify 8-adjacent perimeter action mask correctly filters interior vs perimeter nodes."""
+    env = HowlEnv(5, 5)
+    env.reset()
+
+    legal_coords = env.get_legal_coords(perimeter_only=True)
+    mask = env.get_legal_action_mask(perimeter_only=True)
+
+    # 5x5 has 16 outer boundary nodes and 9 interior nodes
+    assert len(legal_coords) == 16
+    assert mask.sum() == 16
+
+    # Interior nodes (1,1), (2,2), (3,3) are not legal initially
+    assert (1, 1) not in legal_coords
+    assert (2, 2) not in legal_coords
+    assert (3, 3) not in legal_coords
+
+    # After cutting (0, 0), (1, 1) is now 8-adjacent to an empty cell -> becomes legal
+    env.step((0, 0))
+    legal_after_corner_cut = env.get_legal_coords(perimeter_only=True)
+    assert (1, 1) in legal_after_corner_cut
+    assert (2, 2) not in legal_after_corner_cut
