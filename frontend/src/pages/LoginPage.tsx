@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { WolfLogo } from '../components/ui/WolfLogo';
 import { login } from '../api/api';
@@ -9,6 +9,27 @@ const LoginPage: React.FC = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+
+  // Auto-login if ?access= or ?token= is provided in the URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const accessKey = params.get('access') || params.get('token');
+    if (accessKey) {
+      setIsLoading(true);
+      login('guest', accessKey).then((success) => {
+        if (success) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('access');
+          url.searchParams.delete('token');
+          window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : '') + url.hash);
+          navigate('/');
+        } else {
+          setError('Invalid access token');
+          setIsLoading(false);
+        }
+      });
+    }
+  }, [navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +44,24 @@ const LoginPage: React.FC = () => {
       }
     } catch (err) {
       setError('An error occurred during login');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    setError('');
+    setIsLoading(true);
+    try {
+      const guestSecret = import.meta.env.VITE_GUEST_SECRET || 'howl-guest';
+      const success = await login('guest', guestSecret);
+      if (success) {
+        navigate('/');
+      } else {
+        setError('Guest access is currently unavailable');
+      }
+    } catch {
+      setError('An error occurred during guest login');
     } finally {
       setIsLoading(false);
     }
@@ -43,7 +82,7 @@ const LoginPage: React.FC = () => {
         
         <input
           type="text"
-          placeholder="Username"
+          placeholder="Username (e.g. guest or admin)"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           required
@@ -57,8 +96,24 @@ const LoginPage: React.FC = () => {
           required
           style={{ padding: '12px', borderRadius: '8px', border: '1px solid var(--border-subtle)', background: 'var(--bg-inset)', color: 'var(--text-main)', fontSize: '1rem' }}
         />
-        <button type="submit" disabled={isLoading} className="btn primary" style={{ marginTop: '8px', padding: '12px' }}>
-          {isLoading ? 'Loading...' : 'Login'}
+        <button type="submit" disabled={isLoading} className="btn primary" style={{ marginTop: '4px', padding: '12px' }}>
+          {isLoading ? 'Signing In...' : 'Sign In'}
+        </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '4px 0' }}>
+          <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>or</span>
+          <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
+        </div>
+
+        <button
+          type="button"
+          onClick={handleGuestLogin}
+          disabled={isLoading}
+          className="btn secondary"
+          style={{ padding: '12px', fontSize: '0.95rem', fontWeight: 600 }}
+        >
+          Explore as Guest
         </button>
       </form>
     </div>

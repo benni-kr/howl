@@ -14,9 +14,45 @@ import LoginPage from "./pages/LoginPage";
 import ReplayPage from "./pages/ReplayPage";
 import IssuesPage from "./pages/IssuesPage";
 
-import "./styles/styles.css";
+import { useState } from "react";
+import { WolfLogo } from "./components/ui/WolfLogo";
+import { login } from "./api/api";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const [isVerifying, setIsVerifying] = useState<boolean>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return Boolean(params.get("access") || params.get("token"));
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const accessKey = params.get("access") || params.get("token");
+
+    if (accessKey) {
+      login("guest", accessKey).then((success) => {
+        if (success) {
+          // Clean the access key from the URL without triggering a page reload
+          const url = new URL(window.location.href);
+          url.searchParams.delete("access");
+          url.searchParams.delete("token");
+          window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : "") + url.hash);
+        }
+        setIsVerifying(false);
+      });
+    }
+  }, []);
+
+  if (isVerifying) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--bg-main)" }}>
+        <div style={{ color: "var(--logo-color)", animation: "pulse 1.5s infinite" }}>
+          <WolfLogo size={64} />
+        </div>
+        <p style={{ marginTop: "16px", color: "var(--text-muted)", fontSize: "0.95rem" }}>Entering HOWL...</p>
+      </div>
+    );
+  }
+
   const token = localStorage.getItem("howl_auth_token");
   if (!token) {
     return <Navigate to="/login" replace />;
