@@ -11,6 +11,22 @@ def test_login_failure(client):
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid credentials"
 
+def test_guest_login_success(client):
+    guest_secret = os.getenv("GUEST_SECRET", "howl-guest")
+    response = client.post("/api/auth/login", json={"username": "guest", "password": guest_secret})
+    assert response.status_code == 200
+    assert response.json() == {"token": guest_secret}
+
+def test_guest_token_access(client):
+    guest_secret = os.getenv("GUEST_SECRET", "howl-guest")
+    response = client.get("/api/leaderboard", headers={"Authorization": f"Bearer {guest_secret}"})
+    assert response.status_code == 200
+
+def test_guest_login_failure(client):
+    response = client.post("/api/auth/login", json={"username": "guest", "password": "wrongguestpassword"})
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid credentials"
+
 
 
 def test_leaderboard_empty(client):
