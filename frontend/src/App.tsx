@@ -17,6 +17,7 @@ import IssuesPage from "./pages/IssuesPage";
 import { useState } from "react";
 import { WolfLogo } from "./components/ui/WolfLogo";
 import { login } from "./api/api";
+import "./styles/styles.css";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const [isVerifying, setIsVerifying] = useState<boolean>(() => {
