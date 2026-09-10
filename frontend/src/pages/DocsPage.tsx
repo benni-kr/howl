@@ -174,6 +174,13 @@ const DocsPage: React.FC = () => {
         </ul>
       </div>
 
+      <div className="docs-references" style={{ marginTop: '32px' }}>
+        <h3 className="docs-references-title">Project Notice</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', margin: 0 }}>
+          This is a non-commercial academic research project developed as part of a university thesis in computer science. All puzzle submissions, community solution data, and graph algorithms are used strictly for scientific evaluation and educational demonstration. No personal data or tracking cookies are collected.
+        </p>
+      </div>
+
     </div>
   );
 };

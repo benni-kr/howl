@@ -82,7 +82,7 @@ const LoginPage: React.FC = () => {
         
         <input
           type="text"
-          placeholder="Username (e.g. guest or admin)"
+          placeholder="Username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           required
