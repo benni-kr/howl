@@ -1,5 +1,7 @@
 # HOWL - Hyper Optimizing Wolf's Logic
 
+> 🎮 **Live Web App:** [https://howl-lovat.vercel.app/?access=howl-guest](https://howl-lovat.vercel.app/?access=howl-guest) *(1-Click Instant Guest Access)*
+
 A highly responsive, web-based crowdsourcing game designed to solve the vertex $k$-ranking problem on grid graphs. By disguising rigorous mathematical bounding as a spatial puzzle, HOWL lets humans use their innate pattern recognition to contribute to open graph theory research.
 
 <div align="center">
@@ -24,51 +26,34 @@ A highly responsive, web-based crowdsourcing game designed to solve the vertex $
 ## Project Structure
 
 ```text
-howl-project/
-├── alphawolf/                # AlphaZero-style RL pipeline
-│   ├── envs/                 # Custom Howl environments
-│   ├── models/               # PyTorch neural network definitions
+howl/
+├── alphawolf/                # AlphaZero Reinforcement Learning pipeline
+│   ├── envs/                 # Gymnasium environments for grid graphs
+│   ├── models/               # PyTorch GNN policy & value architectures
 │   ├── db/                   # Tablebase interface & replay gatekeeper
-│   ├── tests/                # AlphaWolf test suite (math, MCTS, gatekeeper, GNN)
-│   ├── train.py              # Main training loop (MCTS + Self-Play)
-│   ├── benchmark.py          # Automated model evaluation & gauntlet
-│   └── ARCHITECTURE.md       # RL engine architecture documentation
+│   ├── tests/                # MCTS, GNN, math invariant, and pipeline tests
+│   ├── train.py              # Main training loop with curriculum learning
+│   └── benchmark.py          # Model evaluation gauntlet & Elo tracking
 │
-├── backend/                  # Python/FastAPI app + SQLite
-│   ├── venv/                 # Virtual environment
-│   ├── main.py               # FastAPI entry point & lifespan events
-│   ├── routes/               # API routers (auth, game, leaderboards)
-│   ├── services/             # Application services
-│   ├── tests/                # Backend API, hashing, and replay tests
-│   ├── database.py           # SQLite connection & session configuration
-│   ├── models.py             # SQLAlchemy ORM models
-│   ├── schemas.py            # Pydantic validation schemas
-│   ├── requirements.txt      # Python dependencies
-│   ├── .env                  # Backend environment variables
-│   └── ARCHITECTURE.md       # Backend architecture documentation
+├── backend/                  # FastAPI web server & database layer
+│   ├── routes/               # REST endpoints (auth, gameplay, leaderboards)
+│   ├── services/             # Application services & Discord webhook
+│   ├── tests/                # API integration & security tests
+│   └── database.py           # SQLite / PostgreSQL connection & ORM models
 │
-├── core_engine/              # Shared pure-python business logic package
-│   ├── core_engine/          # graph_logic, hashing, replay_engine
-│   └── pyproject.toml        # Package definition
+├── core_engine/              # Shared pure-Python graph algorithms package
+│   ├── graph_logic.py        # Tarjan articulation points & component decomposition
+│   ├── hashing.py            # D₄ dihedral group canonical symmetry hashing
+│   └── replay_engine.py      # Move sequence validation & elimination tree
 │
-├── frontend/                 # React/Vite app
-│   ├── package.json          
-│   ├── vite.config.ts        
-│   ├── ARCHITECTURE.md       # Frontend architecture documentation
-│   └── src/                  
-│       ├── api/              # API wrapper functions and DTO compaction
-│       ├── assets/           # Static images and SVGs
-│       ├── components/       # UI components divided by feature (layout, ui, game-page, leaderboard-page, etc.)
-│       ├── hooks/            # Custom React hooks (e.g., useAlias, useReplayEngine, useGraphLogic)
-│       ├── pages/            # Top-level route components (Game, Leaderboard, Login, Replay, Settings, Docs)
-│       ├── state/            # Redux Toolkit slices (gameSlice, settingsSlice) and store
-│       ├── styles/           # Vanilla CSS stylesheets with CSS variable theming
-│       ├── utils/            # Math, hashing, and graph utility functions
-│       ├── App.tsx           # React Router setup
-│       └── main.tsx          # React DOM entry point
+├── frontend/                 # React + PixiJS WebGL web client
+│   └── src/
+│       ├── components/       # Game canvas, matrix leaderboard, UI modals
+│       ├── pages/            # Top-level routes (Game, Leaderboard, Replay, Docs)
+│       ├── state/            # Redux Toolkit slices (gameSlice, settingsSlice)
+│       └── styles/           # Theme CSS variables & responsive layout
 │
-├── Problem_Description.md    # Mathematical foundation of the game
-└── README.md
+└── docs/                     # Mathematical background, research papers & screenshots
 ```
 
 ## Setup & Run
@@ -203,8 +188,8 @@ pytest alphawolf\tests\ backend\tests\ -v
 ## Deployment
 
 The project is designed to be deployed across two separate services:
-- **Frontend**: Deployed as a static Vite/React application. Expects a `VITE_API_URL` environment variable pointing to the backend.
-- **Backend**: Deployed running FastAPI with a persistent volume for the `howl.db` SQLite database. Requires an `AUTH_SECRET` environment variable for administrative gatekeeping.
+- **Frontend**: Deployed as a static Vite/React application (e.g. on Vercel). Expects a `VITE_API_URL` environment variable pointing to the backend.
+- **Backend**: Deployed running FastAPI (e.g. on Render) with a persistent volume or PostgreSQL database. Requires an `AUTH_SECRET` environment variable for administrative gatekeeping, and optionally `GUEST_SECRET` (defaults to `howl-guest`) for visitor access.
 
 ## Architecture
 
