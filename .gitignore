@@ -27,6 +27,8 @@ frontend/coverage/
 .vscode/
 .idea/
 *.log
+*.jsonl
+alphawolf/logs/
 
 # Deployment
 

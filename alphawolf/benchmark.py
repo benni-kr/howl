@@ -237,7 +237,24 @@ def evaluate_model(model_path, gauntlet_boards, num_simulations=100, mcts_batch_
 _DEFAULT_BEST_MODEL_PATH = os.path.join(os.path.dirname(__file__), "models/checkpoints/best_model.pt")
 
 
-def promote_model(new_model_path, best_model_path=_DEFAULT_BEST_MODEL_PATH, num_workers=5, num_simulations=100, mcts_batch_size=8, max_size=None):
+class PromotionResult:
+    def __init__(self, promoted: bool, status: str, new_rank: int, best_rank: int, new_nodes: int, best_nodes: int, time: float):
+        self.promoted = promoted
+        self.status = status  # "PROMOTED", "REJECTED", "BOOTSTRAPPED"
+        self.new_rank = new_rank
+        self.best_rank = best_rank
+        self.new_nodes = new_nodes
+        self.best_nodes = best_nodes
+        self.time = time
+
+    def __bool__(self):
+        return bool(self.promoted)
+
+    def __repr__(self):
+        return f"<PromotionResult status={self.status} challenger_rank={self.new_rank} baseline_rank={self.best_rank}>"
+
+
+def promote_model(new_model_path, best_model_path=_DEFAULT_BEST_MODEL_PATH, num_workers=5, num_simulations=100, mcts_batch_size=8, max_size=None, logger=None):
     """
     Evaluates new_model against best_model using the gauntlet.
     Promotes challenger if strictly better rank or equal rank with fewer nodes.
@@ -245,44 +262,55 @@ def promote_model(new_model_path, best_model_path=_DEFAULT_BEST_MODEL_PATH, num_
     """
     gauntlet = create_gauntlet(max_size=max_size)
     
+    def _log(msg):
+        if logger:
+            logger.log_file_only(msg)
+        else:
+            print(msg)
+    
     if not os.path.exists(best_model_path):
-        print(f"No best_model.pt found. Bootstrapping with {new_model_path}")
+        _log(f"No best_model.pt found. Bootstrapping with {new_model_path}")
         shutil.copy(new_model_path, best_model_path)
         rank, nodes, t = evaluate_model(best_model_path, gauntlet, num_simulations=num_simulations, mcts_batch_size=mcts_batch_size, num_workers=num_workers, use_cache=True)
-        return True
+        return PromotionResult(True, "BOOTSTRAPPED", rank, rank, nodes, nodes, t)
         
     # Check baseline cache first
     cached_baseline = load_benchmark_cache(best_model_path, gauntlet, num_simulations, mcts_batch_size)
     if cached_baseline is not None:
         best_rank, best_nodes, best_time = cached_baseline
-        print(f"\nBaseline Score (Cached): Rank: {best_rank}, Trajectory Nodes: {best_nodes} (0.00s)")
+        _log(f"Baseline Score (Cached): Rank: {best_rank}, Trajectory Nodes: {best_nodes} (0.00s)")
     else:
-        print(f"\nEvaluating Baseline: {best_model_path}...")
+        _log(f"Evaluating Baseline: {best_model_path}...")
         best_rank, best_nodes, best_time = evaluate_model(best_model_path, gauntlet, num_simulations=num_simulations, mcts_batch_size=mcts_batch_size, num_workers=num_workers, use_cache=True)
         
-    print(f"Evaluating Challenger: {new_model_path}...")
+    _log(f"Evaluating Challenger: {new_model_path}...")
     new_rank, new_nodes, new_time = evaluate_model(new_model_path, gauntlet, num_simulations=num_simulations, mcts_batch_size=mcts_batch_size, num_workers=num_workers, use_cache=True)
     
-    print(f"\n--- Benchmark Arena Results ---")
-    print(f"Baseline   -> Rank: {best_rank}, Trajectory Nodes: {best_nodes}, Time: {best_time:.2f}s")
-    print(f"Challenger -> Rank: {new_rank}, Trajectory Nodes: {new_nodes}, Time: {new_time:.2f}s")
+    _log(f"--- Benchmark Arena Results ---")
+    _log(f"Baseline   -> Rank: {best_rank}, Trajectory Nodes: {best_nodes}, Time: {best_time:.2f}s")
+    _log(f"Challenger -> Rank: {new_rank}, Trajectory Nodes: {new_nodes}, Time: {new_time:.2f}s")
     
     promoted = False
+    status = "REJECTED"
     if new_rank < best_rank:
-        print("Challenger achieved a STRICTLY BETTER cumulative rank! PROMOTED.")
+        _log("Challenger achieved a STRICTLY BETTER cumulative rank! PROMOTED.")
         promoted = True
+        status = "PROMOTED"
     elif new_rank == best_rank:
         if new_nodes < best_nodes:
-            print("Challenger matched rank but explored fewer nodes (higher confidence)! PROMOTED.")
+            _log("Challenger matched rank but explored fewer nodes (higher confidence)! PROMOTED.")
             promoted = True
+            status = "PROMOTED"
         else:
-            print("Challenger matched rank but was less efficient. REJECTED.")
+            _log("Challenger matched rank but was less efficient. REJECTED.")
+            status = "REJECTED"
     else:
-        print("Challenger performed worse. REJECTED.")
+        _log("Challenger performed worse. REJECTED.")
+        status = "REJECTED"
         
     if promoted:
         shutil.copy(new_model_path, best_model_path)
         # Atomically update baseline cache with challenger's evaluated score
         save_benchmark_cache(best_model_path, gauntlet, new_rank, new_nodes, new_time, num_simulations, mcts_batch_size)
         
-    return promoted
+    return PromotionResult(promoted, status, new_rank, best_rank, new_nodes, best_nodes, new_time)
