@@ -172,7 +172,9 @@ def evaluate_board_worker(worker_args):
         num_simulations=num_simulations,
         add_exploration_noise=False,
         batch_size=mcts_batch_size,
-        greedy=True
+        greedy=True,
+        enable_perimeter_mask=True,
+        enable_bottleneck_mcts=True,
     )
     return rank, len(traj)
 

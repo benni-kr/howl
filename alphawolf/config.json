@@ -11,8 +11,8 @@
   "mcts_batch_size": 8,
   "self_play_min_grid": 4,
   "self_play_max_grid": 15,
-  "solver_name": "alphawolf2.2",
-  "resume_from": "alphawolf_gen_44.pt",
+  "solver_name": "alphawolf2.3",
+  "resume_from": null,
   "curriculum_mode": "hybrid",
   "curriculum_frontier_ratio": 0.70,
   "curriculum_success_threshold": 0.80,
@@ -39,6 +39,8 @@
     }
   ],
   "enable_perimeter_mask": true,
+  "enable_virtual_node": true,
+  "enable_bottleneck_mcts": true,
   "benchmark_interval": 3,
   "benchmark_min_stage": 2,
   "replay_buffer_capacity": 60000

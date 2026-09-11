@@ -306,7 +306,11 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
 
 
 
-def play_episode(net, env, obs=None, num_simulations=50, add_exploration_noise=True, batch_size=8, greedy=False, temperature=1.0, enable_perimeter_mask=True):
+def play_episode(
+    net, env, obs=None, num_simulations=50, add_exploration_noise=True,
+    batch_size=8, greedy=False, temperature=1.0, enable_perimeter_mask=True,
+    enable_bottleneck_mcts=True,
+):
     if obs is None:
         obs, _ = env.reset()
     state_history = []
@@ -356,29 +360,81 @@ def play_episode(net, env, obs=None, num_simulations=50, add_exploration_noise=T
             recursive_discoveries = []
             
             if "fragments" in info and info["fragments"]:
-                for frag in info["fragments"]:
-                    frag_env = HowlEnv(env.m, env.n, generate=False)
-                    frag_env.graph = frag
-                    frag_env.cuts_made = 0
-                    frag_obs = frag_env._get_obs()
-                    
+                fragments = info["fragments"]
+                frag_plans = []
+                unresolved_items = []
+
+                for frag in fragments:
                     verts = [{"x": int(x), "y": int(y)} for x, y in frag.vertices]
                     can_hash = generate_canonical_hash(verts)
                     db_res_dict = query_tablebase([can_hash])
                     db_res = db_res_dict.get(can_hash)
-                    
+
                     if db_res and (db_res['is_optimal'] or db_res['best_rank'] <= 3):
-                        frag_ranks.append(db_res['best_rank'])
-                        frag_vertices = [[int(x), int(y)] for x, y in frag.vertices]
-                        recursive_cuts.append({"t": "v", "v": frag_vertices, "r": int(db_res['best_rank'])})
+                        frag_plans.append({
+                            "type": "tablebase",
+                            "rank": int(db_res['best_rank']),
+                            "vertices": [[int(x), int(y)] for x, y in frag.vertices],
+                        })
+                    elif len(frag.vertices) <= 1:
+                        # Isolated single vertex has rank 1
+                        frag_plans.append({
+                            "type": "tablebase",
+                            "rank": len(frag.vertices),
+                            "vertices": [[int(x), int(y)] for x, y in frag.vertices],
+                        })
+                    else:
+                        frag_env = HowlEnv(env.m, env.n, generate=False)
+                        frag_env.graph = frag
+                        frag_env.cuts_made = 0
+                        frag_obs = frag_env._get_obs()
+                        pyg = frag_env.to_pyg_data(perimeter_only=enable_perimeter_mask)
+
+                        item = {
+                            "type": "search",
+                            "env": frag_env,
+                            "obs": frag_obs,
+                            "pyg": pyg,
+                            "frag": frag,
+                            "sims": num_simulations,
+                        }
+                        frag_plans.append(item)
+                        unresolved_items.append(item)
+
+                # Bottleneck simulation allocation across unresolved fragments
+                if unresolved_items and enable_bottleneck_mcts and len(unresolved_items) > 1:
+                    with torch.no_grad():
+                        batch_pyg = Batch.from_data_list([it["pyg"] for it in unresolved_items])
+                        device = next(net.parameters()).device
+                        _, v_preds = net(batch_pyg.to(device))
+                        v_estimates = v_preds.squeeze(-1).cpu().tolist()
+                        if not isinstance(v_estimates, list):
+                            v_estimates = [v_estimates]
+
+                    r_max = max(v_estimates)
+                    for it, est_v in zip(unresolved_items, v_estimates):
+                        diff = r_max - est_v
+                        if diff <= 1.0:
+                            it["sims"] = num_simulations
+                        elif diff <= 3.0:
+                            it["sims"] = max(int(round(num_simulations * 0.5)), min(20, num_simulations))
+                        else:
+                            it["sims"] = max(int(round(num_simulations * 0.2)), min(10, num_simulations))
+
+                for plan in frag_plans:
+                    if plan["type"] == "tablebase":
+                        frag_ranks.append(plan["rank"])
+                        recursive_cuts.append({"t": "v", "v": plan["vertices"], "r": plan["rank"]})
                     else:
                         frag_traj, frag_rank, frag_discoveries = play_episode(
-                            net, frag_env, frag_obs, num_simulations,
+                            net, plan["env"], plan["obs"],
+                            num_simulations=plan["sims"],
                             add_exploration_noise=add_exploration_noise,
                             batch_size=batch_size,
                             greedy=greedy,
                             temperature=temperature,
-                            enable_perimeter_mask=enable_perimeter_mask
+                            enable_perimeter_mask=enable_perimeter_mask,
+                            enable_bottleneck_mcts=enable_bottleneck_mcts,
                         )
                         frag_ranks.append(frag_rank)
                         recursive_trajectories.extend(frag_traj)
@@ -404,7 +460,7 @@ def play_episode(net, env, obs=None, num_simulations=50, add_exploration_noise=T
 
 def simulate_game_worker(worker_args):
     import io
-    m, n, model_bytes, num_simulations, game_id, mcts_batch_size, enable_perimeter_mask = worker_args
+    m, n, model_bytes, num_simulations, game_id, mcts_batch_size, enable_perimeter_mask, enable_bottleneck_mcts = worker_args
     
     local_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.set_num_threads(1) # Prevent OpenMP deadlocks in multiprocessing
@@ -415,7 +471,12 @@ def simulate_game_worker(worker_args):
     
     env = HowlEnv(m, n)
     obs, _ = env.reset()
-    traj, final_rank, discoveries = play_episode(net, env, obs, num_simulations, batch_size=mcts_batch_size, enable_perimeter_mask=enable_perimeter_mask)
+    traj, final_rank, discoveries = play_episode(
+        net, env, obs, num_simulations,
+        batch_size=mcts_batch_size,
+        enable_perimeter_mask=enable_perimeter_mask,
+        enable_bottleneck_mcts=enable_bottleneck_mcts,
+    )
     
     # Serialize PyG trajectory to plain bytes to avoid PyTorch IPC shared-memory leaks across processes
     for data in traj:
@@ -434,7 +495,7 @@ def simulate_game_worker(worker_args):
     
     return game_id, m, n, traj_buf.getvalue(), final_rank, discoveries
 
-def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_size=8, solver_name="alphawolf2", enable_perimeter_mask=True):
+def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_size=8, solver_name="alphawolf2.3", enable_perimeter_mask=True, enable_bottleneck_mcts=True):
     import concurrent.futures
     import io
     import time
@@ -448,7 +509,7 @@ def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_siz
     
     worker_args_list = []
     for game_id, (m, n) in enumerate(gm_gn_list):
-        worker_args_list.append((m, n, model_bytes, num_simulations, game_id + 1, mcts_batch_size, enable_perimeter_mask))
+        worker_args_list.append((m, n, model_bytes, num_simulations, game_id + 1, mcts_batch_size, enable_perimeter_mask, enable_bottleneck_mcts))
         
     num_games = len(gm_gn_list)
     print(f"\n[PHASE 1] Self-Play ({num_games} games | {num_workers} workers | solver: '{solver_name}')")
@@ -555,6 +616,7 @@ def alpha_zero_loop(
     curriculum_frontier_ratio=0.70,
     curriculum_success_threshold=0.80,
     enable_perimeter_mask=True,
+    enable_bottleneck_mcts=True,
     benchmark_interval=3,
     benchmark_min_stage=2,
     replay_buffer_capacity=60000,
@@ -629,7 +691,9 @@ def alpha_zero_loop(
             num_simulations=num_simulations,
             num_workers=num_workers,
             mcts_batch_size=mcts_batch_size,
-            solver_name=solver_name
+            solver_name=solver_name,
+            enable_perimeter_mask=enable_perimeter_mask,
+            enable_bottleneck_mcts=enable_bottleneck_mcts,
         )
             
         replay_buffer.extend(new_trajectories)
@@ -745,6 +809,7 @@ if __name__ == "__main__":
         curriculum_frontier_ratio=config.get("curriculum_frontier_ratio", 0.70),
         curriculum_success_threshold=config.get("curriculum_success_threshold", 0.80),
         enable_perimeter_mask=config.get("enable_perimeter_mask", True),
+        enable_bottleneck_mcts=config.get("enable_bottleneck_mcts", True),
         benchmark_interval=config.get("benchmark_interval", 3),
         benchmark_min_stage=config.get("benchmark_min_stage", 2),
         replay_buffer_capacity=config.get("replay_buffer_capacity", 60000),
