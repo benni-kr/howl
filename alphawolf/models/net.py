@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 try:
     from torch_geometric.data import Data, Batch
-    from torch_geometric.nn import SAGEConv, global_mean_pool
+    from torch_geometric.nn import SAGEConv, global_mean_pool, global_max_pool, global_add_pool
     HAS_PYG = True
 except ImportError:
     HAS_PYG = False
@@ -70,11 +70,14 @@ class AlphaWolfGNN(nn.Module):
     """
     Size-agnostic Graph Neural Network for Vertex k-Ranking.
     Operates on arbitrary graph sizes without canvas zero-padding.
+    Equipped with Global Virtual Supernode and Multi-Scale Value Pooling.
     """
-    def __init__(self, m=None, n=None, in_channels=8, hidden_channels=128, num_layers=6, **kwargs):
+    def __init__(self, m=None, n=None, in_channels=8, hidden_channels=128, num_layers=6, use_virtual_node=True, **kwargs):
         super().__init__()
         self.m = m or 10
         self.n = n or 10
+        self.hidden_channels = hidden_channels
+        self.use_virtual_node = use_virtual_node
         
         if not HAS_PYG:
             raise ImportError("torch_geometric is required for AlphaWolfGNN.")
@@ -84,13 +87,23 @@ class AlphaWolfGNN(nn.Module):
         self.layers = nn.ModuleList([
             SAGEConv(hidden_channels, hidden_channels) for _ in range(num_layers)
         ])
+
+        if self.use_virtual_node:
+            self.virtual_mlps = nn.ModuleList([
+                nn.Sequential(
+                    nn.Linear(hidden_channels, hidden_channels),
+                    nn.ReLU(),
+                    nn.Linear(hidden_channels, hidden_channels)
+                ) for _ in range(num_layers)
+            ])
         
         # Policy Head (Outputs a scalar logit per node)
         self.policy_fc1 = nn.Linear(hidden_channels, hidden_channels)
         self.policy_fc2 = nn.Linear(hidden_channels, 1)
         
-        # Value Head (Outputs a single expected rank for the graph)
-        self.value_fc1 = nn.Linear(hidden_channels, hidden_channels)
+        # Value Head (Multi-Scale Pooling: Mean + Max + Sum + log|V| [+ Virtual Node])
+        value_in_dim = hidden_channels * 4 + 1 if self.use_virtual_node else hidden_channels * 3 + 1
+        self.value_fc1 = nn.Linear(value_in_dim, hidden_channels)
         self.value_fc2 = nn.Linear(hidden_channels, 1)
         
     def forward(self, batch_data, return_scattered: bool = False):
@@ -112,21 +125,46 @@ class AlphaWolfGNN(nn.Module):
             batch_data = Batch.from_data_list([batch_data])
             
         x, edge_index, batch_idx = batch_data.x, batch_data.edge_index, batch_data.batch
-        
-        # 1. Message Passing
+        num_graphs = getattr(batch_data, "num_graphs", 1)
+        if batch_idx is None:
+            batch_idx = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
+            num_graphs = 1
+
+        # 1. Message Passing with Global Virtual Supernode
+        if self.use_virtual_node:
+            v_global = torch.zeros((num_graphs, self.hidden_channels), dtype=x.dtype, device=x.device)
+
         x = F.relu(self.conv_in(x, edge_index))
-        for layer in self.layers:
+        for l_idx, layer in enumerate(self.layers):
             residual = x
-            x = F.relu(layer(x, edge_index))
-            x = x + residual  # Skip connection
+            x = layer(x, edge_index)
+            if self.use_virtual_node and x.size(0) > 0:
+                x = x + v_global[batch_idx]
+            x = F.relu(x) + residual  # Skip connection
+            
+            if self.use_virtual_node and x.size(0) > 0:
+                v_pool = global_mean_pool(x, batch_idx, size=num_graphs)
+                v_global = v_global + self.virtual_mlps[l_idx](v_pool)
             
         # 2. Policy Head: scalar logit per active node
         p = F.relu(self.policy_fc1(x))
         node_p_logits = self.policy_fc2(p).squeeze(-1)  # [Total_Nodes]
         
-        # 3. Value Head (Global Mean Pooling)
-        v = global_mean_pool(x, batch_idx)  # [B, hidden_channels]
-        v = F.relu(self.value_fc1(v))
+        # 3. Value Head (Multi-Scale Pooling: Mean + Max + Sum + log|V| [+ Virtual Node])
+        if x.size(0) == 0:
+            v_pooled = torch.zeros((num_graphs, self.value_fc1.in_features), dtype=torch.float32, device=x.device)
+        else:
+            mean_p = global_mean_pool(x, batch_idx, size=num_graphs)
+            max_p = global_max_pool(x, batch_idx, size=num_graphs)
+            sum_p = global_add_pool(x, batch_idx, size=num_graphs)
+            node_counts = torch.bincount(batch_idx, minlength=num_graphs).unsqueeze(-1).to(dtype=x.dtype)
+            log_v = torch.log(node_counts + 1.0)
+            if self.use_virtual_node:
+                v_pooled = torch.cat([mean_p, max_p, sum_p, log_v, v_global], dim=-1)
+            else:
+                v_pooled = torch.cat([mean_p, max_p, sum_p, log_v], dim=-1)
+
+        v = F.relu(self.value_fc1(v_pooled))
         graph_v = self.value_fc2(v)  # [B, 1]
         
         if return_scattered:
