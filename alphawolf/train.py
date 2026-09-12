@@ -619,8 +619,8 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32, logger
     return {"policy_loss": avg_p_loss, "value_loss": avg_v_loss, "train_time": elapsed}
 
 def alpha_zero_loop(
-    m,
-    n,
+    m=None,
+    n=None,
     num_generations=50,
     games_per_generation=15,
     num_simulations=200,
@@ -665,6 +665,16 @@ def alpha_zero_loop(
     
     ckpt_dir = os.path.join(os.path.dirname(__file__), "models/checkpoints")
     os.makedirs(ckpt_dir, exist_ok=True)
+
+    # Auto-synchronize self_play_max_grid with curriculum stages ceiling to prevent silent clamping
+    if curriculum_stages:
+        stages_max = max(s.get("max_size", 4) for s in curriculum_stages)
+        if stages_max > self_play_max_grid:
+            logger.info(
+                f"Auto-adjusting self_play_max_grid from {self_play_max_grid} to {stages_max} "
+                f"to match curriculum stages ceiling."
+            )
+            self_play_max_grid = stages_max
 
     curriculum = CurriculumManager(
         mode=curriculum_mode,
@@ -858,11 +868,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config_path = os.path.join(os.path.dirname(__file__), "config.json")
-    with open(config_path, "r") as f:
+    with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
         
-    m = config.get("current_m", 5)
-    n = config.get("current_n", 5)
     num_generations = args.generations or config.get("total_generations", 50)
     games_per_gen = args.games_per_gen or config.get("games_per_generation", 15)
     simulations = args.sims or config.get("mcts_simulations", 200)
@@ -870,7 +878,14 @@ if __name__ == "__main__":
     mcts_batch_size = config.get("mcts_batch_size", 8)
     self_play_min_grid = config.get("self_play_min_grid", 4)
     self_play_max_grid = config.get("self_play_max_grid", 9)
-    solver_name = args.solver_name or config.get("solver_name", "alphawolf2")
+    solver_name = args.solver_name or config.get("solver_name", "alphawolf2.3")
+    curriculum_stages = config.get("curriculum_stages", None)
+
+    # Pre-synchronize self_play_max_grid with curriculum stages ceiling
+    if curriculum_stages:
+        stages_max = max(s.get("max_size", 4) for s in curriculum_stages)
+        if stages_max > self_play_max_grid:
+            self_play_max_grid = stages_max
 
     if args.fresh:
         resume_from = None
@@ -887,8 +902,6 @@ if __name__ == "__main__":
         curriculum_mode = config.get("curriculum_mode", "hybrid")
 
     alpha_zero_loop(
-        m,
-        n,
         num_generations=num_generations,
         games_per_generation=games_per_gen,
         num_simulations=simulations,
@@ -899,7 +912,7 @@ if __name__ == "__main__":
         solver_name=solver_name,
         resume_from=resume_from,
         curriculum_mode=curriculum_mode,
-        curriculum_stages=config.get("curriculum_stages", None),
+        curriculum_stages=curriculum_stages,
         curriculum_frontier_ratio=config.get("curriculum_frontier_ratio", 0.70),
         curriculum_success_threshold=config.get("curriculum_success_threshold", 0.80),
         enable_perimeter_mask=config.get("enable_perimeter_mask", True),

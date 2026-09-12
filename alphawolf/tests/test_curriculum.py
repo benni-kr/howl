@@ -123,3 +123,25 @@ def test_curriculum_state_dict_serialization():
     assert cm2.current_stage_idx == 1
     assert cm2.stage_generations_spent == 3
     assert len(cm2.history) == 1
+
+
+def test_curriculum_stage_ceiling_auto_sync():
+    """Verify that curriculum stages higher than self_play_max_grid can be auto-synchronized."""
+    stages = [
+        {"max_size": 15, "fraction": 0.5, "name": "Stage 1"},
+        {"max_size": 20, "fraction": 0.5, "name": "Stage 2"},
+    ]
+    self_play_max_grid = 15
+
+    # If not synchronized, CurriculumManager caps at 15
+    cm_unadjusted = CurriculumManager(mode="hybrid", min_grid=4, max_grid=self_play_max_grid, stages=stages)
+    cm_unadjusted.current_stage_idx = 1
+    assert cm_unadjusted.current_max_size == 15  # The silent clamping bug
+
+    # When synchronized as done in train.py:
+    stages_max = max(s.get("max_size", 4) for s in stages)
+    self_play_max_grid = max(self_play_max_grid, stages_max)
+    cm_synced = CurriculumManager(mode="hybrid", min_grid=4, max_grid=self_play_max_grid, stages=stages)
+    cm_synced.current_stage_idx = 1
+    assert cm_synced.current_max_size == 20  # Successfully expanded to 20 without clamping
+
