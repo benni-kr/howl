@@ -11,7 +11,7 @@ from core_engine.graph_logic import GridGraph, filter_and_deduplicate
 from core_engine.hashing import generate_canonical_data, generate_canonical_hash, get_transformations
 from core_engine.replay_engine import replay_and_extract_subgraphs
 from envs.howl_env import HowlEnv, MAX_ROWS, MAX_COLS
-from models.net import AlphaWolfNet
+from models.net import AlphaWolfNet, AlphaWolfGNN
 from train import play_episode
 import db.tablebase as tb
 
@@ -390,3 +390,66 @@ def test_perimeter_action_masking_legality():
     legal_after_corner_cut = env.get_legal_coords(perimeter_only=True)
     assert (1, 1) in legal_after_corner_cut
     assert (2, 2) not in legal_after_corner_cut
+
+
+def test_gnn_d4_invariance_with_virtual_node_and_multiscale_pooling():
+    """Verify that AlphaWolfGNN with Virtual Supernode and Multi-Scale Value Pooling preserves 100% D4 invariance."""
+    import torch
+    f_shape = {
+        (0, 0), (1, 0), (2, 0),
+        (0, 1),
+        (0, 2), (1, 2),
+        (0, 3)
+    }
+    transforms = get_transformations()
+
+    env_base = HowlEnv(10, 10, generate=False)
+    for v in f_shape:
+        env_base.graph._add_vertex(v)
+    for v in f_shape:
+        for dx, dy in [(0, 1), (1, 0)]:
+            if (v[0] + dx, v[1] + dy) in f_shape:
+                env_base.graph._add_edge(v, (v[0] + dx, v[1] + dy))
+
+    pyg_base = env_base.to_pyg_data()
+    coords_base = [tuple(c) for c in pyg_base.coords.tolist()]
+    coord_to_idx_base = {c: i for i, c in enumerate(coords_base)}
+
+    net = AlphaWolfGNN()
+    net.eval()
+
+    with torch.no_grad():
+        p_base, v_base = net(pyg_base)
+
+    for t_idx, t in enumerate(transforms):
+        transformed_verts = {t(x, y) for x, y in f_shape}
+        min_x = min(x for x, y in transformed_verts)
+        min_y = min(y for x, y in transformed_verts)
+        shifted_verts = {(x - min_x, y - min_y) for x, y in transformed_verts}
+
+        env_t = HowlEnv(10, 10, generate=False)
+        for v in shifted_verts:
+            env_t.graph._add_vertex(v)
+        for v in shifted_verts:
+            for dx, dy in [(0, 1), (1, 0)]:
+                if (v[0] + dx, v[1] + dy) in shifted_verts:
+                    env_t.graph._add_edge(v, (v[0] + dx, v[1] + dy))
+
+        pyg_t = env_t.to_pyg_data()
+        coords_t = [tuple(c) for c in pyg_t.coords.tolist()]
+        coord_to_idx_t = {c: i for i, c in enumerate(coords_t)}
+
+        with torch.no_grad():
+            p_t, v_t = net(pyg_t)
+
+        assert torch.isclose(v_base, v_t, atol=1e-4), f"Value mismatch on transform {t_idx}: {v_base.item()} vs {v_t.item()}"
+
+        for orig_v in f_shape:
+            tx, ty = t(orig_v[0], orig_v[1])
+            mapped_v = (tx - min_x, ty - min_y)
+            idx_base = coord_to_idx_base[orig_v]
+            idx_t = coord_to_idx_t[mapped_v]
+            val_base = p_base[idx_base].item()
+            val_t = p_t[idx_t].item()
+            assert math.isclose(val_base, val_t, abs_tol=1e-4), f"Policy mismatch at {orig_v} -> {mapped_v} on transform {t_idx}: {val_base} vs {val_t}"
+

@@ -98,6 +98,7 @@ HOWL features a dedicated Replay system to view community solutions.
 - **`ReplayPage.tsx`**: Uses a custom `useReplayEngine` hook to step through the decompressed action history block by block.
 - **VCR Controls**: Allows users to step forward, backward, play/pause, or skip to the end of a replay.
 - **Cache Snapshots**: To support $O(1)$ fast-forwarding and jumping through deep replays, `useReplayEngine` periodically snapshots the board state (every 10 steps), avoiding costly $O(N)$ recompilations from step 0.
+- **Ghost Operation Sanitization (`sanitizeCutSequence`)**: Automatically filters loaded sequences (root and dive-in sub-sequences) to strip redundant $1 \times 1$ actions (`type in ("vaporize", "ignore")` where `vertices.length <= 1`). Because single vertices have intrinsic rank 1 and are visually pruned upon creation, this ensures that scrubbing and action logs only display meaningful operations on the canvas.
 - **Elimination Tree (`TreeModal.tsx`)**: A visual diagram that dynamically draws the mathematical Treedepth Decomposition as the replay progresses, illustrating exactly how the score is derived.
 - **Forking**: Players can click "Fork Replay" at any point to clone the current replay board state into their own active Game session.
 

@@ -112,6 +112,8 @@ rank(cut node)            = cut_size + max(rank(child) for child in children)
 rank(unsolved leaf)       = 999999  (sentinel — game wasn't completed)
 ```
 
+**Base Case & Ghost Operation Invariant**: Single isolated vertices ($1 \times 1$) have an intrinsic rank of 1 and require 0 cuts. Both the game engine and the Replay Viewer auto-resolve and prune single vertices upon creation. Explicit vaporize (`{"t": "v", "r": 1}`) or duplicate ignore (`{"t": "i"}`) actions targeting single vertices are redundant and produce no visual change on the board ("ghost operations"). These are filtered out at the solver level and replay engine.
+
 Only entries with `rank < 999999` and non-obliterated nodes are written to the `subgraph_dictionary`. (An obliterated node is one where the cut completely wiped out the entire graph without leaving fragments).
 
 ---
@@ -193,12 +195,20 @@ These theoretical bounds are used on the Leaderboard Matrix to calculate the "Pe
 
 ---
 
-## Database Sanitization (`scripts/sanitize_db.py`)
+## Database Sanitization (`scripts/sanitize_db.py`, `scripts/sanitize_ghost_ops.py`)
 
-A standalone maintenance script is provided to audit the mathematical integrity of the production database. 
-- It iteratively replays every `GridSolution` against the latest Replay Engine validation logic.
-- It detects "CORRUPT" runs (where a `ValueError` is thrown due to invalid cuts) and "MISMATCH" runs (where the server's intrinsic rank computation differs from the recorded score).
-- By default, it operates in a **non-destructive dry-run mode**. Appending the `--destructive` flag allows administrators to permanently purge invalid subgraphs and runs from the active tables.
+HOWL provides standalone maintenance scripts to audit and clean the production database (`backend/howl.db`):
+
+- **`scripts/sanitize_db.py`**:
+  - Iteratively replays every `GridSolution` against the Replay Engine validation logic.
+  - Detects "CORRUPT" runs (where a `ValueError` is thrown due to invalid cuts) and "MISMATCH" runs (where the server's intrinsic rank computation differs from the recorded score).
+  - By default, operates in a **non-destructive dry-run mode**. Appending the `--destructive` flag permanently purges invalid entries.
+
+- **`scripts/sanitize_ghost_ops.py`**:
+  - Automatically creates a physical snapshot (`backend/howl.db.bak`) prior to modification.
+  - Cleans redundant $1 \times 1$ tablebase vaporize (`{"t": "v", "r": 1}`) and duplicate ignore (`{"t": "i"}`) operations from `grid_solutions.cut_sequence` and `subgraph_dictionary.best_cut_sequence`.
+  - Replays every cleaned sequence through `replay_and_extract_subgraphs(m, n, clean_seq)` to strictly verify mathematical bit-exact rank equivalence (`clean_rank == orig_rank`).
+  - Executes updates within an atomic transaction, guaranteeing zero invalid results or score regressions. Supports `--dry-run` and `--execute` modes.
 
 ---
 

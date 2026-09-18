@@ -15,7 +15,8 @@ from train import (
     ucb_score,
     mcts_search,
     simulate_game_worker,
-    self_play
+    self_play,
+    play_episode
 )
 from core_engine.replay_engine import replay_and_extract_subgraphs
 
@@ -101,7 +102,7 @@ def test_simulate_game_worker_spawn_isolation(isolated_db):
     buf = io.BytesIO()
     torch.save(net.state_dict(), buf)
     model_bytes = buf.getvalue()
-    worker_args = (3, 3, model_bytes, 40, 1, 4, True)
+    worker_args = (3, 3, model_bytes, 40, 1, 4, True, True)
 
     ctx = mp.get_context('spawn')
     with ctx.Pool(1) as pool:
@@ -141,3 +142,28 @@ def test_multi_worker_self_play_end_to_end(isolated_db):
     )
 
     assert len(replay_buffer) > 0
+
+
+def test_bottleneck_simulation_allocation_execution(isolated_db):
+    """Verify that play_episode runs cleanly with bottleneck simulation allocation on shattered boards."""
+    net = AlphaWolfNet()
+    net.eval()
+
+    # Pre-shattered board: 1x7 ribbon
+    env = HowlEnv(1, 7)
+    obs, _ = env.reset()
+
+    traj, rank, discoveries = play_episode(
+        net,
+        env,
+        obs,
+        num_simulations=20,
+        greedy=True,
+        enable_perimeter_mask=True,
+        enable_bottleneck_mcts=True,
+    )
+
+    assert rank > 0
+    assert len(traj) > 0
+    assert len(discoveries) > 0
+

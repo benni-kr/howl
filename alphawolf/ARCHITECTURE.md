@@ -154,9 +154,10 @@ Where $R_{\text{bisect}}(m, n) = \min(m, n) + R_{\text{target}}(\lfloor \max(m, 
 
 ---
 
-### 7. Tablebase Integration & Replay Gatekeeper (`db/tablebase.py`)
+### 7. Tablebase Integration & Replay Gatekeeper (`db/tablebase.py`, `train.py`)
 
 - **Authoritative Gatekeeper**: Every game completed in self-play is re-simulated through `core_engine.replay_engine.replay_and_extract_subgraphs`. If the calculated bottom-up rank does not match the claimed rank, the discovery is rejected with zero database writes.
+- **Base Case & Ghost Operation Prevention**: Single isolated vertices ($1 \times 1$) have an intrinsic rank of 1 and require 0 cuts. In `train.py`, remaining fragments with $\le 1$ vertex are assigned rank 1 directly without issuing redundant tablebase queries or generating explicit vaporize plans (`{"t": "v", "r": 1}`). Duplicate fragments are only emitted as ignore actions (`{"t": "i"}`) if they contain $>1$ vertices. This prevents "ghost operations" in the community replay UI.
 - **Non-Degradation Invariant**: Database entries are updated strictly if $\text{rank}_{\text{new}} < \text{rank}_{\text{db}}$.
 - **Community UI Synchronization**: All valid discoveries automatically populate `grid_solutions` and `subgraph_dictionary` in `backend/howl.db`.
 

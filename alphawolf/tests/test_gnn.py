@@ -137,3 +137,59 @@ def test_dynamic_env_large_boards_and_coordinate_actions():
     obs20, _ = env20.reset()
     assert obs20.shape == (9, 20, 20)
     assert len(env20.graph.vertices) == 400
+
+
+def test_virtual_node_message_propagation():
+    """Verify that Global Virtual Supernode connects distant nodes (> 6 hops away) in 2 layers."""
+    # Create 1x20 path graph where node 0 and node 19 are separated by 19 Manhattan hops
+    env = HowlEnv(1, 20)
+    env.reset()
+    pyg_base = env.to_pyg_data()
+
+    # 1. Standard 2-layer GNN WITHOUT virtual node: node 19 cannot be affected by node 0
+    net_no_vn = AlphaWolfGNN(hidden_channels=32, num_layers=2, use_virtual_node=False)
+    net_no_vn.eval()
+
+    pyg_mod = env.to_pyg_data()
+    pyg_mod.x[0, :] += 50.0  # Big feature impulse at node 0
+
+    with torch.no_grad():
+        p_base_no_vn, _ = net_no_vn(pyg_base)
+        p_mod_no_vn, _ = net_no_vn(pyg_mod)
+
+    # 2 hops can only reach up to node 2. Node 19 must be completely unaffected
+    assert torch.allclose(p_base_no_vn[19], p_mod_no_vn[19], atol=1e-5), "Without VN, 2 layers should not reach node 19"
+
+    # 2. 2-layer GNN WITH virtual node: node 0 broadcasts to virtual node, which reaches node 19 in layer 2!
+    net_vn = AlphaWolfGNN(hidden_channels=32, num_layers=2, use_virtual_node=True)
+    net_vn.eval()
+
+    with torch.no_grad():
+        p_base_vn, _ = net_vn(pyg_base)
+        p_mod_vn, _ = net_vn(pyg_mod)
+
+    # Node 19 MUST receive the broadcast and change its output logit
+    assert not torch.allclose(p_base_vn[19], p_mod_vn[19], atol=1e-4), "With VN, node 19 must receive global broadcast"
+
+
+def test_multiscale_pooling_mass_distinction():
+    """Verify that multi-scale value pooling (Mean, Max, Sum, log|V|) distinguishes graph scale."""
+    net = AlphaWolfGNN(hidden_channels=64, num_layers=2)
+    net.eval()
+
+    env_small = HowlEnv(4, 4)  # 16 nodes
+    env_small.reset()
+    pyg_small = env_small.to_pyg_data()
+
+    env_large = HowlEnv(8, 8)  # 64 nodes
+    env_large.reset()
+    pyg_large = env_large.to_pyg_data()
+
+    with torch.no_grad():
+        _, v_small = net(pyg_small)
+        _, v_large = net(pyg_large)
+
+    assert v_small.shape == (1, 1)
+    assert v_large.shape == (1, 1)
+    # The value head output must distinguish the 16-node graph from the 64-node graph
+    assert not torch.isclose(v_small, v_large, atol=1e-3)

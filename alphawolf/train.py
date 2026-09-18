@@ -10,8 +10,12 @@ from torch.utils.data import DataLoader
 from torch_geometric.data import Batch, Data
 import torch_geometric.utils as pyg_utils
 
+from datetime import datetime
+import time
+
 sys.path.insert(0, os.path.dirname(__file__))
 
+from logger import TrainingLogger
 from models.net import AlphaWolfNet, grid_tensor_to_pyg_data
 from envs.howl_env import HowlEnv, MAX_ROWS, MAX_COLS
 from db.tablebase import query_tablebase, insert_or_update_rank4_induction, upsert_subgraph, upsert_grid_solution, validate_and_upsert_solution
@@ -167,7 +171,7 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
             while node.is_expanded and not node.is_terminal:
                 best_action, best_child = min(
                     node.children.items(),
-                    key=lambda item: ucb_score(node, item[1])
+                    key=lambda item: (ucb_score(node, item[1]), item[0])
                 )
                 node = best_child
                 search_path.append(node)
@@ -306,7 +310,11 @@ def mcts_search(root_state, net, env, num_simulations=100, add_exploration_noise
 
 
 
-def play_episode(net, env, obs=None, num_simulations=50, add_exploration_noise=True, batch_size=8, greedy=False, temperature=1.0, enable_perimeter_mask=True):
+def play_episode(
+    net, env, obs=None, num_simulations=50, add_exploration_noise=True,
+    batch_size=8, greedy=False, temperature=1.0, enable_perimeter_mask=True,
+    enable_bottleneck_mcts=True,
+):
     if obs is None:
         obs, _ = env.reset()
     state_history = []
@@ -327,7 +335,7 @@ def play_episode(net, env, obs=None, num_simulations=50, add_exploration_noise=T
         state_history.append((pyg_data, node_pi, env.cuts_made, len(local_sequence)))
         
         if greedy or not add_exploration_noise:
-            action = max(action_visits, key=action_visits.get)
+            action = max(action_visits.keys(), key=lambda a: (action_visits[a], a))
         else:
             actions = list(action_visits.keys())
             if temperature != 1.0 and temperature > 0:
@@ -346,8 +354,9 @@ def play_episode(net, env, obs=None, num_simulations=50, add_exploration_noise=T
         
         if "duplicates" in info and info["duplicates"]:
             for dup_frag in info["duplicates"]:
-                dup_vertices = [[int(x), int(y)] for x, y in dup_frag.vertices]
-                local_sequence.append({"t": "i", "v": dup_vertices})
+                if len(dup_frag.vertices) > 1:
+                    dup_vertices = [[int(x), int(y)] for x, y in dup_frag.vertices]
+                    local_sequence.append({"t": "i", "v": dup_vertices})
         
         if terminated:
             frag_ranks = []
@@ -356,29 +365,79 @@ def play_episode(net, env, obs=None, num_simulations=50, add_exploration_noise=T
             recursive_discoveries = []
             
             if "fragments" in info and info["fragments"]:
-                for frag in info["fragments"]:
-                    frag_env = HowlEnv(env.m, env.n, generate=False)
-                    frag_env.graph = frag
-                    frag_env.cuts_made = 0
-                    frag_obs = frag_env._get_obs()
-                    
+                fragments = info["fragments"]
+                frag_plans = []
+                unresolved_items = []
+
+                for frag in fragments:
+                    if len(frag.vertices) <= 1:
+                        # Isolated single vertex has intrinsic rank 1 (or 0 if empty) and requires zero cuts or vaporization actions
+                        frag_ranks.append(len(frag.vertices))
+                        continue
+
                     verts = [{"x": int(x), "y": int(y)} for x, y in frag.vertices]
                     can_hash = generate_canonical_hash(verts)
                     db_res_dict = query_tablebase([can_hash])
                     db_res = db_res_dict.get(can_hash)
-                    
+
                     if db_res and (db_res['is_optimal'] or db_res['best_rank'] <= 3):
-                        frag_ranks.append(db_res['best_rank'])
-                        frag_vertices = [[int(x), int(y)] for x, y in frag.vertices]
-                        recursive_cuts.append({"t": "v", "v": frag_vertices, "r": int(db_res['best_rank'])})
+                        frag_plans.append({
+                            "type": "tablebase",
+                            "rank": int(db_res['best_rank']),
+                            "vertices": [[int(x), int(y)] for x, y in frag.vertices],
+                        })
+                    else:
+                        frag_env = HowlEnv(env.m, env.n, generate=False)
+                        frag_env.graph = frag
+                        frag_env.cuts_made = 0
+                        frag_obs = frag_env._get_obs()
+                        pyg = frag_env.to_pyg_data(perimeter_only=enable_perimeter_mask)
+
+                        item = {
+                            "type": "search",
+                            "env": frag_env,
+                            "obs": frag_obs,
+                            "pyg": pyg,
+                            "frag": frag,
+                            "sims": num_simulations,
+                        }
+                        frag_plans.append(item)
+                        unresolved_items.append(item)
+
+                # Bottleneck simulation allocation across unresolved fragments
+                if unresolved_items and enable_bottleneck_mcts and len(unresolved_items) > 1:
+                    with torch.no_grad():
+                        batch_pyg = Batch.from_data_list([it["pyg"] for it in unresolved_items])
+                        device = next(net.parameters()).device
+                        _, v_preds = net(batch_pyg.to(device))
+                        v_estimates = v_preds.squeeze(-1).cpu().tolist()
+                        if not isinstance(v_estimates, list):
+                            v_estimates = [v_estimates]
+
+                    r_max = max(v_estimates)
+                    for it, est_v in zip(unresolved_items, v_estimates):
+                        diff = r_max - est_v
+                        if diff <= 1.0:
+                            it["sims"] = num_simulations
+                        elif diff <= 3.0:
+                            it["sims"] = max(int(round(num_simulations * 0.5)), min(20, num_simulations))
+                        else:
+                            it["sims"] = max(int(round(num_simulations * 0.2)), min(10, num_simulations))
+
+                for plan in frag_plans:
+                    if plan["type"] == "tablebase":
+                        frag_ranks.append(plan["rank"])
+                        recursive_cuts.append({"t": "v", "v": plan["vertices"], "r": plan["rank"]})
                     else:
                         frag_traj, frag_rank, frag_discoveries = play_episode(
-                            net, frag_env, frag_obs, num_simulations,
+                            net, plan["env"], plan["obs"],
+                            num_simulations=plan["sims"],
                             add_exploration_noise=add_exploration_noise,
                             batch_size=batch_size,
                             greedy=greedy,
                             temperature=temperature,
-                            enable_perimeter_mask=enable_perimeter_mask
+                            enable_perimeter_mask=enable_perimeter_mask,
+                            enable_bottleneck_mcts=enable_bottleneck_mcts,
                         )
                         frag_ranks.append(frag_rank)
                         recursive_trajectories.extend(frag_traj)
@@ -404,7 +463,7 @@ def play_episode(net, env, obs=None, num_simulations=50, add_exploration_noise=T
 
 def simulate_game_worker(worker_args):
     import io
-    m, n, model_bytes, num_simulations, game_id, mcts_batch_size, enable_perimeter_mask = worker_args
+    m, n, model_bytes, num_simulations, game_id, mcts_batch_size, enable_perimeter_mask, enable_bottleneck_mcts = worker_args
     
     local_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.set_num_threads(1) # Prevent OpenMP deadlocks in multiprocessing
@@ -415,7 +474,12 @@ def simulate_game_worker(worker_args):
     
     env = HowlEnv(m, n)
     obs, _ = env.reset()
-    traj, final_rank, discoveries = play_episode(net, env, obs, num_simulations, batch_size=mcts_batch_size, enable_perimeter_mask=enable_perimeter_mask)
+    traj, final_rank, discoveries = play_episode(
+        net, env, obs, num_simulations,
+        batch_size=mcts_batch_size,
+        enable_perimeter_mask=enable_perimeter_mask,
+        enable_bottleneck_mcts=enable_bottleneck_mcts,
+    )
     
     # Serialize PyG trajectory to plain bytes to avoid PyTorch IPC shared-memory leaks across processes
     for data in traj:
@@ -434,7 +498,7 @@ def simulate_game_worker(worker_args):
     
     return game_id, m, n, traj_buf.getvalue(), final_rank, discoveries
 
-def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_size=8, solver_name="alphawolf2", enable_perimeter_mask=True):
+def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_size=8, solver_name="alphawolf2.3", enable_perimeter_mask=True, enable_bottleneck_mcts=True, logger=None):
     import concurrent.futures
     import io
     import time
@@ -448,13 +512,16 @@ def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_siz
     
     worker_args_list = []
     for game_id, (m, n) in enumerate(gm_gn_list):
-        worker_args_list.append((m, n, model_bytes, num_simulations, game_id + 1, mcts_batch_size, enable_perimeter_mask))
+        worker_args_list.append((m, n, model_bytes, num_simulations, game_id + 1, mcts_batch_size, enable_perimeter_mask, enable_bottleneck_mcts))
         
     num_games = len(gm_gn_list)
-    print(f"\n[PHASE 1] Self-Play ({num_games} games | {num_workers} workers | solver: '{solver_name}')")
-    print("-" * 60)
-    print(f"Game      | Time     | Grid  | Rank | Nodes | Worker")
-    print("-" * 60)
+    if logger:
+        logger.start_self_play(num_games, num_workers, solver_name)
+    else:
+        print(f"\n[PHASE 1] Self-Play ({num_games} games | {num_workers} workers | solver: '{solver_name}')")
+        print("-" * 60)
+        print(f"Game      | Time     | Grid  | Rank | Nodes | Worker")
+        print("-" * 60)
     
     start_time = time.time()
     ranks = []
@@ -481,24 +548,30 @@ def self_play(net, gm_gn_list, num_simulations=50, num_workers=5, mcts_batch_siz
                 final_sequence = discoveries[0][2]
                 validate_and_upsert_solution(m, n, final_rank, final_sequence, solver_name=solver_name)
             
-            # Nicer Terminal Output
-            progress = f"[{completed}/{num_games}]"
-            grid_str = f"{m}x{n}"
-            current_time = time.strftime("%H:%M:%S")
-            print(f"{progress:<9} | {current_time:<8} | {grid_str:<5} | {final_rank:<4} | {len(traj):<5} | #{game_id}")
+            if logger:
+                logger.log_game_completed(completed, num_games, m, n, final_rank, len(traj), game_id)
+            else:
+                progress = f"[{completed}/{num_games}]"
+                grid_str = f"{m}x{n}"
+                current_time = time.strftime("%H:%M:%S")
+                print(f"{progress:<9} | {current_time:<8} | {grid_str:<5} | {final_rank:<4} | {len(traj):<5} | #{game_id}")
             
     elapsed = time.time() - start_time
     avg_rank = sum(ranks) / len(ranks) if ranks else 0
     avg_len = sum(lengths) / len(lengths) if lengths else 0
-    print("-" * 60)
-    print(f"  Self-Play Summary: {elapsed:.1f}s | Avg Rank: {avg_rank:.1f} | Avg Nodes: {avg_len:.1f} | Total Data: +{len(replay_buffer)}")
+    if not logger:
+        print("-" * 60)
+        print(f"  Self-Play Summary: {elapsed:.1f}s | Avg Rank: {avg_rank:.1f} | Avg Nodes: {avg_len:.1f} | Total Data: +{len(replay_buffer)}")
     
     return replay_buffer, game_results
 
-def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
+def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32, logger=None):
     import time
-    print(f"\n[PHASE 2] Network Training ({len(replay_buffer)} total samples in buffer)")
-    print("-" * 60)
+    if logger:
+        logger.start_training(len(replay_buffer))
+    else:
+        print(f"\n[PHASE 2] Network Training ({len(replay_buffer)} total samples in buffer)")
+        print("-" * 60)
     
     net.train()
     
@@ -531,16 +604,22 @@ def train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32):
             
         avg_p_loss = total_p_loss / len(loader) if len(loader) > 0 else 0.0
         avg_v_loss = total_v_loss / len(loader) if len(loader) > 0 else 0.0
-        print(f"  Epoch {epoch+1:<2}/{epochs:<2} | Policy Loss: {avg_p_loss:8.4f} | Value Loss: {avg_v_loss:8.4f}")
+        if logger:
+            logger.log_epoch(epoch + 1, epochs, avg_p_loss, avg_v_loss)
+        else:
+            print(f"  Epoch {epoch+1:<2}/{epochs:<2} | Policy Loss: {avg_p_loss:8.4f} | Value Loss: {avg_v_loss:8.4f}")
         
     elapsed = time.time() - start_time
-    print("-" * 60)
-    print(f"  Training Summary: {elapsed:.1f}s | Final P_Loss: {avg_p_loss:8.4f} | Final V_Loss: {avg_v_loss:8.4f}")
-    return {"policy_loss": avg_p_loss, "value_loss": avg_v_loss}
+    if logger:
+        logger.end_training(elapsed, epochs, avg_p_loss, avg_v_loss)
+    else:
+        print("-" * 60)
+        print(f"  Training Summary: {elapsed:.1f}s | Final P_Loss: {avg_p_loss:8.4f} | Final V_Loss: {avg_v_loss:8.4f}")
+    return {"policy_loss": avg_p_loss, "value_loss": avg_v_loss, "train_time": elapsed}
 
 def alpha_zero_loop(
-    m,
-    n,
+    m=None,
+    n=None,
     num_generations=50,
     games_per_generation=15,
     num_simulations=200,
@@ -555,9 +634,11 @@ def alpha_zero_loop(
     curriculum_frontier_ratio=0.70,
     curriculum_success_threshold=0.80,
     enable_perimeter_mask=True,
+    enable_bottleneck_mcts=True,
     benchmark_interval=3,
     benchmark_min_stage=2,
     replay_buffer_capacity=60000,
+    logger=None,
 ):
     from checkpoint import (
         load_checkpoint,
@@ -569,8 +650,11 @@ def alpha_zero_loop(
     )
     from curriculum import CurriculumManager
 
+    if logger is None:
+        logger = TrainingLogger()
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Main Process using device: {device}")
+    logger.info(f"Main Process using device: {device}")
     
     net = AlphaWolfNet(m, n).to(device)
     optimizer = optim.Adam(net.parameters(), lr=1e-3, weight_decay=1e-4)
@@ -580,6 +664,16 @@ def alpha_zero_loop(
     
     ckpt_dir = os.path.join(os.path.dirname(__file__), "models/checkpoints")
     os.makedirs(ckpt_dir, exist_ok=True)
+
+    # Auto-synchronize self_play_max_grid with curriculum stages ceiling to prevent silent clamping
+    if curriculum_stages:
+        stages_max = max(s.get("max_size", 4) for s in curriculum_stages)
+        if stages_max > self_play_max_grid:
+            logger.info(
+                f"Auto-adjusting self_play_max_grid from {self_play_max_grid} to {stages_max} "
+                f"to match curriculum stages ceiling."
+            )
+            self_play_max_grid = stages_max
 
     curriculum = CurriculumManager(
         mode=curriculum_mode,
@@ -600,7 +694,7 @@ def alpha_zero_loop(
                 start_gen = last_gen + 1
                 if "curriculum_state" in meta and meta["curriculum_state"]:
                     curriculum.load_state_dict(meta["curriculum_state"])
-                    print(f"[RESUME] Restored curriculum state: {curriculum.active_stage.get('name', 'Active Stage')} (Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size})")
+                    logger.info(f"[RESUME] Restored curriculum state: {curriculum.active_stage.get('name', 'Active Stage')} (Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size})")
                 
                 # Restore rolling replay buffer if present
                 buffer_file = os.path.join(ckpt_dir, "replay_buffer.pt")
@@ -608,78 +702,151 @@ def alpha_zero_loop(
                     restored_samples = load_replay_buffer(buffer_file, max_samples=replay_buffer.maxlen)
                     if restored_samples:
                         replay_buffer.extend(restored_samples)
-                        print(f"[RESUME] Restored {len(restored_samples)} samples from rolling replay buffer ({buffer_file})")
+                        logger.info(f"[RESUME] Restored {len(restored_samples)} samples from rolling replay buffer ({buffer_file})")
 
-                print(f"\n[RESUME] Successfully loaded checkpoint: {resolved_ckpt}")
+                logger.info(f"[RESUME] Successfully loaded checkpoint: {resolved_ckpt}")
             except Exception as e:
-                print(f"Warning: Failed to load checkpoint {resolved_ckpt} ({e}). Starting fresh.")
+                logger.warning(f"Failed to load checkpoint {resolved_ckpt} ({e}). Starting fresh.")
                 start_gen = 1
 
-    for gen in range(start_gen, num_generations + 1):
-        print(f"\n" + "=" * 60)
-        print(f" GENERATION {gen}/{num_generations}  |  Stage: {curriculum.active_stage.get('name', 'N/A')}  |  Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size}")
-        print("=" * 60)
-        
-        # Sample game grid sizes developmentally from the curriculum
-        sampled_grids = curriculum.sample_games(games_per_generation, gen)
-        
-        new_trajectories, game_results = self_play(
-            net,
-            sampled_grids,
-            num_simulations=num_simulations,
-            num_workers=num_workers,
-            mcts_batch_size=mcts_batch_size,
-            solver_name=solver_name
-        )
+    try:
+        for gen in range(start_gen, num_generations + 1):
+            logger.start_generation(
+                gen=gen,
+                total_gens=num_generations,
+                stage_name=curriculum.active_stage.get('name', 'N/A'),
+                max_grid=curriculum.current_max_size,
+                buffer_size=len(replay_buffer),
+            )
             
-        replay_buffer.extend(new_trajectories)
+            # Sample game grid sizes developmentally from the curriculum
+            sampled_grids = curriculum.sample_games(games_per_generation, gen)
+            
+            self_play_t0 = time.time()
+            new_trajectories, game_results = self_play(
+                net,
+                sampled_grids,
+                num_simulations=num_simulations,
+                num_workers=num_workers,
+                mcts_batch_size=mcts_batch_size,
+                solver_name=solver_name,
+                enable_perimeter_mask=enable_perimeter_mask,
+                enable_bottleneck_mcts=enable_bottleneck_mcts,
+                logger=logger,
+            )
+            self_play_elapsed = time.time() - self_play_t0
+            avg_rank = sum(r[2] for r in game_results) / len(game_results) if game_results else 0.0
+            avg_len = sum(len(t) for t in new_trajectories) / len(new_trajectories) if new_trajectories else 0.0
+                
+            replay_buffer.extend(new_trajectories)
 
-        cur_summary = curriculum.record_generation_results(gen, game_results)
-        met_cnt = cur_summary["games_met_target"]
-        tot_cnt = cur_summary["total_games"]
-        succ_pct = cur_summary["success_rate"]
-        print(f"  Curriculum Mastery: {met_cnt}/{tot_cnt} games ({succ_pct:.1%}) met R_target")
-        if cur_summary["advanced"]:
-            next_stage = curriculum.active_stage
-            print(f"  >>> STAGE PROMOTION! Reason: {cur_summary['advance_reason']}")
-            print(f"  >>> Advancing to: {next_stage.get('name', 'Next Stage')} (New Max Grid: {curriculum.current_max_size}x{curriculum.current_max_size})")
-        
-        loss_metrics = train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32)
-        scheduler.step()
-        
-        ckpt_path = os.path.join(ckpt_dir, f"alphawolf_gen_{gen}.pt")
-        save_checkpoint(
-            ckpt_path,
-            net,
-            optimizer=optimizer,
-            scheduler=scheduler,
-            generation=gen,
-            solver_name=solver_name,
-            metrics=loss_metrics,
-            curriculum_state=curriculum.state_dict(),
-        )
+            cur_summary = curriculum.record_generation_results(gen, game_results)
+            met_cnt = cur_summary["games_met_target"]
+            tot_cnt = cur_summary["total_games"]
+            succ_pct = cur_summary["success_rate"]
+            
+            logger.end_self_play(
+                elapsed=self_play_elapsed,
+                avg_rank=avg_rank,
+                avg_nodes=avg_len,
+                data_collected=len(new_trajectories),
+                met_cnt=met_cnt,
+                total_games=tot_cnt,
+                mastery_pct=succ_pct,
+            )
+            
+            if cur_summary["advanced"]:
+                next_stage = curriculum.active_stage
+                logger.log_stage_promotion(
+                    reason=cur_summary['advance_reason'],
+                    next_stage_name=next_stage.get('name', 'Next Stage'),
+                    next_max_size=curriculum.current_max_size,
+                )
+            
+            loss_metrics = train_network(net, replay_buffer, optimizer, epochs=5, batch_size=32, logger=logger)
+            scheduler.step()
+            
+            ckpt_path = os.path.join(ckpt_dir, f"alphawolf_gen_{gen}.pt")
+            save_checkpoint(
+                ckpt_path,
+                net,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                generation=gen,
+                solver_name=solver_name,
+                metrics=loss_metrics,
+                curriculum_state=curriculum.state_dict(),
+            )
 
-        # Atomically update rolling replay buffer
-        buffer_file = os.path.join(ckpt_dir, "replay_buffer.pt")
-        save_replay_buffer(replay_buffer, buffer_file, max_samples=replay_buffer.maxlen)
-        
-        print(f"\n[PHASE 3] Validation & Checkpointing")
-        print("-" * 60)
-        print(f"  Saved Checkpoint: {ckpt_path}")
-        
-        # Benchmark Suite Promotion Check (Batched evaluation, Stride=3, Min Stage=3)
-        is_eval_stage = (curriculum.current_stage_idx >= benchmark_min_stage)
-        is_eval_gen = (gen % benchmark_interval == 0) or (gen == num_generations) or cur_summary.get("advanced", False)
+            # Atomically update rolling replay buffer
+            buffer_file = os.path.join(ckpt_dir, "replay_buffer.pt")
+            save_replay_buffer(replay_buffer, buffer_file, max_samples=replay_buffer.maxlen)
+            
+            logger.log_checkpoint(ckpt_path)
+            
+            # Benchmark Suite Promotion Check (Batched evaluation, Stride=3, Min Stage=3)
+            is_eval_stage = (curriculum.current_stage_idx >= benchmark_min_stage)
+            is_eval_gen = (gen % benchmark_interval == 0) or (gen == num_generations) or cur_summary.get("advanced", False)
 
-        if is_eval_stage and is_eval_gen:
-            from benchmark import promote_model
-            promote_model(ckpt_path, num_workers=num_workers, mcts_batch_size=mcts_batch_size, max_size=self_play_max_grid)
-        else:
-            if not is_eval_stage:
-                reason = f"Stage {curriculum.current_stage_idx + 1} < Stage {benchmark_min_stage + 1}"
+            arena_status = "SKIPPED"
+            challenger_rank = None
+            baseline_rank = None
+            challenger_nodes = None
+            baseline_nodes = None
+            arena_time = 0.0
+
+            if is_eval_stage and is_eval_gen:
+                from benchmark import promote_model
+                arena_res = promote_model(ckpt_path, num_workers=num_workers, mcts_batch_size=mcts_batch_size, max_size=self_play_max_grid, logger=logger)
+                arena_status = arena_res.status
+                challenger_rank = arena_res.new_rank
+                baseline_rank = arena_res.best_rank
+                challenger_nodes = arena_res.new_nodes
+                baseline_nodes = arena_res.best_nodes
+                arena_time = arena_res.time
+                logger.log_arena(
+                    status=arena_status,
+                    challenger_rank=challenger_rank,
+                    baseline_rank=baseline_rank,
+                    challenger_nodes=challenger_nodes,
+                    baseline_nodes=baseline_nodes,
+                    arena_time=arena_time,
+                )
             else:
-                reason = f"Stride {gen % benchmark_interval}/{benchmark_interval}"
-            print(f"  Benchmark Arena: Skipped ({reason})")
+                if not is_eval_stage:
+                    reason = f"Stage {curriculum.current_stage_idx + 1} < Stage {benchmark_min_stage + 1}"
+                else:
+                    reason = f"Stride {gen % benchmark_interval}/{benchmark_interval}"
+                logger.log_arena("SKIPPED", reason=reason)
+
+            # Record structured JSONL metrics
+            logger.record_generation_metrics({
+                "generation": gen,
+                "timestamp": datetime.now().isoformat(),
+                "stage": curriculum.active_stage.get("name", "N/A"),
+                "max_grid": curriculum.current_max_size,
+                "self_play_time": round(self_play_elapsed, 2),
+                "avg_rank": round(avg_rank, 2),
+                "avg_nodes": round(avg_len, 2),
+                "mastery_rate": round(succ_pct, 4),
+                "games_met_target": met_cnt,
+                "total_games": tot_cnt,
+                "data_collected": len(new_trajectories),
+                "buffer_size": len(replay_buffer),
+                "training_time": round(loss_metrics.get("train_time", 0.0), 2),
+                "final_policy_loss": round(loss_metrics["policy_loss"], 4),
+                "final_value_loss": round(loss_metrics["value_loss"], 4),
+                "arena_status": arena_status,
+                "challenger_rank": challenger_rank,
+                "baseline_rank": baseline_rank,
+                "arena_time": round(arena_time, 2),
+                "checkpoint": os.path.basename(ckpt_path),
+            })
+    except Exception as e:
+        logger.log_exception(e, context="alpha_zero_loop")
+        raise
+    finally:
+        logger.close()
 
 if __name__ == "__main__":
     import argparse
@@ -700,11 +867,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config_path = os.path.join(os.path.dirname(__file__), "config.json")
-    with open(config_path, "r") as f:
+    with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
         
-    m = config.get("current_m", 5)
-    n = config.get("current_n", 5)
     num_generations = args.generations or config.get("total_generations", 50)
     games_per_gen = args.games_per_gen or config.get("games_per_generation", 15)
     simulations = args.sims or config.get("mcts_simulations", 200)
@@ -712,7 +877,14 @@ if __name__ == "__main__":
     mcts_batch_size = config.get("mcts_batch_size", 8)
     self_play_min_grid = config.get("self_play_min_grid", 4)
     self_play_max_grid = config.get("self_play_max_grid", 9)
-    solver_name = args.solver_name or config.get("solver_name", "alphawolf2")
+    solver_name = args.solver_name or config.get("solver_name", "alphawolf2.3")
+    curriculum_stages = config.get("curriculum_stages", None)
+
+    # Pre-synchronize self_play_max_grid with curriculum stages ceiling
+    if curriculum_stages:
+        stages_max = max(s.get("max_size", 4) for s in curriculum_stages)
+        if stages_max > self_play_max_grid:
+            self_play_max_grid = stages_max
 
     if args.fresh:
         resume_from = None
@@ -729,8 +901,6 @@ if __name__ == "__main__":
         curriculum_mode = config.get("curriculum_mode", "hybrid")
 
     alpha_zero_loop(
-        m,
-        n,
         num_generations=num_generations,
         games_per_generation=games_per_gen,
         num_simulations=simulations,
@@ -741,10 +911,11 @@ if __name__ == "__main__":
         solver_name=solver_name,
         resume_from=resume_from,
         curriculum_mode=curriculum_mode,
-        curriculum_stages=config.get("curriculum_stages", None),
+        curriculum_stages=curriculum_stages,
         curriculum_frontier_ratio=config.get("curriculum_frontier_ratio", 0.70),
         curriculum_success_threshold=config.get("curriculum_success_threshold", 0.80),
         enable_perimeter_mask=config.get("enable_perimeter_mask", True),
+        enable_bottleneck_mcts=config.get("enable_bottleneck_mcts", True),
         benchmark_interval=config.get("benchmark_interval", 3),
         benchmark_min_stage=config.get("benchmark_min_stage", 2),
         replay_buffer_capacity=config.get("replay_buffer_capacity", 60000),
