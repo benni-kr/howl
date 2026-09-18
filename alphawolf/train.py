@@ -354,8 +354,9 @@ def play_episode(
         
         if "duplicates" in info and info["duplicates"]:
             for dup_frag in info["duplicates"]:
-                dup_vertices = [[int(x), int(y)] for x, y in dup_frag.vertices]
-                local_sequence.append({"t": "i", "v": dup_vertices})
+                if len(dup_frag.vertices) > 1:
+                    dup_vertices = [[int(x), int(y)] for x, y in dup_frag.vertices]
+                    local_sequence.append({"t": "i", "v": dup_vertices})
         
         if terminated:
             frag_ranks = []
@@ -369,6 +370,11 @@ def play_episode(
                 unresolved_items = []
 
                 for frag in fragments:
+                    if len(frag.vertices) <= 1:
+                        # Isolated single vertex has intrinsic rank 1 (or 0 if empty) and requires zero cuts or vaporization actions
+                        frag_ranks.append(len(frag.vertices))
+                        continue
+
                     verts = [{"x": int(x), "y": int(y)} for x, y in frag.vertices]
                     can_hash = generate_canonical_hash(verts)
                     db_res_dict = query_tablebase([can_hash])
@@ -378,13 +384,6 @@ def play_episode(
                         frag_plans.append({
                             "type": "tablebase",
                             "rank": int(db_res['best_rank']),
-                            "vertices": [[int(x), int(y)] for x, y in frag.vertices],
-                        })
-                    elif len(frag.vertices) <= 1:
-                        # Isolated single vertex has rank 1
-                        frag_plans.append({
-                            "type": "tablebase",
-                            "rank": len(frag.vertices),
                             "vertices": [[int(x), int(y)] for x, y in frag.vertices],
                         })
                     else:

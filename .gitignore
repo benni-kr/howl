@@ -7,8 +7,11 @@ backend/.venv/
 *.pyo
 *.pyd
 *.db
+*.db.bak
+*.bak
 *.sqlite3
 backend/howl.db
+backend/howl.db.bak
 
 # Environment Variables
 .env

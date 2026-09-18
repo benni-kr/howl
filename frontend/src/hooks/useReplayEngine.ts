@@ -58,33 +58,52 @@ const buildGridGraph = (m: number, n: number): Graph => {
 
 const getVertexKey = (v: Vertex) => `${v.x},${v.y}`;
 
+/**
+ * Strips 1x1 ghost operations (vaporize or duplicate actions on single vertices).
+ * In HOWL, single vertices (1x1) have intrinsic rank 1 and require 0 cuts.
+ * They are automatically auto-solved by the engine, so explicit 1x1 vaporize/ignore
+ * steps are redundant and produce no visual change on the canvas.
+ */
+export const sanitizeCutSequence = (sequence: CutHistoryAction[]): CutHistoryAction[] => {
+  if (!sequence || !Array.isArray(sequence)) return [];
+  return sequence.filter(action => {
+    if (!action) return false;
+    if ((action.type === "vaporize" || action.type === "ignore") && action.vertices && action.vertices.length <= 1) {
+      return false;
+    }
+    return true;
+  });
+};
+
 export const useReplayEngine = (initialM: number, initialN: number, globalSequence: CutHistoryAction[]) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1000);
   
+  const cleanGlobalSequence = useMemo(() => sanitizeCutSequence(globalSequence), [globalSequence]);
+
   // The playback stack starts with the Main Run
   const [stack, setStack] = useState<PlaybackContext[]>([]);
 
   // We sync the initial state dynamically because globalSequence loads asynchronously
   useEffect(() => {
-    if (stack.length === 0 && globalSequence.length > 0) {
+    if (stack.length === 0 && cleanGlobalSequence.length > 0) {
       setStack([{
         id: "root",
         title: "Main Run",
         m: initialM,
         n: initialN,
-        sequence: globalSequence,
+        sequence: cleanGlobalSequence,
         savedStep: 0,
       }]);
-    } else if (stack.length > 0 && stack[0].sequence.length === 0 && globalSequence.length > 0) {
+    } else if (stack.length > 0 && stack[0].sequence.length === 0 && cleanGlobalSequence.length > 0) {
       setStack(prev => {
         const newStack = [...prev];
-        newStack[0] = { ...newStack[0], sequence: globalSequence, m: initialM, n: initialN };
+        newStack[0] = { ...newStack[0], sequence: cleanGlobalSequence, m: initialM, n: initialN };
         return newStack;
       });
     }
-  }, [initialM, initialN, globalSequence]);
+  }, [initialM, initialN, cleanGlobalSequence]);
 
   const activeContext = useMemo(() => {
     if (stack.length > 0) return stack[stack.length - 1];
@@ -93,10 +112,10 @@ export const useReplayEngine = (initialM: number, initialN: number, globalSequen
       title: "Main Run",
       m: initialM,
       n: initialN,
-      sequence: globalSequence,
+      sequence: cleanGlobalSequence,
       savedStep: 0,
     };
-  }, [stack, initialM, initialN, globalSequence]);
+  }, [stack, initialM, initialN, cleanGlobalSequence]);
 
   const totalSteps = activeContext.sequence.length;
 
@@ -346,7 +365,7 @@ export const useReplayEngine = (initialM: number, initialN: number, globalSequen
           title,
           m,
           n,
-          sequence,
+          sequence: sanitizeCutSequence(sequence),
           savedStep: 0,
           initialGraph,
         }
